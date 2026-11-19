@@ -1,0 +1,13 @@
+[build-system]
+requires = ["maturin==1.16.0"]  # the same version as build_wheel.sh's image
+build-backend = "maturin"
+
+[project]
+name = "litmus-engine"
+description = "Litmus: a detector of model-written text, on one CPU core (Python binding of the Rust engine)"
+requires-python = ">=3.10"
+license = { text = "PolyForm-Noncommercial-1.0.0" }
+dynamic = ["version"]
+
+[tool.maturin]
+module-name = "litmus_engine"

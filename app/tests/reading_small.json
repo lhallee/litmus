@@ -1,0 +1,304 @@
+{
+ "cells": [
+  {
+   "band_hi": 0.5114511111519651,
+   "band_lo": 0.5114511111519651,
+   "end": 14,
+   "end_byte": 74,
+   "end_char": 74,
+   "position": 0.5114511111519651,
+   "spread": 0.0,
+   "start": 0,
+   "start_byte": 0,
+   "start_char": 0,
+   "unlike_reference": true,
+   "windows": 1
+  }
+ ],
+ "chunk_tokens": 8192,
+ "chunks": [
+  {
+   "closeness": 0.19772792572220949,
+   "closeness_p": 0.005,
+   "end": 14,
+   "end_byte": 74,
+   "end_char": 74,
+   "explain": {
+    "closeness": {
+     "bins": [
+      0
+     ],
+     "count": 1,
+     "n": 885,
+     "p": 0.002257336343115124
+    },
+    "conformal": [
+     {
+      "bins": [
+       0
+      ],
+      "count": 20,
+      "n": 287,
+      "origin": "human",
+      "p": 0.07291666666666667
+     },
+     {
+      "bins": [
+       0
+      ],
+      "count": 17,
+      "n": 303,
+      "origin": "ai",
+      "p": 0.05921052631578947
+     },
+     {
+      "bins": [
+       0
+      ],
+      "count": 18,
+      "n": 295,
+      "origin": "mixed",
+      "p": 0.06418918918918919
+     }
+    ],
+    "nearest": [
+     {
+      "cosine": 0.21290766766715125,
+      "domain": "essays",
+      "era": "recent",
+      "generator": "model-x",
+      "index": 1569,
+      "origin": "human",
+      "probability": 0.27405186025830197,
+      "source": "synthetic-c",
+      "tokens": 899
+     },
+     {
+      "cosine": 0.20818027765778171,
+      "domain": "essays",
+      "era": "human",
+      "generator": "model-y",
+      "index": 2895,
+      "origin": "human",
+      "probability": 0.6361859622496904,
+      "source": "synthetic-b",
+      "tokens": 1950
+     },
+     {
+      "cosine": 0.20799454449898133,
+      "domain": "code",
+      "era": "recent",
+      "generator": "",
+      "index": 5494,
+      "origin": "ai",
+      "probability": 0.18918150422317442,
+      "source": "synthetic-c",
+      "tokens": 4395
+     },
+     {
+      "cosine": 0.20506274654167034,
+      "domain": "essays",
+      "era": "legacy",
+      "generator": "",
+      "index": 10219,
+      "origin": "mixed",
+      "probability": 0.47618594785862955,
+      "source": "synthetic-b",
+      "tokens": 4496
+     },
+     {
+      "cosine": 0.20245815592965705,
+      "domain": "essays",
+      "era": "legacy",
+      "generator": "",
+      "index": 441,
+      "origin": "human",
+      "probability": 0.7541629981193156,
+      "source": "synthetic-a",
+      "tokens": 110
+     }
+    ]
+   },
+   "interval": [
+    0.8113208,
+    0.8301887
+   ],
+   "length_bin": 0,
+   "mean": [
+    0.4060485224251713,
+    0.40330711852083095,
+    0.4046823142160054
+   ],
+   "n_tokens": 14,
+   "not_human": {
+    "0.05": false,
+    "0.1": true
+   },
+   "out_of_reference": true,
+   "p_values": [
+    0.08,
+    0.06,
+    0.07
+   ],
+   "probability": 0.8148148548010983,
+   "score": 0.6655388567559356,
+   "sets": {
+    "0.05": [
+     "human",
+     "ai",
+     "mixed"
+    ],
+    "0.1": []
+   },
+   "share": [
+    0.3344611432440644,
+    0.3322030557660872,
+    0.33333580098984833
+   ],
+   "spread": [
+    0.23948847090181968,
+    0.23512541264676887,
+    0.2364660050320525
+   ],
+   "spread_percentile": [
+    0.5679550123546139,
+    0.4568341852568274,
+    0.524487087917098
+   ],
+   "start": 0,
+   "start_byte": 0,
+   "start_char": 0,
+   "strip": {
+    "band_hi": 0.5114511111519651,
+    "band_lo": 0.5114511111519651,
+    "level": 0.1,
+    "position": 0.5114511111519651,
+    "unlike_reference": true
+   },
+   "three_way": [
+    0.32675892748360286,
+    0.34966114978753293,
+    0.32357992272886416
+   ]
+  }
+ ],
+ "n_tokens": 14,
+ "verdict": {
+  "chunk_level": 0.05,
+  "chunks": 1,
+  "closeness_p": 0.005,
+  "disagreement": 0.0,
+  "highest": 0.8148148548010983,
+  "human_chunks": 0,
+  "interval": [
+   0.8113208,
+   0.8301887
+  ],
+  "level": 0.05,
+  "lowest": 0.8148148548010983,
+  "mixed_document": false,
+  "model_chunks": 0,
+  "not_human": {
+   "0.05": false,
+   "0.1": true
+  },
+  "out_of_reference": true,
+  "p_values": [
+   0.08,
+   0.06,
+   0.07
+  ],
+  "probability": 0.8148148548010983,
+  "sets": {
+   "0.05": [
+    "human",
+    "ai",
+    "mixed"
+   ],
+   "0.1": []
+  },
+  "strip": {
+   "band_hi": 0.5114511111519651,
+   "band_lo": 0.5114511111519651,
+   "level": 0.1,
+   "position": 0.5114511111519651,
+   "unlike_reference": true
+  },
+  "three_way": [
+   0.32675892748360286,
+   0.34966114978753293,
+   0.32357992272886416
+  ]
+ },
+ "windows": [
+  {
+   "chunk": 0,
+   "closeness": 0.19772792572220949,
+   "closeness_p": 0.005,
+   "end": 14,
+   "end_byte": 74,
+   "end_char": 74,
+   "interval": [
+    0.8113208,
+    0.8301887
+   ],
+   "length_bin": 0,
+   "mean": [
+    0.4060485224251713,
+    0.40330711852083095,
+    0.4046823142160054
+   ],
+   "n_tokens": 14,
+   "not_human": {
+    "0.05": false,
+    "0.1": true
+   },
+   "out_of_reference": true,
+   "p_values": [
+    0.08,
+    0.06,
+    0.07
+   ],
+   "probability": 0.8148148548010983,
+   "score": 0.6655388567559356,
+   "sets": {
+    "0.05": [
+     "human",
+     "ai",
+     "mixed"
+    ],
+    "0.1": []
+   },
+   "share": [
+    0.3344611432440644,
+    0.3322030557660872,
+    0.33333580098984833
+   ],
+   "spread": [
+    0.23948847090181968,
+    0.23512541264676887,
+    0.2364660050320525
+   ],
+   "spread_percentile": [
+    0.5679550123546139,
+    0.4568341852568274,
+    0.524487087917098
+   ],
+   "start": 0,
+   "start_byte": 0,
+   "start_char": 0,
+   "strip": {
+    "band_hi": 0.5114511111519651,
+    "band_lo": 0.5114511111519651,
+    "level": 0.1,
+    "position": 0.5114511111519651,
+    "unlike_reference": true
+   },
+   "three_way": [
+    0.32675892748360286,
+    0.34966114978753293,
+    0.32357992272886416
+   ]
+  }
+ ]
+}

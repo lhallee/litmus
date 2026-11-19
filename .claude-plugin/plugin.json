@@ -1,0 +1,12 @@
+{
+  "name": "litmus",
+  "displayName": "Litmus",
+  "version": "1.0.0",
+  "description": "Litmus is a free detector of AI written text that says how sure it is. This plugin adds its skill and its MCP server, so an agent can check text or code.",
+  "author": { "name": "Logan Hallee" },
+  "homepage": "https://github.com/lhallee/litmus",
+  "repository": "https://github.com/lhallee/litmus",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "keywords": ["ai-detection", "ai-generated-text", "mcp", "detector"],
+  "skills": ["./.agents/skills/"]
+}

@@ -1,0 +1,39 @@
+[package]
+name = "litmus-engine"
+description = "Litmus inference: a ternary (BitNet b1.58) encoder that reads a document of any length on one CPU core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "litmus_engine"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }  # MIT OR Apache-2.0
+serde_json = "1"  # MIT OR Apache-2.0
+unicode-normalization = "0.1"  # MIT OR Apache-2.0
+unicode-properties = { version = "0.1", default-features = false, features = ["general-category"] }  # MIT OR Apache-2.0
+
+[dev-dependencies]
+criterion = { version = "0.5", default-features = false }  # MIT OR Apache-2.0
+
+[features]
+# The parity suites read fixtures from outside the tree (README, Tests); `cargo test --features parity` runs them.
+parity = []
+# Per-stage timing of the encoder (src/profile.rs), for `litmus bench` built with its own `profile` feature.
+profile = []
+
+[[bench]]
+name = "kernels"
+harness = false
+
+[[bench]]
+name = "blocks"
+harness = false
+
+# A WebAssembly module for checking the SIMD128 kernel and timing the engine in V8 (scripts/wasm_probe.mjs).
+[[example]]
+name = "wasm_probe"
+crate-type = ["cdylib"]

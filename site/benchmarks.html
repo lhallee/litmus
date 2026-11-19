@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Litmus results</title>
+<meta name="description" content="How accurate Litmus is on its own held-out test texts and on public benchmarks including RAID, beside open detectors run on the same texts, and how fast each runs on one processor core.">
+<link rel="icon" href="litmus_mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+<script src="site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="index.html"><img src="litmus_mark.svg" alt="" width="22" height="30">Litmus</a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="use.html">Use Litmus</a>
+      <a href="download.html">Download</a>
+      <a href="how.html">How it works</a>
+      <a href="benchmarks.html" aria-current="page">Results</a>
+      <a href="privacy.html">Privacy</a>
+    </nav>
+    <div class="bar-end">
+      <a class="icon-link" href="https://github.com/lhallee/litmus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/></svg><span class="label">GitHub</span></a>
+      <button class="theme-toggle" type="button" hidden aria-label="Switch the look"><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap page-head">
+    <h1>Results</h1>
+    <p class="lead">Litmus is tested on texts it never trained on: its own held-out test split, and the test sets of public benchmarks, each beside open detectors run on the same texts. Every result reports PR AUC, ROC AUC, and balanced MCC with a 95% interval.</p>
+    <p class="small"><a data-link="links.training_guide" href="https://github.com/lhallee/litmus/blob/main/docs/TRAINING.md">How Litmus was trained, step by step</a></p>
+    <noscript><p class="callout">The tables and figures on this page are drawn by a small script from this site's own <a href="assets/results.json">results.json</a>. With JavaScript switched off, that file holds every number.</p></noscript>
+    <div class="callout" data-until-results hidden style="max-width:44rem; margin-top:1.5rem"><p>The results for this release are being finalized. The tables and figures below fill in as soon as they are published.</p></div>
+  </div>
+
+  <section class="section" aria-labelledby="test">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="test">On its own held-out test split</h2>
+        <p>Whole clusters of similar texts held out of training, read once after the model was chosen. AI against human, with mixed text left out.</p>
+      </div>
+      <div class="stats needs-js" id="test-tiles">
+        <div class="stat"><span class="value tbd">Results are being finalized.</span><span class="label">Litmus on its held-out test split</span></div>
+      </div>
+      <div class="figure figure-slot needs-js" data-figure="headline" data-alt="Each benchmark a row; for each, every detector's ROC AUC, true positive rate at 1% false positive rate, and balanced MCC, with intervals.">
+        <div class="pending-box">The overview figure is being finalized.</div>
+      </div>
+      <p class="small soft figure-caption" hidden>Every detector on every benchmark: ROC AUC, the share of AI text caught when 1% of human text is flagged, and balanced MCC, each with its 95% interval. Litmus is the colored series.</p>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="benchmarks">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="benchmarks">On public benchmarks</h2>
+        <p>Litmus on each set, AI against human. On some benchmark families Litmus also learned from the official training split, and those rows are marked; every text scored here comes from a test split it never saw. APT-Eval and its human originals each hold one origin, so they give the share of texts flagged instead.</p>
+      </div>
+      <div class="table-wrap needs-js">
+        <table>
+          <thead><tr><th>Benchmark</th><th class="n">PR AUC</th><th class="n">ROC AUC</th><th class="n">Balanced MCC</th><th class="n">TPR at 1% FPR</th><th class="n">TPR at 5% FPR</th><th class="n">Texts</th></tr></thead>
+          <tbody id="summary-body"><tr><td colspan="7" class="empty">Results are being finalized.</td></tr></tbody>
+        </table>
+      </div>
+      <p class="seen-legend" hidden><span class="seen" aria-hidden="true">T</span> Trained on this benchmark family's official training split; the test texts scored here were held out. Unmarked rows are benchmarks the detector did not train on.</p>
+
+      <h3 id="compare" style="margin-top:2.5rem">Compare detectors on one benchmark</h3>
+      <p class="soft">Every detector was run on the same texts, so the intervals compare like with like. The open detectors compared: <span id="detector-list" class="tbd">named when the results are published</span>.</p>
+      <div class="controls needs-js">
+        <label>Benchmark <select id="compare-benchmark"><option>Results are being finalized</option></select></label>
+        <label>Task <select id="compare-task"><option>AI against human</option></select></label>
+      </div>
+      <div class="table-wrap needs-js">
+        <table>
+          <thead id="compare-head"><tr><th>Detector</th><th class="n">PR AUC</th><th class="n">ROC AUC</th><th class="n">Balanced MCC</th><th class="n">TPR at 1% FPR</th><th class="n">TPR at 5% FPR</th><th class="n">Texts</th></tr></thead>
+          <tbody id="compare-body"><tr><td colspan="7" class="empty">Results are being finalized.</td></tr></tbody>
+        </table>
+      </div>
+      <p class="seen-legend" hidden><span class="seen" aria-hidden="true">T</span> This detector trained on this benchmark: on its official training split, and for some detectors on the test texts themselves. Either helps its score here. Litmus never trained on the test texts scored here.</p>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="raid">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="raid">RAID</h2>
+        <p>RAID is the field's shared test: text from many models, domains, and decoding settings, including adversarial attacks meant to fool detectors. Its usual measure is the share of AI text caught when 5% of human text is flagged.</p>
+      </div>
+      <div class="figure figure-slot needs-js" data-figure="raid" data-alt="True positive rate at 5% false positive rate on RAID, for each attack and overall, for every detector.">
+        <div class="pending-box">The RAID figure is being finalized.</div>
+      </div>
+      <p class="small soft figure-caption" hidden>Each detector on RAID, by attack and overall, at the 5% false positive rate.</p>
+      <div class="table-wrap needs-js" style="margin-top:1.5rem">
+        <table>
+          <thead><tr><th>Detector</th><th class="n">TPR at 5% FPR</th><th class="n">TPR at 1% FPR</th><th class="n">ROC AUC</th><th class="n">PR AUC</th></tr></thead>
+          <tbody id="raid-body"><tr><td colspan="5" class="empty">Results are being finalized.</td></tr></tbody>
+        </table>
+      </div>
+      <p class="seen-legend" hidden><span class="seen" aria-hidden="true">T</span> Trained on RAID's official training split; the test texts scored here were held out.</p>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="speed">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="speed">Accuracy against speed</h2>
+        <p>A detector you cannot afford to run does not help. Speed here is tokens a second on one processor core, measured where we could run the detector that way and estimated otherwise.</p>
+      </div>
+      <div class="figure figure-slot needs-js" data-figure="pareto" data-alt="Each detector's accuracy against its speed on one processor core, with the frontier of detectors that no other beats on both.">
+        <div class="pending-box">The accuracy against speed figure is being finalized.</div>
+      </div>
+      <p class="small soft figure-caption" hidden>Each detector's accuracy against its throughput on one processor core. The frontier joins the detectors that no other detector beats on both speed and accuracy.</p>
+      <div class="table-wrap needs-js" style="margin-top:1.5rem; max-width:40rem">
+        <table>
+          <thead><tr><th>Detector</th><th class="n">Tokens a second, one core</th><th>Speed is</th></tr></thead>
+          <tbody id="cost-body"><tr><td colspan="3" class="empty">Results are being finalized.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="where">
+    <div class="wrap">
+      <div class="section-head">
+        <h2 id="where">Where it does well, and where it does not</h2>
+      </div>
+      <div class="figure figure-slot needs-js" data-figure="strata" data-alt="Accuracy by text length and by the model that wrote the text, for every detector.">
+        <div class="pending-box">The breakdown figure is being finalized.</div>
+      </div>
+      <p class="small soft figure-caption" hidden>Accuracy by the length of the text and by the model that wrote it. A short text carries less evidence than a long one.</p>
+      <div class="figure figure-slot needs-js" data-figure="origins" data-alt="Litmus's scores for human, mixed, and AI texts, and the share of mixed and AI text flagged on each benchmark.">
+        <div class="pending-box">The origins figure is being finalized.</div>
+      </div>
+      <p class="small soft figure-caption" hidden>How Litmus scores human, mixed, and AI text, and how much mixed and AI text it flags on each benchmark at the threshold that flags 1% of human text.</p>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="method">
+    <div class="wrap prose">
+      <h2 id="method">How the comparison is run</h2>
+      <ul class="checks">
+        <li><strong>The same texts for everyone.</strong> Each benchmark set is a seeded sample of <span data-value="results.texts_per_benchmark" data-format="int">3,000</span> texts, and every detector scores the same sample. The test split of every benchmark is held out of all of Litmus's training, bank, and calibration data.</li>
+        <li><strong>Every metric, every time.</strong> PR AUC and ROC AUC measure how well scores rank AI text above human text at every threshold. Balanced MCC is the Matthews correlation on class-balanced samples at its best threshold. TPR at 1% and 5% FPR is the share of AI text caught when the threshold flags only 1% or 5% of human text, the number that matters most when a false flag is costly.</li>
+        <li><strong>Paired intervals.</strong> Each interval is a stratified bootstrap 95% interval, and every detector uses the same draws, so differences between detectors come from the texts, not the resampling.</li>
+        <li><strong>Three tasks.</strong> AI against human with mixed left out, AI or mixed against human, and mixed against human. The selector above switches between them.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="limits">
+    <div class="wrap prose">
+      <h2 id="limits">What these numbers do not mean</h2>
+      <ul class="checks">
+        <li><strong>They are not a promise about your text.</strong> A benchmark is a sample of particular sources, models, and years. Text from newer models or in unusual formats can read differently.</li>
+        <li><strong>They are mainly about English.</strong> This release is an English detector: almost all of the text it learned from was English, and other languages are not supported yet. The sets here in other languages, such as RAID extra's Czech and German, show how it reads text it does not support.</li>
+        <li><strong>Different protocols are not one ranking.</strong> Numbers published elsewhere use other samples, thresholds, and metrics, so they are not comparable with these unless the benchmark, subset, and metric all match.</li>
+        <li><strong>Training on a benchmark's family helps on its test split.</strong> Litmus and several open detectors learned from some benchmarks, from their official training splits and, for some open detectors, from the test texts themselves, and those results are marked <span class="seen" aria-hidden="true">T</span>. Results on unmarked benchmarks say more about text a detector has never seen.</li>
+        <li><strong>A sample supports its intervals and no more.</strong> A difference inside overlapping intervals is not a difference we can claim, and measured speeds come from one machine.</li>
+        <li><strong>A high score is not proof about a person.</strong> Even at a 1% false positive rate, one human text in a hundred is flagged. We recommend not using a reading alone to accuse anyone.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot">
+      <div class="about">
+        <a class="brand" href="index.html"><img src="litmus_mark.svg" alt="" width="22" height="30">Litmus</a>
+        <p>Litmus is a free detector of AI written text that says how sure it is.</p>
+      </div>
+      <nav aria-label="Litmus">
+        <h2>Litmus</h2>
+        <ul>
+          <li><a href="use.html">Use Litmus</a></li>
+          <li><a href="download.html">Download</a></li>
+          <li><a href="how.html">How it works</a></li>
+          <li><a href="reading.html">Reading a result</a></li>
+          <li><a href="benchmarks.html">Results</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="More">
+        <h2>More</h2>
+        <ul>
+          <li><a href="privacy.html">Privacy</a></li>
+          <li><a href="license.html">License</a></li>
+          <li><a href="https://github.com/lhallee/litmus">GitHub</a></li>
+          <li data-show="links.model_on_hugging_face" hidden><a data-link="links.model_on_hugging_face">Model on Hugging Face</a></li>
+          <li data-hide="links.model_on_hugging_face" class="later">Model on Hugging Face: coming soon</li>
+          <li><a href="https://github.com/lhallee/litmus/blob/main/docs/DEVELOPING.md">Developer guide</a></li>
+          <li><a href="https://paypal.me/lnblog">Support Litmus</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="legal">
+      <p>Free for noncommercial use under the <a href="license.html">PolyForm Noncommercial License 1.0.0</a>.</p>
+      <p class="notice">Required Notice: Copyright Logan Hallee (https://github.com/lhallee/litmus)</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

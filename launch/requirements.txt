@@ -1,0 +1,19 @@
+# What a Litmus run imports on the GPU machine: the union of corpus, teacher and student, pinned. torch is installed
+# first from its CUDA index (the Dockerfile); the vendored foundry package is imported from source.
+datasets==5.0.1
+faiss-cpu==1.16.0
+fasttext-wheel==0.9.2
+hf-xet==1.6.0
+httpx==0.28.1
+huggingface-hub==1.32.0
+numpy==2.5.3
+optuna==5.0.0
+psutil
+pyarrow==25.0.1
+pytest==9.1.1
+safetensors==0.8.0
+scikit-learn==1.9.1
+tokenizers==0.23.2
+tqdm==4.70.1
+transformers==5.17.0
+wandb==0.30.0

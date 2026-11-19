@@ -1,0 +1,15 @@
+detector,repo,revision,model_type,parameters,non_embedding_parameters,measured
+e5-small-lora,MayZhou/e5-small-lora-ai-generated-detector,483fc4969592dc20e00e5130e7187b5dd25dbcc7,bert,33360770,21442178,True
+OpenAI RoBERTa-base (GPT-2),openai-community/roberta-base-openai-detector,6cba99c003b711c7fe94f8a3aa2be35a792cb6fa,roberta,125237762,86237186,True
+RADAR,TrustSafeAI/RADAR-Vicuna-7B,4ff1f23a69a36aa1df47b0933be6279f1b896c9b,roberta,355359744,303358976,True
+ModernBERT RAID+MAGE (Drayson),GeorgeDrayson/modernbert-ai-detection-raid-mage,e047d9c56f51a7e5c5ef5b0dd556f519bb9dd624,modernbert,149606402,110923010,True
+MAGE Longformer,yaful/MAGE,0d82ca0fdf6ebef5babb813cc11bd8eb2552c846,longformer,148659456,106906368,True
+RoBERTa ChatGPT (HC3),Hello-SimpleAI/chatgpt-detector-roberta,d2b342c61775d5dd0221808a79983ed3b86ffd86,roberta,124645632,85645056,True
+Desklib v1.01,desklib/ai-text-detector-v1.01,5fdea974cd4287c61674951ec78803aa274e2fb7,deberta-v2,434013185,302312449,True
+OpenAI RoBERTa-large (GPT-2),openai-community/roberta-large-openai-detector,38f3e0ccf205e9c4e0b38ae9d75ec948141bf832,roberta,356411394,304410626,False
+SuperAnnotate,SuperAnnotate/ai-detector,74b2b8580915c202607c09f64f8170eaa87a6a14,roberta,355412571,303411289,False
+BERT-tiny-4M,ShantanuT01/BERT-tiny-RAID,cbc7e63d4749e8a84f2f07d23576639ef979d6fa,bert,4386049,413185,False
+TMR (Target Mining RoBERTa),Oxidane/tmr-ai-text-detector,0ceddea903015ef99cbaa040a4d8a216aed9c683,roberta,124647170,85646594,False
+Tabularis ModernBERT R1.1,tabularisai/ai-text-detection,4bf4a146a66df346e5b54e4b5ebda3fee1a19a86,modernbert,149606402,110923010,False
+DeBERTa-ConPara,SES-Lab-OTH/deberta-conpara,a5f896f20f14259cf8a966fa4ae2012bd8d80164,deberta-v2,434012160,302311424,False
+GPTTrace Ettin-1B,nakas/gpttrace-v8s-1b,ac748e32ca8c90bb8858fadc427757728e27b063,modernbert,1031267330,941006082,False

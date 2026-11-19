@@ -1,0 +1,22 @@
+[package]
+name = "litmus-files"
+description = "What the Litmus command line and app share around the engine: text of files, the reading cache, release folders and exports"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+name = "litmus_files"
+
+[dependencies]
+litmus-engine = { path = "../litmus-engine" }
+# float_roundtrip: a cached reading parses back to the very numbers that were stored.
+serde_json = { version = "1", features = ["float_roundtrip"] }  # MIT OR Apache-2.0
+sha2 = "0.10"  # MIT OR Apache-2.0
+miniz_oxide = "0.8"  # MIT OR Zlib OR Apache-2.0
+
+# PDF text runs in a child process, so only where there are processes.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+pdf-extract = "0.7"  # MIT

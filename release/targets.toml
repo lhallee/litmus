@@ -1,0 +1,43 @@
+# Where a release goes, and the facts of the project that do not change with a version. The documents read these as
+# `target.<table>.<key>`; the driver reads them to publish. A release changes this file only when a destination changes.
+
+[github]
+repo = "lhallee/litmus"
+pages_branch = "gh-pages"
+pages_url = "https://lhallee.github.io/litmus/"
+training_guide = "https://github.com/lhallee/litmus/blob/main/docs/TRAINING.md"
+
+[hub]
+# One public model repository for every version: its main branch is the latest release and each version is a tag
+# (v1.0.0), so a user pins `revision="v1.0.0"` and the model's page stays one address (release/RELEASING.md, Versions and the Hub).
+model_repo = "lhallee/litmus"
+# The corpus stays private; its card describes the recipe.
+dataset_repo = "lhallee/litmus-corpus"
+
+[contribute]
+# Empty until the contribute site is deployed, which needs its legal documents approved and the person's word.
+site_url = ""
+
+[programs]
+# The platforms whose programs the GitHub release attaches when it is created. The macOS programs come from the
+# release-build workflow after publishing (the `macos` stage); add "macos" here once they are attached, so the site links them.
+platforms = ["windows", "linux"]
+signing_note = "the release's programs are not code-signed"
+
+[programs.assets]
+windows_app = "litmus-app.exe"
+windows_cli = "litmus.exe"
+linux_app = "litmus-app-linux-x86_64"
+linux_cli = "litmus-linux-x86_64"
+macos_arm64_app = "litmus-app-macos-arm64"
+macos_arm64_cli = "litmus-macos-arm64"
+macos_x86_64_app = "litmus-app-macos-x86_64"
+macos_x86_64_cli = "litmus-macos-x86_64"
+
+[bench]
+# The length of the document the speed on the site is measured on (`litmus bench --tokens`); the browser is measured on the same one.
+document_tokens = 28920
+
+[citation]
+# The software citation of every release; a paper, once one exists, replaces it.
+text = "Hallee, L. (2026). Litmus: a free detector of AI written text that says how sure it is [Computer software]. https://github.com/lhallee/litmus"

@@ -1,0 +1,25 @@
+{
+  "fixed": {
+    "vocab_size": 50368,
+    "rope_base": 10000.0,
+    "norm_eps": 1e-06,
+    "act_eps": 1e-05,
+    "weight_eps": 1e-05,
+    "chunk_tokens": 8192,
+    "window_width": 512,
+    "window_stride": 128
+  },
+  "configs": {
+    "tiny": {"embed_width": 32, "width": 64, "depth": 2, "heads": 2, "ffn_width": 256, "block_size": 16, "head_hidden": 64, "head_out": 32, "chunk_tokens": 96, "window_width": 32, "window_stride": 16},
+    "s192_l4": {"embed_width": 128, "width": 192, "depth": 4, "heads": 3, "ffn_width": 768, "block_size": 256, "head_hidden": 512, "head_out": 128},
+    "s192_l6": {"embed_width": 128, "width": 192, "depth": 6, "heads": 3, "ffn_width": 768, "block_size": 256, "head_hidden": 512, "head_out": 128},
+    "s192_l8": {"embed_width": 128, "width": 192, "depth": 8, "heads": 3, "ffn_width": 768, "block_size": 256, "head_hidden": 512, "head_out": 128},
+    "s256_l4": {"embed_width": 128, "width": 256, "depth": 4, "heads": 4, "ffn_width": 1024, "block_size": 256, "head_hidden": 512, "head_out": 128},
+    "s256_l6": {"embed_width": 128, "width": 256, "depth": 6, "heads": 4, "ffn_width": 1024, "block_size": 256, "head_hidden": 512, "head_out": 128},
+    "s256_l8": {"embed_width": 128, "width": 256, "depth": 8, "heads": 4, "ffn_width": 1024, "block_size": 256, "head_hidden": 512, "head_out": 128},
+    "s384_l4": {"embed_width": 128, "width": 384, "depth": 4, "heads": 6, "ffn_width": 1536, "block_size": 256, "head_hidden": 512, "head_out": 128},
+    "s384_l6": {"embed_width": 128, "width": 384, "depth": 6, "heads": 6, "ffn_width": 1536, "block_size": 256, "head_hidden": 512, "head_out": 128},
+    "s384_l8": {"embed_width": 128, "width": 384, "depth": 8, "heads": 6, "ffn_width": 1536, "block_size": 256, "head_hidden": 512, "head_out": 128},
+    "s512_l12": {"embed_width": 128, "width": 512, "depth": 12, "heads": 8, "ffn_width": 2048, "block_size": 256, "head_hidden": 512, "head_out": 128}
+  }
+}

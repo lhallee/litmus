@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 340" width="1280" height="340" role="img" aria-labelledby="title desc">
+  <title id="title">Litmus</title>
+  <desc id="desc">The Litmus mark, a cursive L drawn as a strip from blue through purple to red, beside the name Litmus and the line "A free detector of AI written text that says how sure it is", above a strip running from human (blue) through mixed (purple) to AI (red) with a pale band over the origins a reading cannot rule out.</desc>
+  <defs>
+    <linearGradient id="strip" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2F6FDB"/>
+      <stop offset="0.5" stop-color="#8E5BC9"/>
+      <stop offset="1" stop-color="#D9483B"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="340" rx="28" fill="#17151D"/>
+  <g transform="translate(46 40) scale(1.25)" fill="none" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M70 95 C100 95 140 70 138 45 C137 28 118 26 112 45 C106 70 104 110 96 140" stroke="#2F6FDB"/>
+    <path d="M104 180 C120 190 140 192 160 178" stroke="#D9483B"/>
+    <path d="M96 140 C92 160 86 178 70 182 C56 185 50 172 62 166 C76 160 92 172 104 180" stroke="#8E5BC9"/>
+    <path d="M94 150 C93 154 92 158 90 162" stroke="#C9B8E6" stroke-linecap="butt"/>
+  </g>
+  <g font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+    <text x="300" y="148" font-size="104" font-weight="600" fill="#F2EEF7" letter-spacing="-1">Litmus</text>
+    <text x="304" y="200" font-size="30" fill="#C8C2D3">A free detector of AI written text that says how sure it is</text>
+  </g>
+  <rect x="300" y="236" width="900" height="26" rx="13" fill="url(#strip)"/>
+  <rect x="300" y="230" width="430" height="38" rx="8" fill="#C9B8E6" fill-opacity="0.28" stroke="#C9B8E6" stroke-width="2" stroke-dasharray="7 5"/>
+  <rect x="507" y="224" width="10" height="50" rx="5" fill="#FFFFFF" stroke="#17151D" stroke-width="2"/>
+  <g font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="20">
+    <text x="300" y="300" fill="#7FA6EE">Human</text>
+    <text x="750" y="300" fill="#B999E3" text-anchor="middle">Mixed</text>
+    <text x="1200" y="300" fill="#EE8A80" text-anchor="end">AI</text>
+  </g>
+</svg>

@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 520" width="1280" height="520" role="img">
+<title>Whole clusters go to sets; the nearest clusters of every held-out cluster are left unused</title>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="context-stroke"/></marker><linearGradient id="strip" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2F6FDB"/><stop offset="0.5" stop-color="#8E5BC9"/><stop offset="1" stop-color="#D9483B"/></linearGradient><pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" stroke="#B9B2C6" stroke-width="2" stroke-opacity="0.5"/></pattern></defs>
+<rect width="1280" height="520" rx="24" fill="#17151D"/>
+<circle cx="110" cy="120" r="38" fill="#221F2A" stroke="#3A3545" stroke-width="2"/>
+<circle cx="98" cy="112" r="3.2" fill="#F2EEF7"/>
+<circle cx="120" cy="108" r="3.2" fill="#F2EEF7"/>
+<circle cx="110" cy="130" r="3.2" fill="#F2EEF7"/>
+<circle cx="124" cy="128" r="3.2" fill="#F2EEF7"/>
+<circle cx="96" cy="132" r="3.2" fill="#F2EEF7"/>
+<circle cx="220" cy="90" r="38" fill="url(#hatch)" stroke="#B9B2C6" stroke-width="2" stroke-dasharray="6 5"/>
+<circle cx="330" cy="120" r="38" fill="#2E8B57"/>
+<circle cx="318" cy="112" r="3.2" fill="#FFFFFF"/>
+<circle cx="340" cy="108" r="3.2" fill="#FFFFFF"/>
+<circle cx="330" cy="130" r="3.2" fill="#FFFFFF"/>
+<circle cx="344" cy="128" r="3.2" fill="#FFFFFF"/>
+<circle cx="316" cy="132" r="3.2" fill="#FFFFFF"/>
+<circle cx="440" cy="95" r="38" fill="url(#hatch)" stroke="#B9B2C6" stroke-width="2" stroke-dasharray="6 5"/>
+<circle cx="560" cy="130" r="38" fill="#221F2A" stroke="#3A3545" stroke-width="2"/>
+<circle cx="548" cy="122" r="3.2" fill="#F2EEF7"/>
+<circle cx="570" cy="118" r="3.2" fill="#F2EEF7"/>
+<circle cx="560" cy="140" r="3.2" fill="#F2EEF7"/>
+<circle cx="574" cy="138" r="3.2" fill="#F2EEF7"/>
+<circle cx="546" cy="142" r="3.2" fill="#F2EEF7"/>
+<circle cx="680" cy="100" r="38" fill="#221F2A" stroke="#3A3545" stroke-width="2"/>
+<circle cx="668" cy="92" r="3.2" fill="#F2EEF7"/>
+<circle cx="690" cy="88" r="3.2" fill="#F2EEF7"/>
+<circle cx="680" cy="110" r="3.2" fill="#F2EEF7"/>
+<circle cx="694" cy="108" r="3.2" fill="#F2EEF7"/>
+<circle cx="666" cy="112" r="3.2" fill="#F2EEF7"/>
+<circle cx="800" cy="125" r="38" fill="url(#hatch)" stroke="#B9B2C6" stroke-width="2" stroke-dasharray="6 5"/>
+<circle cx="910" cy="95" r="38" fill="#C2702A"/>
+<circle cx="898" cy="87" r="3.2" fill="#FFFFFF"/>
+<circle cx="920" cy="83" r="3.2" fill="#FFFFFF"/>
+<circle cx="910" cy="105" r="3.2" fill="#FFFFFF"/>
+<circle cx="924" cy="103" r="3.2" fill="#FFFFFF"/>
+<circle cx="896" cy="107" r="3.2" fill="#FFFFFF"/>
+<circle cx="1020" cy="130" r="38" fill="url(#hatch)" stroke="#B9B2C6" stroke-width="2" stroke-dasharray="6 5"/>
+<circle cx="1140" cy="105" r="38" fill="#221F2A" stroke="#3A3545" stroke-width="2"/>
+<circle cx="1128" cy="97" r="3.2" fill="#F2EEF7"/>
+<circle cx="1150" cy="93" r="3.2" fill="#F2EEF7"/>
+<circle cx="1140" cy="115" r="3.2" fill="#F2EEF7"/>
+<circle cx="1154" cy="113" r="3.2" fill="#F2EEF7"/>
+<circle cx="1126" cy="117" r="3.2" fill="#F2EEF7"/>
+<circle cx="150" cy="250" r="38" fill="#221F2A" stroke="#3A3545" stroke-width="2"/>
+<circle cx="138" cy="242" r="3.2" fill="#F2EEF7"/>
+<circle cx="160" cy="238" r="3.2" fill="#F2EEF7"/>
+<circle cx="150" cy="260" r="3.2" fill="#F2EEF7"/>
+<circle cx="164" cy="258" r="3.2" fill="#F2EEF7"/>
+<circle cx="136" cy="262" r="3.2" fill="#F2EEF7"/>
+<circle cx="270" cy="230" r="38" fill="url(#hatch)" stroke="#B9B2C6" stroke-width="2" stroke-dasharray="6 5"/>
+<circle cx="380" cy="260" r="38" fill="#221F2A" stroke="#3A3545" stroke-width="2"/>
+<circle cx="368" cy="252" r="3.2" fill="#F2EEF7"/>
+<circle cx="390" cy="248" r="3.2" fill="#F2EEF7"/>
+<circle cx="380" cy="270" r="3.2" fill="#F2EEF7"/>
+<circle cx="394" cy="268" r="3.2" fill="#F2EEF7"/>
+<circle cx="366" cy="272" r="3.2" fill="#F2EEF7"/>
+<circle cx="500" cy="235" r="38" fill="url(#hatch)" stroke="#B9B2C6" stroke-width="2" stroke-dasharray="6 5"/>
+<circle cx="620" cy="260" r="38" fill="#8E5BC9"/>
+<circle cx="608" cy="252" r="3.2" fill="#FFFFFF"/>
+<circle cx="630" cy="248" r="3.2" fill="#FFFFFF"/>
+<circle cx="620" cy="270" r="3.2" fill="#FFFFFF"/>
+<circle cx="634" cy="268" r="3.2" fill="#FFFFFF"/>
+<circle cx="606" cy="272" r="3.2" fill="#FFFFFF"/>
+<circle cx="740" cy="240" r="38" fill="url(#hatch)" stroke="#B9B2C6" stroke-width="2" stroke-dasharray="6 5"/>
+<circle cx="860" cy="260" r="38" fill="#221F2A" stroke="#3A3545" stroke-width="2"/>
+<circle cx="848" cy="252" r="3.2" fill="#F2EEF7"/>
+<circle cx="870" cy="248" r="3.2" fill="#F2EEF7"/>
+<circle cx="860" cy="270" r="3.2" fill="#F2EEF7"/>
+<circle cx="874" cy="268" r="3.2" fill="#F2EEF7"/>
+<circle cx="846" cy="272" r="3.2" fill="#F2EEF7"/>
+<circle cx="980" cy="240" r="38" fill="#221F2A" stroke="#3A3545" stroke-width="2"/>
+<circle cx="968" cy="232" r="3.2" fill="#F2EEF7"/>
+<circle cx="990" cy="228" r="3.2" fill="#F2EEF7"/>
+<circle cx="980" cy="250" r="3.2" fill="#F2EEF7"/>
+<circle cx="994" cy="248" r="3.2" fill="#F2EEF7"/>
+<circle cx="966" cy="252" r="3.2" fill="#F2EEF7"/>
+<circle cx="1100" cy="255" r="38" fill="url(#hatch)" stroke="#B9B2C6" stroke-width="2" stroke-dasharray="6 5"/>
+<circle cx="1190" cy="230" r="38" fill="#2F6FDB"/>
+<circle cx="1178" cy="222" r="3.2" fill="#FFFFFF"/>
+<circle cx="1200" cy="218" r="3.2" fill="#FFFFFF"/>
+<circle cx="1190" cy="240" r="3.2" fill="#FFFFFF"/>
+<circle cx="1204" cy="238" r="3.2" fill="#FFFFFF"/>
+<circle cx="1176" cy="242" r="3.2" fill="#FFFFFF"/>
+<circle cx="100" cy="380" r="38" fill="#221F2A" stroke="#3A3545" stroke-width="2"/>
+<circle cx="88" cy="372" r="3.2" fill="#F2EEF7"/>
+<circle cx="110" cy="368" r="3.2" fill="#F2EEF7"/>
+<circle cx="100" cy="390" r="3.2" fill="#F2EEF7"/>
+<circle cx="114" cy="388" r="3.2" fill="#F2EEF7"/>
+<circle cx="86" cy="392" r="3.2" fill="#F2EEF7"/>
+<circle cx="230" cy="370" r="38" fill="#221F2A" stroke="#3A3545" stroke-width="2"/>
+<circle cx="218" cy="362" r="3.2" fill="#F2EEF7"/>
+<circle cx="240" cy="358" r="3.2" fill="#F2EEF7"/>
+<circle cx="230" cy="380" r="3.2" fill="#F2EEF7"/>
+<circle cx="244" cy="378" r="3.2" fill="#F2EEF7"/>
+<circle cx="216" cy="382" r="3.2" fill="#F2EEF7"/>
+<circle cx="360" cy="390" r="38" fill="#221F2A" stroke="#3A3545" stroke-width="2"/>
+<circle cx="348" cy="382" r="3.2" fill="#F2EEF7"/>
+<circle cx="370" cy="378" r="3.2" fill="#F2EEF7"/>
+<circle cx="360" cy="400" r="3.2" fill="#F2EEF7"/>
+<circle cx="374" cy="398" r="3.2" fill="#F2EEF7"/>
+<circle cx="346" cy="402" r="3.2" fill="#F2EEF7"/>
+<circle cx="480" cy="370" r="38" fill="#221F2A" stroke="#3A3545" stroke-width="2"/>
+<circle cx="468" cy="362" r="3.2" fill="#F2EEF7"/>
+<circle cx="490" cy="358" r="3.2" fill="#F2EEF7"/>
+<circle cx="480" cy="380" r="3.2" fill="#F2EEF7"/>
+<circle cx="494" cy="378" r="3.2" fill="#F2EEF7"/>
+<circle cx="466" cy="382" r="3.2" fill="#F2EEF7"/>
+<circle cx="610" cy="385" r="38" fill="url(#hatch)" stroke="#B9B2C6" stroke-width="2" stroke-dasharray="6 5"/>
+<circle cx="730" cy="370" r="38" fill="#221F2A" stroke="#3A3545" stroke-width="2"/>
+<circle cx="718" cy="362" r="3.2" fill="#F2EEF7"/>
+<circle cx="740" cy="358" r="3.2" fill="#F2EEF7"/>
+<circle cx="730" cy="380" r="3.2" fill="#F2EEF7"/>
+<circle cx="744" cy="378" r="3.2" fill="#F2EEF7"/>
+<circle cx="716" cy="382" r="3.2" fill="#F2EEF7"/>
+<circle cx="850" cy="390" r="38" fill="#221F2A" stroke="#3A3545" stroke-width="2"/>
+<circle cx="838" cy="382" r="3.2" fill="#F2EEF7"/>
+<circle cx="860" cy="378" r="3.2" fill="#F2EEF7"/>
+<circle cx="850" cy="400" r="3.2" fill="#F2EEF7"/>
+<circle cx="864" cy="398" r="3.2" fill="#F2EEF7"/>
+<circle cx="836" cy="402" r="3.2" fill="#F2EEF7"/>
+<circle cx="980" cy="375" r="38" fill="#221F2A" stroke="#3A3545" stroke-width="2"/>
+<circle cx="968" cy="367" r="3.2" fill="#F2EEF7"/>
+<circle cx="990" cy="363" r="3.2" fill="#F2EEF7"/>
+<circle cx="980" cy="385" r="3.2" fill="#F2EEF7"/>
+<circle cx="994" cy="383" r="3.2" fill="#F2EEF7"/>
+<circle cx="966" cy="387" r="3.2" fill="#F2EEF7"/>
+<circle cx="1100" cy="390" r="38" fill="#221F2A" stroke="#3A3545" stroke-width="2"/>
+<circle cx="1088" cy="382" r="3.2" fill="#F2EEF7"/>
+<circle cx="1110" cy="378" r="3.2" fill="#F2EEF7"/>
+<circle cx="1100" cy="400" r="3.2" fill="#F2EEF7"/>
+<circle cx="1114" cy="398" r="3.2" fill="#F2EEF7"/>
+<circle cx="1086" cy="402" r="3.2" fill="#F2EEF7"/>
+<circle cx="1200" cy="360" r="38" fill="url(#hatch)" stroke="#B9B2C6" stroke-width="2" stroke-dasharray="6 5"/>
+<circle cx="70" cy="470" r="11" fill="#221F2A" stroke="#3A3545" stroke-width="2"/>
+<text x="90" y="476" font-size="16" font-weight="400" fill="#B9B2C6" text-anchor="start" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">training</text>
+<circle cx="220" cy="470" r="11" fill="#2E8B57"/>
+<text x="240" y="476" font-size="16" font-weight="400" fill="#B9B2C6" text-anchor="start" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">validation</text>
+<circle cx="390" cy="470" r="11" fill="#C2702A"/>
+<text x="410" y="476" font-size="16" font-weight="400" fill="#B9B2C6" text-anchor="start" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">test</text>
+<circle cx="500" cy="470" r="11" fill="#8E5BC9"/>
+<text x="520" y="476" font-size="16" font-weight="400" fill="#B9B2C6" text-anchor="start" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">calibration</text>
+<circle cx="680" cy="470" r="11" fill="#2F6FDB"/>
+<text x="700" y="476" font-size="16" font-weight="400" fill="#B9B2C6" text-anchor="start" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">bank</text>
+<circle cx="790" cy="470" r="11" fill="url(#hatch)" stroke="#B9B2C6" stroke-width="2" stroke-dasharray="4 3"/>
+<text x="810" y="476" font-size="16" font-weight="400" fill="#B9B2C6" text-anchor="start" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">moat (unused)</text>
+</svg>

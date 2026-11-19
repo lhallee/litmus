@@ -1,0 +1,12 @@
+{
+  "name": "litmus",
+  "description": "Litmus is a free detector of AI written text that says how sure it is",
+  "owner": { "name": "Logan Hallee" },
+  "plugins": [
+    {
+      "name": "litmus",
+      "source": "./",
+      "description": "The Litmus skill and its MCP server. Needs the litmus program installed first; the skill says how."
+    }
+  ]
+}

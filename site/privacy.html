@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Litmus privacy</title>
+<meta name="description" content="What each way of using Litmus does with your text, in plain words, and how to check it yourself.">
+<link rel="icon" href="litmus_mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+<script src="site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="index.html"><img src="litmus_mark.svg" alt="" width="22" height="30">Litmus</a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="use.html">Use Litmus</a>
+      <a href="download.html">Download</a>
+      <a href="how.html">How it works</a>
+      <a href="benchmarks.html">Results</a>
+      <a href="privacy.html" aria-current="page">Privacy</a>
+    </nav>
+    <div class="bar-end">
+      <a class="icon-link" href="https://github.com/lhallee/litmus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/></svg><span class="label">GitHub</span></a>
+      <button class="theme-toggle" type="button" hidden aria-label="Switch the look"><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap page-head">
+    <h1>Where your text goes</h1>
+    <p class="lead">In the Windows program and in the browser page, nowhere: your text is read on your own device. The contribute site is the one place a text is sent to a server, and only when you choose to send it.</p>
+  </div>
+
+  <section class="section" aria-labelledby="ways">
+    <div class="wrap">
+      <h2 id="ways" class="sr-heading">The three ways</h2>
+      <div class="grid grid-3">
+        <div class="card">
+          <span class="pill ok">Stays on your computer</span>
+          <h3 style="margin-top:0.9rem">The Windows program</h3>
+          <ul class="checks small">
+            <li>It contains no network code, so it works the same with your connection switched off.</li>
+            <li>It keeps its settings and your history of readings in your own user folder. You can switch the history off in Settings.</li>
+            <li>Quick check, which reads text you select in another application, is off until you switch it on.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <span class="pill ok">Stays in the page</span>
+          <h3 style="margin-top:0.9rem">The browser page</h3>
+          <ul class="checks small">
+            <li>The page fetches its own files and the model from this site, and reads every text inside your browser.</li>
+            <li>It is built with no code that could send your text anywhere.</li>
+            <li>It remembers its look and detail level in your browser's storage for this site. Your history stays in the page's memory and is gone when you close it.</li>
+          </ul>
+        </div>
+        <div class="card" id="contribute">
+          <span class="pill">Sent, and kept privately</span>
+          <h3 style="margin-top:0.9rem">The contribute site</h3>
+          <ul class="checks small">
+            <li>Nothing is sent until you tick the consent box beside Check. Then the text, the model's reading, and any label you give are stored privately to improve Litmus.</li>
+            <li>Your text is never published or released in any dataset.</li>
+            <li>It stores no address, cookie, account, or device detail.</li>
+            <li>Anyone can have a text deleted, within 30 days, by sending the same text to its removal form.</li>
+          </ul>
+          <p class="small"><a data-link="links.contribute_site" data-show="links.contribute_site" hidden>Open the contribute site</a><span class="soft" data-hide="links.contribute_site">The contribute site is coming soon.</span></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="verify">
+    <div class="wrap split">
+      <div>
+        <h2 id="verify">Check it yourself</h2>
+        <p class="soft">You do not have to take this on trust. Open your browser's developer tools on the <a href="use.html">browser page</a>, choose the Network tab, and check a text. The list stays as it is on the right: the page's own files and the model, and nothing after you press Check.</p>
+        <p class="soft">For the Windows program, switch off your connection and check a text: it works the same. Every claim about what Litmus does with your computer and your text is listed, with the code behind it, in <a href="https://github.com/lhallee/litmus/blob/main/SECURITY.md">SECURITY.md</a>, and the <a href="https://github.com/lhallee/litmus/blob/main/docs/AUDIT.md">audit guide</a> gives the commands that test each one, for a person or their AI assistant.</p>
+      </div>
+      <div class="card">
+        <div class="req-head">What the browser page fetches, from this site</div>
+        <ul class="requests">
+          <li><span>litmus_app.js, litmus_app_bg.wasm</span><span class="what">the app</span></li>
+          <li><span>worker.js</span><span class="what">reads in the background</span></li>
+          <li><span>model.safetensors</span><span class="what">the model</span></li>
+          <li><span>config.json</span><span class="what">its calibration</span></li>
+          <li><span>tokenizer.json</span><span class="what">its word pieces</span></li>
+        </ul>
+        <div class="req-head">What it sends when you check a text</div>
+        <ul class="requests"><li><span class="none">Nothing</span></li></ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="site">
+    <div class="wrap prose">
+      <h2 id="site">This site</h2>
+      <p>These pages set no cookies, run no analytics, ask for no account, and load nothing from any other site: every file comes from this address. They remember one thing, your choice of the light or dark look, in your browser's storage. The site is hosted on GitHub Pages, so GitHub receives the ordinary requests your browser makes to load it, as any web host does, under its own privacy statement. The text you check is never part of those requests.</p>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="terms">
+    <div class="wrap prose">
+      <h2 id="terms">The contribute site's terms, in short</h2>
+      <ul class="checks">
+        <li><strong>Explicit consent.</strong> The notice sits beside the Check button, the consent box starts unticked, and nothing is sent until you tick it. The site is for people 18 and older.</li>
+        <li><strong>Please do not paste sensitive or personal information,</strong> yours or anyone else's. You are responsible for what you paste. The site does not store who sent a text, but a text can itself reveal who wrote it or who it is about.</li>
+        <li><strong>Kept privately, never published.</strong> Texts are kept in private storage and a private dataset to train, calibrate, and evaluate Litmus. We may publish models trained on them and figures computed from many texts, such as counts and error rates, but never the texts, readings, or labels.</li>
+        <li><strong>Removal on request.</strong> Because nothing links a text to its sender, removal works by content: send the exact text to the removal form and every stored copy is deleted within 30 days. A model already trained on it is not retrained.</li>
+        <li><strong>One policy for everyone,</strong> wherever you are.</li>
+      </ul>
+      <p>The full documents are the <a href="https://github.com/lhallee/litmus/blob/main/contribute/legal/TERMS_OF_USE.md">Terms of Use</a>, the <a href="https://github.com/lhallee/litmus/blob/main/contribute/legal/PRIVACY_NOTICE.md">Privacy Notice</a>, and the <a href="https://github.com/lhallee/litmus/blob/main/contribute/legal/NOTICE.md">notice shown beside Check</a>. They apply only on the contribute site.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot">
+      <div class="about">
+        <a class="brand" href="index.html"><img src="litmus_mark.svg" alt="" width="22" height="30">Litmus</a>
+        <p>Litmus is a free detector of AI written text that says how sure it is.</p>
+      </div>
+      <nav aria-label="Litmus">
+        <h2>Litmus</h2>
+        <ul>
+          <li><a href="use.html">Use Litmus</a></li>
+          <li><a href="download.html">Download</a></li>
+          <li><a href="how.html">How it works</a></li>
+          <li><a href="reading.html">Reading a result</a></li>
+          <li><a href="benchmarks.html">Results</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="More">
+        <h2>More</h2>
+        <ul>
+          <li><a href="privacy.html">Privacy</a></li>
+          <li><a href="license.html">License</a></li>
+          <li><a href="https://github.com/lhallee/litmus">GitHub</a></li>
+          <li data-show="links.model_on_hugging_face" hidden><a data-link="links.model_on_hugging_face">Model on Hugging Face</a></li>
+          <li data-hide="links.model_on_hugging_face" class="later">Model on Hugging Face: coming soon</li>
+          <li><a href="https://github.com/lhallee/litmus/blob/main/docs/DEVELOPING.md">Developer guide</a></li>
+          <li><a href="https://paypal.me/lnblog">Support Litmus</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="legal">
+      <p>Free for noncommercial use under the <a href="license.html">PolyForm Noncommercial License 1.0.0</a>.</p>
+      <p class="notice">Required Notice: Copyright Logan Hallee (https://github.com/lhallee/litmus)</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

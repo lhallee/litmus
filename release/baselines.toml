@@ -1,0 +1,27 @@
+# The other detectors' stored scores and costs, which every release reuses instead of rerunning them.
+#
+# The baselines read each benchmark's rows once, on a GPU machine the person named (benchmarks/README.md, Run;
+# launch/benchmark_chain.sh). A release scores Litmus on the same rows, so the comparison needs the baselines' score
+# files and their cost rows. They live in a private Hub dataset repository at a pinned commit. To add a benchmark or a
+# detector, score it on a GPU machine, upload its files to that repository, and pin the new commit here.
+#
+# `revision` is empty until the first upload; `fetch` refuses an empty one and says what to upload.
+
+[scores]
+repo = "lhallee/litmus-baselines"
+repo_type = "dataset"
+revision = "09481a1e701dcdf6ac2550c9b70ff1a4708929ed"
+# Folder of scores_<benchmark>__<detector>.csv files in the repository.
+path = "scores"
+# The seeded sample every detector read: benchmarks/README.md, `--max-rows` and `--seed` of `litmus_benchmarks score`.
+max_rows = 3000
+seed = 0
+# The benchmarks Litmus scores in a release: those of launch/benchmark_chain.sh.
+benchmarks = [
+  "mage", "mage_ood", "mage_ood_paraphrase", "raid_extra", "semeval2024_task8_a_mono", "semeval2024_task8_a_multi",
+  "beemo", "mixset", "apt_eval", "apt_eval_human", "codet_m4", "droid", "hc3", "editlens", "autextification_en", "autextification_es",
+]
+
+[costs]
+# Cost rows of the other detectors (`litmus_benchmarks cost`), in the same repository and commit.
+files = ["costs/costs_small.csv", "costs/costs_fast_detectgpt.csv", "costs/costs_binoculars.csv"]

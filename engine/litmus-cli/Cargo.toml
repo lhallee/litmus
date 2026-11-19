@@ -1,0 +1,25 @@
+[package]
+name = "litmus-cli"
+description = "The Litmus command line: score files, folders or standard input, and measure the engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "litmus"
+path = "src/main.rs"
+
+[dependencies]
+litmus-engine = { path = "../litmus-engine" }
+litmus-files = { path = "../litmus-files" }
+serde_json = "1"  # MIT OR Apache-2.0
+
+[features]
+# Build the model into the binary: LITMUS_EMBED_DIR names a release folder holding tokenizer.json as well.
+embedded = []
+# The tests of `litmus mcp` that run the real program on a release folder (LITMUS_MODEL; engine/README.md, Tests).
+release-tests = []
+# `litmus bench` also prints where the encoder's time goes, stage by stage.
+profile = ["litmus-engine/profile"]

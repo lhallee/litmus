@@ -1,0 +1,333 @@
+{
+ "schema": 1,
+ "pilot": false,
+ "measured_at": [
+  "2026-11-19T01:54:29+00:00",
+  "2026-11-19T02:04:10+00:00"
+ ],
+ "sources": [
+  "gpu_use_a10.json",
+  "gpu_use_gh200_binoculars.json"
+ ],
+ "basis": {
+  "summary": "GPU busy time (nvidia-smi utilization.gpu, the share of time a kernel was running, averaged over the reading, polled every 0.25 s) and the peak GPU memory of each detector's own process, each reading the same 120 documents (431,936 words), measured by python -m litmus_benchmarks gpu-use.",
+  "reading": "The other detectors truncate each document to their input limit and read Fast-DetectGPT 61,440, Desklib v1.01 92,160, ModernBERT RAID+MAGE (Drayson) 61,440, e5-small-lora 61,440, Binoculars 61,440 tokens in all; Litmus's engine read every token of every document, 595,890 tokens. The figures say what each detector's GPU did while it read its own share, not that they read the same text.",
+  "windows": "Reading took (Fast-DetectGPT 14.7 s, 64 polls; Desklib v1.01 5.7 s, 25 polls; ModernBERT RAID+MAGE (Drayson) 1.4 s, 8 polls; e5-small-lora 0.9 s, 7 polls; Binoculars 4.6 s, 23 polls), so a mean busy time rests on the polls named.",
+  "machines": {
+   "NVIDIA A10": [
+    "Fast-DetectGPT",
+    "Desklib v1.01",
+    "ModernBERT RAID+MAGE (Drayson)",
+    "e5-small-lora",
+    "Litmus engine"
+   ],
+   "NVIDIA GH200 480GB": [
+    "Binoculars"
+   ]
+  },
+  "notes": [
+   "Binoculars did not fit the NVIDIA A10: its worker died loading with CUDA out of memory at 22.00 GiB in use of 22.06 GiB (run ws-runs/quill/20261118-204739-8e32929e888d477bb054e9fc10256507-4948d9d4db85), so its row was measured on the NVIDIA GH200 480GB.",
+   "RADAR, OpenAI RoBERTa-base, MAGE Longformer and RoBERTa (HC3) are not shown: they are not in the benchmark results, and MAGE Longformer does not load under the image's transformers (its config's id2label fails validation)."
+  ]
+ },
+ "documents": {
+  "description": "Federal Register rules (people) and StoryScope stories (AI), the ad document sets",
+  "folders": [
+   "/work/sets/text/human",
+   "/work/sets/text/ai"
+  ],
+  "documents": 120,
+  "words": 431936,
+  "chars": {
+   "min": 12262,
+   "median": 19187,
+   "max": 39764
+  },
+  "draw": {
+   "seed": 20261118,
+   "rule": {
+    "per_set": 60,
+    "min_chars": 12000,
+    "max_chars": 40000
+   },
+   "sources": {
+    "human": "Federal Register rules and proposed rules published 2017 to 2019 (federalregister.gov API and the plain text of each document)",
+    "ai": "jjrussell10/storyscope test split (Hugging Face datasets server; content checked equal to revision befcb672d8b2c8d42a952fa6e40aa723290ff4ea)"
+   }
+  }
+ },
+ "per_process_query_works": true,
+ "detectors": [
+  {
+   "detector": "Fast-DetectGPT",
+   "kind": "model on the GPU",
+   "device": "cuda:0",
+   "worker_exit_code": 0,
+   "documents": 120,
+   "words": 431936,
+   "tokens_read": 61440,
+   "wall_seconds": 14.723302929996862,
+   "tokens_per_second": 4173,
+   "documents_per_second": 8.15,
+   "batch_size": 4,
+   "gpu_utilization_mean_percent": 88.69,
+   "gpu_utilization_peak_percent": 100,
+   "gpu_utilization_added_over_idle_percent": 88.69,
+   "gpu_memory_process_peak_mib": 16362,
+   "gpu_memory_process_source": "nvidia-smi --query-compute-apps, matched by process id",
+   "gpu_memory_device_peak_over_idle_mib": 16371,
+   "torch_cuda_max_allocated_mib": 15745.3623046875,
+   "process_ids_matched": [
+    1362
+   ],
+   "process_rows_seen": 76,
+   "other_compute_processes": {},
+   "idle_before_this_detector": {
+    "polls": 12,
+    "utilization_mean_percent": 0,
+    "device_memory_used_peak_mib": 0
+   },
+   "polls_during_reading": 64,
+   "machine": {
+    "name": "NVIDIA A10",
+    "driver": "580.105.08",
+    "memory_total_mib": 23028,
+    "cpu": "x86_64",
+    "system": "Linux"
+   },
+   "idle_baseline": {
+    "polls": 40,
+    "utilization_mean_percent": 0,
+    "utilization_peak_percent": 0,
+    "device_memory_used_mib": 0,
+    "compute_processes_listed": []
+   }
+  },
+  {
+   "detector": "Desklib v1.01",
+   "kind": "model on the GPU",
+   "device": "cuda:0",
+   "worker_exit_code": 0,
+   "documents": 120,
+   "words": 431936,
+   "tokens_read": 92160,
+   "wall_seconds": 5.713937488999363,
+   "tokens_per_second": 16129,
+   "documents_per_second": 21.001,
+   "batch_size": 16,
+   "gpu_utilization_mean_percent": 69.12,
+   "gpu_utilization_peak_percent": 100,
+   "gpu_utilization_added_over_idle_percent": 69.12,
+   "gpu_memory_process_peak_mib": 3528,
+   "gpu_memory_process_source": "nvidia-smi --query-compute-apps, matched by process id",
+   "gpu_memory_device_peak_over_idle_mib": 3537,
+   "torch_cuda_max_allocated_mib": 3042.81884765625,
+   "process_ids_matched": [
+    1852
+   ],
+   "process_rows_seen": 28,
+   "other_compute_processes": {},
+   "idle_before_this_detector": {
+    "polls": 12,
+    "utilization_mean_percent": 10.5,
+    "device_memory_used_peak_mib": 0
+   },
+   "polls_during_reading": 25,
+   "machine": {
+    "name": "NVIDIA A10",
+    "driver": "580.105.08",
+    "memory_total_mib": 23028,
+    "cpu": "x86_64",
+    "system": "Linux"
+   },
+   "idle_baseline": {
+    "polls": 40,
+    "utilization_mean_percent": 0,
+    "utilization_peak_percent": 0,
+    "device_memory_used_mib": 0,
+    "compute_processes_listed": []
+   }
+  },
+  {
+   "detector": "ModernBERT RAID+MAGE (Drayson)",
+   "kind": "model on the GPU",
+   "device": "cuda:0",
+   "worker_exit_code": 0,
+   "documents": 120,
+   "words": 431936,
+   "tokens_read": 61440,
+   "wall_seconds": 1.3566914090006321,
+   "tokens_per_second": 45286.6,
+   "documents_per_second": 88.45,
+   "batch_size": 16,
+   "gpu_utilization_mean_percent": 35.88,
+   "gpu_utilization_peak_percent": 78,
+   "gpu_utilization_added_over_idle_percent": 35.88,
+   "gpu_memory_process_peak_mib": 790,
+   "gpu_memory_process_source": "nvidia-smi --query-compute-apps, matched by process id",
+   "gpu_memory_device_peak_over_idle_mib": 799,
+   "torch_cuda_max_allocated_mib": 477.85791015625,
+   "process_ids_matched": [
+    2204
+   ],
+   "process_rows_seen": 12,
+   "other_compute_processes": {},
+   "idle_before_this_detector": {
+    "polls": 12,
+    "utilization_mean_percent": 1.67,
+    "device_memory_used_peak_mib": 0
+   },
+   "polls_during_reading": 8,
+   "machine": {
+    "name": "NVIDIA A10",
+    "driver": "580.105.08",
+    "memory_total_mib": 23028,
+    "cpu": "x86_64",
+    "system": "Linux"
+   },
+   "idle_baseline": {
+    "polls": 40,
+    "utilization_mean_percent": 0,
+    "utilization_peak_percent": 0,
+    "device_memory_used_mib": 0,
+    "compute_processes_listed": []
+   }
+  },
+  {
+   "detector": "e5-small-lora",
+   "kind": "model on the GPU",
+   "device": "cuda:0",
+   "worker_exit_code": 0,
+   "documents": 120,
+   "words": 431936,
+   "tokens_read": 61440,
+   "wall_seconds": 0.9413166350022948,
+   "tokens_per_second": 65270.3,
+   "documents_per_second": 127.481,
+   "batch_size": 16,
+   "gpu_utilization_mean_percent": 5.14,
+   "gpu_utilization_peak_percent": 10,
+   "gpu_utilization_added_over_idle_percent": 5.14,
+   "gpu_memory_process_peak_mib": 460,
+   "gpu_memory_process_source": "nvidia-smi --query-compute-apps, matched by process id",
+   "gpu_memory_device_peak_over_idle_mib": 469,
+   "torch_cuda_max_allocated_mib": 137.978515625,
+   "process_ids_matched": [
+    2454
+   ],
+   "process_rows_seen": 9,
+   "other_compute_processes": {},
+   "idle_before_this_detector": {
+    "polls": 12,
+    "utilization_mean_percent": 1.75,
+    "device_memory_used_peak_mib": 0
+   },
+   "polls_during_reading": 7,
+   "machine": {
+    "name": "NVIDIA A10",
+    "driver": "580.105.08",
+    "memory_total_mib": 23028,
+    "cpu": "x86_64",
+    "system": "Linux"
+   },
+   "idle_baseline": {
+    "polls": 40,
+    "utilization_mean_percent": 0,
+    "utilization_peak_percent": 0,
+    "device_memory_used_mib": 0,
+    "compute_processes_listed": []
+   }
+  },
+  {
+   "detector": "Litmus engine",
+   "kind": "engine on the CPU, one core",
+   "device": "cpu",
+   "worker_exit_code": 0,
+   "documents": 120,
+   "words": 431936,
+   "tokens_read": 595890,
+   "wall_seconds": 36.3188290399994,
+   "tokens_per_second": 16407.2,
+   "documents_per_second": 3.304,
+   "batch_size": 1,
+   "gpu_utilization_mean_percent": 0,
+   "gpu_utilization_peak_percent": 0,
+   "gpu_utilization_added_over_idle_percent": 0,
+   "gpu_memory_process_peak_mib": 0,
+   "gpu_memory_process_source": "the device's memory in use over the idle baseline (the driver did not list the process)",
+   "gpu_memory_device_peak_over_idle_mib": 0,
+   "torch_cuda_max_allocated_mib": null,
+   "process_ids_matched": [
+    2684
+   ],
+   "process_rows_seen": 0,
+   "other_compute_processes": {},
+   "idle_before_this_detector": {
+    "polls": 12,
+    "utilization_mean_percent": 0,
+    "device_memory_used_peak_mib": 0
+   },
+   "polls_during_reading": 145,
+   "gpu_memory_process_note": "no process of the engine was listed on the GPU, which the per-process query shows for the GPU detectors",
+   "machine": {
+    "name": "NVIDIA A10",
+    "driver": "580.105.08",
+    "memory_total_mib": 23028,
+    "cpu": "x86_64",
+    "system": "Linux"
+   },
+   "idle_baseline": {
+    "polls": 40,
+    "utilization_mean_percent": 0,
+    "utilization_peak_percent": 0,
+    "device_memory_used_mib": 0,
+    "compute_processes_listed": []
+   }
+  },
+  {
+   "detector": "Binoculars",
+   "kind": "model on the GPU",
+   "device": "cuda:0",
+   "worker_exit_code": 0,
+   "documents": 120,
+   "words": 431936,
+   "tokens_read": 61440,
+   "wall_seconds": 4.639543849043548,
+   "tokens_per_second": 13242.7,
+   "documents_per_second": 25.865,
+   "batch_size": 4,
+   "gpu_utilization_mean_percent": 57.13,
+   "gpu_utilization_peak_percent": 91,
+   "gpu_utilization_added_over_idle_percent": 57.13,
+   "gpu_memory_process_peak_mib": 30016,
+   "gpu_memory_process_source": "nvidia-smi --query-compute-apps, matched by process id",
+   "gpu_memory_device_peak_over_idle_mib": 30021,
+   "torch_cuda_max_allocated_mib": 28976.33447265625,
+   "process_ids_matched": [
+    299
+   ],
+   "process_rows_seen": 92,
+   "other_compute_processes": {},
+   "idle_before_this_detector": {
+    "polls": 12,
+    "utilization_mean_percent": 0,
+    "device_memory_used_peak_mib": 3113
+   },
+   "polls_during_reading": 23,
+   "machine": {
+    "name": "NVIDIA GH200 480GB",
+    "driver": "580.105.08",
+    "memory_total_mib": 97871,
+    "cpu": "aarch64",
+    "system": "Linux"
+   },
+   "idle_baseline": {
+    "polls": 40,
+    "utilization_mean_percent": 0,
+    "utilization_peak_percent": 0,
+    "device_memory_used_mib": 3113,
+    "compute_processes_listed": []
+   }
+  }
+ ]
+}

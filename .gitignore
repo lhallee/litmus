@@ -1,0 +1,21 @@
+# Build outputs
+target/
+dist/
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Model folders made by the quick start, and any weights: releases are published on Hugging Face
+placeholder/
+*.safetensors
+
+# Local files that are not part of this repository
+student/src/litmus_student/readout.py
+student/tests/test_readout.py
+student/src/litmus_student/ablate.py
+student/tests/test_ablate.py
+student/src/litmus_student/reference_sweep.py
+student/tests/test_reference_sweep.py
+student/src/litmus_student/lm.py
+student/tests/test_lm.py

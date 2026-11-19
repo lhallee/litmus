@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 470" width="1280" height="470" role="img">
+<title>Chunks decide the verdict; windows and cells draw the heat map</title>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="context-stroke"/></marker><linearGradient id="strip" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2F6FDB"/><stop offset="0.5" stop-color="#8E5BC9"/><stop offset="1" stop-color="#D9483B"/></linearGradient><pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" stroke="#B9B2C6" stroke-width="2" stroke-opacity="0.5"/></pattern></defs>
+<rect width="1280" height="470" rx="24" fill="#17151D"/>
+<text x="60" y="50" font-size="16" font-weight="400" fill="#B9B2C6" text-anchor="start" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">document, 20,000 tokens</text>
+<rect x="63.0" y="64" width="380.628" height="50" rx="12" fill="#173238" stroke="#5CC2CF" stroke-width="1.5"/>
+<text x="253.314" y="95" font-size="16" font-weight="600" fill="#F2EEF7" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">chunk 1: tokens 0 to 6,666</text>
+<rect x="449.628" y="64" width="380.686" height="50" rx="12" fill="#221F2A" stroke="#3A3545" stroke-width="1.5"/>
+<text x="639.971" y="95" font-size="16" font-weight="600" fill="#F2EEF7" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">chunk 2: tokens 6,666 to 13,333</text>
+<rect x="836.314" y="64" width="380.686" height="50" rx="12" fill="#221F2A" stroke="#3A3545" stroke-width="1.5"/>
+<text x="1026.657" y="95" font-size="16" font-weight="600" fill="#F2EEF7" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">chunk 3: tokens 13,333 to 20,000</text>
+<path d="M63 118 L60 160" fill="none" stroke="#8E86A0" stroke-width="2.5" stroke-dasharray="5 4"/>
+<path d="M443.628 118 L1220 160" fill="none" stroke="#8E86A0" stroke-width="2.5" stroke-dasharray="5 4"/>
+<text x="60" y="182" font-size="16" font-weight="400" fill="#B9B2C6" text-anchor="start" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">inside chunk 1: windows of 512 tokens every 128 (the first nine shown)</text>
+<rect x="60.0" y="198" width="356.9230769230769" height="12" rx="6" fill="#B9B2C6" fill-opacity="0.55"/>
+<rect x="149.23076923076923" y="216" width="356.9230769230769" height="12" rx="6" fill="#B9B2C6" fill-opacity="0.55"/>
+<rect x="238.46153846153845" y="234" width="356.9230769230769" height="12" rx="6" fill="#B9B2C6" fill-opacity="0.55"/>
+<rect x="327.6923076923077" y="252" width="356.9230769230769" height="12" rx="6" fill="#B9B2C6" fill-opacity="0.55"/>
+<rect x="416.9230769230769" y="270" width="356.9230769230769" height="12" rx="6" fill="#B9B2C6" fill-opacity="0.55"/>
+<rect x="506.15384615384613" y="288" width="356.9230769230769" height="12" rx="6" fill="#B9B2C6" fill-opacity="0.55"/>
+<rect x="595.3846153846154" y="306" width="356.9230769230769" height="12" rx="6" fill="#B9B2C6" fill-opacity="0.55"/>
+<rect x="684.6153846153845" y="324" width="356.9230769230769" height="12" rx="6" fill="#B9B2C6" fill-opacity="0.55"/>
+<rect x="773.8461538461538" y="342" width="356.9230769230769" height="12" rx="6" fill="#B9B2C6" fill-opacity="0.55"/>
+<text x="60" y="384" font-size="16" font-weight="400" fill="#B9B2C6" text-anchor="start" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">cells of 128 tokens</text>
+<rect x="62.0" y="398" width="85.23076923076923" height="30" rx="8" fill="#2F6FDB"/>
+<rect x="151.23076923076923" y="398" width="85.23076923076923" height="30" rx="8" fill="#2F6FDB"/>
+<rect x="240.46153846153845" y="398" width="85.23076923076923" height="30" rx="8" fill="#2F6FDB"/>
+<rect x="329.6923076923077" y="398" width="85.23076923076923" height="30" rx="8" fill="#2F6FDB"/>
+<rect x="418.9230769230769" y="398" width="85.23076923076923" height="30" rx="8" fill="#8E5BC9"/>
+<rect x="508.15384615384613" y="398" width="85.23076923076923" height="30" rx="8" fill="#D9483B"/>
+<rect x="597.3846153846154" y="398" width="85.23076923076923" height="30" rx="8" fill="#D9483B"/>
+<rect x="686.6153846153845" y="398" width="85.23076923076923" height="30" rx="8" fill="#D9483B"/>
+<rect x="775.8461538461538" y="398" width="85.23076923076923" height="30" rx="8" fill="#D9483B"/>
+<rect x="865.0769230769231" y="398" width="85.23076923076923" height="30" rx="8" fill="#D9483B"/>
+<rect x="954.3076923076923" y="398" width="85.23076923076923" height="30" rx="8" fill="#D9483B"/>
+<rect x="1043.5384615384614" y="398" width="85.23076923076923" height="30" rx="8" fill="#D9483B"/>
+<rect x="1132.7692307692307" y="398" width="85.23076923076923" height="30" rx="8" fill="#D9483B"/>
+</svg>

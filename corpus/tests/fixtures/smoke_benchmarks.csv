@@ -1,0 +1,2 @@
+name,repo,config,split,revision,text_column,label_column,label_map,generator_column,language,license,row_filter
+smoke_mage_ood,yaful/MAGE,file:test_ood_set_gpt.csv,train,342663f0a2b775455c023f5d36a1341ff0ec5402,text,label,"{""1"":""human"",""0"":""ai""}",,en,apache-2.0,{}

@@ -1,0 +1,77 @@
+{
+  "about": "The ad's clock. The music is synthesized on this grid (tools/music.mjs) and every cut time is a whole number of beats from it, so a re-render with another release stays in step. Times in the scenes are bars and beats of this file, never seconds typed by hand. The scenes' own durations (a word's arrival, a fade, a camera move) were authored at 120 beats a minute and are stretched by authored_bpm over bpm, so one number, bpm, sets the pace of the whole film; footage is shown at the recording's own speed whatever bpm is.",
+  "bpm": 104,
+  "authored_bpm": 120,
+  "beats_per_bar": 4,
+  "aliases": { "wide": "ad" },
+  "cuts": {
+    "ad": {
+      "shots": [
+        { "name": "hook", "bars": 2 },
+        { "name": "app", "bars": 3 },
+        { "name": "quick", "bars": 3 },
+        { "name": "web", "bars": 2 },
+        { "name": "hype", "bars": 5 },
+        { "name": "end", "bars": 3 }
+      ]
+    },
+    "teaser": {
+      "shots": [
+        { "name": "hook", "bars": 1 },
+        { "name": "quick", "bars": 2 },
+        { "name": "end", "bars": 2 }
+      ]
+    }
+  },
+  "sections": {
+    "ad": [
+      { "name": "intro", "from_bar": 0, "to_bar": 2, "energy": 0.55 },
+      { "name": "app", "from_bar": 2, "to_bar": 5, "energy": 0.7 },
+      { "name": "quick", "from_bar": 5, "to_bar": 8, "energy": 0.8 },
+      { "name": "web", "from_bar": 8, "to_bar": 10, "energy": 0.85 },
+      { "name": "hype", "from_bar": 10, "to_bar": 15, "energy": 1.0 },
+      { "name": "end", "from_bar": 15, "to_bar": 18, "energy": 0.5 }
+    ],
+    "teaser": [
+      { "name": "intro", "from_bar": 0, "to_bar": 1, "energy": 0.6 },
+      { "name": "quick", "from_bar": 1, "to_bar": 3, "energy": 0.9 },
+      { "name": "end", "from_bar": 3, "to_bar": 5, "energy": 0.6 }
+    ]
+  },
+  "cues": {
+    "ad": [
+      { "name": "hook_slam", "beat": 0, "sound": "hit" },
+      { "name": "hook_line", "beat": 3, "sound": "tick" },
+      { "name": "hook_band", "beat": 5, "sound": "ding" },
+      { "name": "app_in", "beat": 8, "sound": "hit" },
+      { "name": "app_paste", "beat": 10, "sound": "tick" },
+      { "name": "app_check", "beat": 13.67, "sound": "tick" },
+      { "name": "app_verdict", "beat": 14, "sound": "ding" },
+      { "name": "quick_in", "beat": 20, "sound": "hit" },
+      { "name": "quick_select_1", "beat": 21, "sound": "tick" },
+      { "name": "quick_popup_1", "beat": 24, "sound": "pop" },
+      { "name": "quick_select_2", "beat": 27, "sound": "tick" },
+      { "name": "quick_popup_2", "beat": 29.5, "sound": "pop" },
+      { "name": "web_in", "beat": 32, "sound": "hit" },
+      { "name": "web_check", "beat": 35.52, "sound": "tick" },
+      { "name": "web_verdict", "beat": 36, "sound": "ding" },
+      { "name": "hype_in", "beat": 40, "sound": "hit" },
+      { "name": "hype_run", "beat": 42, "sound": "tick" },
+      { "name": "hype_lock", "beat": 56, "sound": "ding" },
+      { "name": "end_in", "beat": 60, "sound": "hit" },
+      { "name": "end_name", "beat": 62, "sound": "ding" },
+      { "name": "end_doors", "beat": 66, "sound": "tick" }
+    ],
+    "teaser": [
+      { "name": "hook_slam", "beat": 0, "sound": "hit" },
+      { "name": "hook_line", "beat": 2, "sound": "tick" },
+      { "name": "quick_in", "beat": 4, "sound": "hit" },
+      { "name": "quick_select_1", "beat": 5, "sound": "tick" },
+      { "name": "quick_popup_1", "beat": 8, "sound": "pop" },
+      { "name": "end_in", "beat": 12, "sound": "hit" },
+      { "name": "end_name", "beat": 13, "sound": "ding" }
+    ]
+  },
+  "chords": ["Am", "F", "C", "G"],
+  "loudness": { "integrated_lufs": -14, "true_peak_dbtp": -2.0 }
+}

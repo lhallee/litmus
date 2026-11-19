@@ -1,0 +1,6 @@
+/* The film's three faces, bundled from npm (all SIL Open Font License 1.1): Source Serif 4 for headings and the
+   name, Inter for words, JetBrains Mono for numbers. The site names system fonts; a film must carry its own. */
+@import "@fontsource-variable/source-serif-4/standard.css";
+@import "@fontsource-variable/inter/standard.css";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";

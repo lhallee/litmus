@@ -1,0 +1,206 @@
+# Builds and tests Litmus on macOS (Apple silicon and Intel), Linux, and Windows, and keeps each platform's programs
+# (the model built in), their SHA256SUMS, and the readings of two fixed texts as the run's artifacts, so that one run
+# gives every platform's evidence side by side. It runs by hand and when a release is published, never on a push or
+# a pull request, and it publishes nothing: no release asset, no page, no package.
+#
+# The model is the release's three files (model.safetensors, config.json, tokenizer.json), downloaded from a folder
+# URL: the `model_url` input when run by hand (default: the github.io page's copy), else the published release's own
+# assets. Each file is checked against release/SHA256SUMS when that file lists it, which a release run requires.
+#
+# A failed test fails the job, but the build and evidence steps after it still run (`!cancelled()`), so a red run
+# still shows how far each platform got and keeps what it built.
+name: release-build
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_url:
+        description: "A folder URL serving the release's model.safetensors, config.json, and tokenizer.json"
+        required: true
+        default: "https://lhallee.github.io/litmus/app/"
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+env:
+  # The compiler engine/rust-toolchain.toml and app/rust-toolchain.toml pin; a step below checks the files agree.
+  RUST: "1.100.0"
+  MODEL_URL: ${{ inputs.model_url || format('https://github.com/{0}/releases/download/{1}/', github.repository, github.event.release.tag_name) }}
+  CARGO_TERM_COLOR: never
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos-arm64
+            runner: macos-15
+          - name: macos-x86_64
+            runner: macos-15-intel
+          - name: linux-x86_64
+            runner: ubuntu-24.04
+          - name: windows-x86_64
+            runner: windows-2025
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python (for the test fixtures)
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Install the pinned Rust
+        run: |
+          for file in engine/rust-toolchain.toml app/rust-toolchain.toml; do
+            grep -qx "channel = \"$RUST\"" "$file" || { echo "$file does not pin $RUST; update RUST in this workflow"; exit 1; }
+          done
+          rustup toolchain install "$RUST" --profile minimal
+          # Overrides rust-toolchain.toml, which also asks for the WebAssembly target these builds do not use.
+          echo "RUSTUP_TOOLCHAIN=$RUST" >> "$GITHUB_ENV"
+          rustc -vV
+
+      - name: Set the work folders
+        run: |
+          work="${RUNNER_TEMP//\\//}/litmus"
+          mkdir -p "$work/model" "$work/out" "$work/texts" "$work/readings"
+          echo "WORK=$work" >> "$GITHUB_ENV"
+
+      - name: Download the model and check its hashes
+        run: |
+          for name in model.safetensors config.json tokenizer.json; do
+            curl --fail --location --silent --show-error --retry 3 "${MODEL_URL%/}/$name" --output "$WORK/model/$name"
+          done
+          python - "$WORK/model" "${{ github.event_name }}" <<'EOF'
+          import hashlib, sys
+          from pathlib import Path
+          model, event = Path(sys.argv[1]), sys.argv[2]
+          listed = {}
+          for line in Path("release/SHA256SUMS").read_text(encoding="utf-8").splitlines():
+              if line.strip() and not line.startswith("#"):
+                  digest, name = line.split(maxsplit=1)
+                  listed[name.lstrip("*")] = digest
+          for name in ("model.safetensors", "config.json", "tokenizer.json"):
+              actual = hashlib.sha256((model / name).read_bytes()).hexdigest()
+              expected = listed.get(name)
+              print(f"{actual}  {name}  (release/SHA256SUMS: {expected or 'not listed'})")
+              assert expected is None or expected == actual, f"{name} is not the file release/SHA256SUMS lists"
+              assert expected is not None or event != "release", f"a release run needs {name} in release/SHA256SUMS"
+          EOF
+
+      - name: Write the parity fixtures
+        run: |
+          python -m pip install --disable-pip-version-check --quiet "numpy==2.5.3" "tokenizers==0.23.2"
+          mkdir -p "$WORK/fixtures/tokenizer"
+          cp "$WORK/model/tokenizer.json" "$WORK/fixtures/tokenizer/tokenizer.json"
+          python student/reference.py fixtures --out "$WORK/fixtures/student" --tokenizer "$WORK/model/tokenizer.json"
+          python engine/scripts/tokenizer_fixture.py --tokenizer "$WORK/model/tokenizer.json" --out "$WORK/fixtures/tokenizer"
+          # The app's release tests read the random-weights placeholder (docs/DEVELOPING.md), not a trained release.
+          python student/reference.py init --config s192_l4 --out "$WORK/placeholder"
+          cp "$WORK/model/tokenizer.json" "$WORK/placeholder/tokenizer.json"
+          echo "LITMUS_STUDENT_FIXTURES=$WORK/fixtures/student" >> "$GITHUB_ENV"
+          echo "LITMUS_TOKENIZER_DIR=$WORK/fixtures/tokenizer" >> "$GITHUB_ENV"
+
+      - name: Test the engine, files, and command line
+        working-directory: engine
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/target-engine
+        # Every suite runs, each test binary to the end (--no-fail-fast); the step fails if any did. The parity suites
+        # run optimized, which gives the same floats in a fraction of the time.
+        run: |
+          failed=0
+          suite() { echo "::group::$*"; "$@" || failed=1; echo "::endgroup::"; }
+          crates=(-p litmus-engine -p litmus-files -p litmus-cli)
+          suite cargo build --release --locked "${crates[@]}"
+          suite cargo test --locked --no-fail-fast "${crates[@]}"
+          suite cargo test --locked --no-fail-fast "${crates[@]}" --features litmus-engine/profile,litmus-cli/profile
+          suite cargo test --release --locked --no-fail-fast -p litmus-engine --features parity
+          suite cargo test --release --locked --no-fail-fast -p litmus-engine --features parity,profile
+          exit "$failed"
+
+      - name: Test the app
+        if: ${{ !cancelled() }}
+        working-directory: app
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/target-app
+        run: |
+          failed=0
+          cargo test --locked --no-fail-fast || failed=1
+          LITMUS_MODEL="$WORK/placeholder" cargo test --release --locked --no-fail-fast --features release-tests || failed=1
+          exit "$failed"
+
+      - name: Build the programs with the model built in (macOS, Windows)
+        if: ${{ !cancelled() && runner.os != 'Linux' }}
+        run: python release/build_release.py --native-only --release "$WORK/model" --out "$WORK/out"
+
+      - name: Build the programs with the model built in (Linux, in the pinned image)
+        if: ${{ !cancelled() && runner.os == 'Linux' }}
+        run: bash release/build_linux.sh "$WORK/model" "$WORK/out"
+
+      - name: Read two fixed texts with the command line
+        if: ${{ !cancelled() }}
+        run: |
+          printf '%s' "The road was closed for three weeks, so she sold yesterday's bread at the far end of the detour." > "$WORK/texts/short.txt"
+          printf '%s' "The committee met on Tuesday to review the proposal. After a long discussion about costs and timelines, the members agreed to postpone the vote until the spring, when the new figures would be ready. Several of them said they would rather wait than decide on numbers nobody trusted, and the chair, who had hoped to finish that evening, agreed that a month would change little." > "$WORK/texts/paragraph.txt"
+          cli="$WORK/out/litmus"; [ -f "$cli.exe" ] && cli="$cli.exe"
+          "$cli" info
+          for text in "$WORK"/texts/*.txt; do
+            "$cli" score --json --no-cache "$text" > "$WORK/readings/$(basename "$text" .txt).json"
+            echo "== $(basename "$text")"; cat "$WORK/readings/$(basename "$text" .txt).json"
+          done
+          cp -r "$WORK/texts" "$WORK/readings" "$WORK/out/"
+
+      - name: Start the app headless and compare its reading (Linux, Xvfb with Mesa)
+        if: ${{ !cancelled() && runner.os == 'Linux' }}
+        run: |
+          sudo apt-get update -q
+          # The libraries the app loads at run time on X11 (release/RELEASING.md), Mesa's software OpenGL, and Xvfb.
+          sudo apt-get install -y -q --no-install-recommends xvfb xauth libgl1 libgl1-mesa-dri libx11-6 libx11-xcb1 libxcursor1 libxi6 libxkbcommon0 libxkbcommon-x11-0
+          LIBGL_ALWAYS_SOFTWARE=1 LITMUS_DATA_DIR="$WORK/app-data" LITMUS_CACHE_DIR="$WORK/app-cache" \
+            LITMUS_DEMO=check LITMUS_DEMO_TEXT="$WORK/texts/paragraph.txt" LITMUS_SCREENSHOT="$WORK/out/app_check.png" \
+            timeout 300 xvfb-run -a -s "-screen 0 1600x1000x24" "$WORK/out/litmus-app"
+
+      - name: Start the app (macOS, the runner's own display)
+        if: ${{ !cancelled() && runner.os == 'macOS' }}
+        run: |
+          LITMUS_DATA_DIR="$WORK/app-data" LITMUS_CACHE_DIR="$WORK/app-cache" \
+            LITMUS_DEMO=check LITMUS_DEMO_TEXT="$WORK/texts/paragraph.txt" LITMUS_SCREENSHOT="$WORK/out/app_check.png" \
+            "$WORK/out/litmus-app" & app=$!
+          for _ in $(seq 1 300); do kill -0 "$app" 2>/dev/null || break; sleep 1; done
+          if kill -0 "$app" 2>/dev/null; then kill "$app"; echo "the app did not finish its scene in 300 s"; exit 1; fi
+
+      - name: Compare the app's reading with the command line's (macOS, Linux)
+        if: ${{ !cancelled() && runner.os != 'Windows' }}
+        run: |
+          test ! -f "$WORK/out/app_check.error.txt" || { cat "$WORK/out/app_check.error.txt"; exit 1; }
+          test -f "$WORK/out/app_check.png"
+          python - "$WORK/app-data" "$WORK/readings/paragraph.json" <<'EOF'
+          import json, sys
+          from pathlib import Path
+          data, cli = Path(sys.argv[1]), json.loads(Path(sys.argv[2]).read_text(encoding="utf-8"))
+          entries = json.loads((data / "history" / "index.json").read_text(encoding="utf-8"))["entries"]
+          assert len(entries) == 1, entries
+          body = json.loads((data / "history" / f"{entries[0]['id']}.json").read_text(encoding="utf-8"))
+          assert body["reading"] == cli["reading"], "the app's reading differs from the command line's"
+          print(f"the app read the paragraph exactly as the command line did: {entries[0]['headline']}")
+          EOF
+
+      - name: Keep the programs, SHA256SUMS, readings, and screenshot
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: litmus-${{ matrix.name }}
+          path: ${{ env.WORK }}/out
+          if-no-files-found: error
+          retention-days: 30

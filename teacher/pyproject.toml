@@ -1,0 +1,29 @@
+[project]
+name = "litmus-teacher"
+version = "1.0.0"
+description = "Litmus's teacher: frozen-encoder embeddings, e-means splits, the pair head, the reference bank and calibration"
+requires-python = ">=3.11"
+# Exact pins at the tested stack, since this runs as an application in Docker.
+dependencies = [
+    "numpy==2.5.3",
+    "torch==2.14.0",
+    "transformers==5.17.0",
+    "pyarrow==25.0.1",
+    "safetensors==0.8.0",
+    "tqdm==4.70.1",
+    # e-means reference, faiss.contrib.e_means; its GPU path runs through PyTorch and Triton, so the CPU wheel serves
+    # the H100 too (its README). The CuTe kernels would also need nvidia-cutlass-dsl and quack-kernels; split.py
+    # asks for the Triton backend, which needs neither.
+    "faiss-cpu==1.16.0",
+    "wandb==0.30.0",  # read by foundry.logging, which train.py logs through
+    "scikit-learn==1.9.1",  # read by foundry.metrics.ranking, which bank.py and evaluate.py score with
+    "optuna==5.0.0",  # search.py's study
+]
+
+[project.optional-dependencies]
+test = ["pytest==9.1.1"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "../../../.."]
+cache_dir = "C:/ws-cache/pytest"

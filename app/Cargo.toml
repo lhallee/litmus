@@ -1,0 +1,79 @@
+# The Litmus app: one egui (eframe) program for Windows, macOS, Linux and the browser. Its own workspace, apart from
+# the engine's (README, "Layout"): the GUI's dependency tree stays out of the engine's lock file and the Python wheel.
+[workspace]
+members = ["."]
+resolver = "3"
+
+[package]
+name = "litmus-app"
+description = "The Litmus app: paste, open or drop text and see how it reads, with its uncertainty and its explanation"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.95"
+license = "PolyForm-Noncommercial-1.0.0"
+publish = false
+
+# A plain library: the browser build makes its cdylib with `cargo rustc --crate-type cdylib` (scripts/build_web.sh),
+# so the desktop build does not link one it never uses.
+[lib]
+name = "litmus_app"
+
+[[bin]]
+name = "litmus-app"
+path = "src/main.rs"
+
+[features]
+# Build the model into the binary: LITMUS_EMBED_DIR names a release folder holding tokenizer.json as well.
+embedded = []
+# The contribute site's build of the browser page: scoring goes to the server's POST /api/score, with its consent
+# notice and the visitor's label. Without it the browser build has no code that sends anything anywhere.
+contribute = ["web-sys/Request", "web-sys/RequestInit", "web-sys/RequestMode", "web-sys/Response", "web-sys/Headers"]
+# tests/release.rs: the app's logic against the release LITMUS_MODEL names.
+release-tests = []
+# tests/quick_windows.rs: quick check against this machine (a scratch registry key, a window of its own, the clipboard saved and put back).
+desktop-tests = []
+
+[dependencies]
+eframe = { version = "0.37", default-features = false, features = ["accesskit", "default_fonts", "glow", "links"] }  # MIT OR Apache-2.0
+litmus-engine = { path = "../engine/litmus-engine" }
+litmus-files = { path = "../engine/litmus-files" }
+serde = { version = "1", features = ["derive"] }  # MIT OR Apache-2.0
+serde_json = "1"  # MIT OR Apache-2.0
+
+# build.rs draws the mark into the Windows icon resource (src/icon_resource.rs), its 256-pixel image a PNG.
+[build-dependencies]
+miniz_oxide = "0.8"  # MIT OR Zlib OR Apache-2.0
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+eframe = { version = "0.37", default-features = false, features = ["accesskit", "default_fonts", "glow", "links", "clipboard", "wayland", "x11"] }
+rfd = "0.18"  # MIT; native file dialogs
+miniz_oxide = "0.8"  # MIT OR Zlib OR Apache-2.0; PNG screenshots
+global-hotkey = "0.10"  # Apache-2.0 OR MIT; quick check's hotkey (opt-in)
+
+# Not on Linux, which has no tray (README, Quick check): there tray-icon's menu links GTK 3, which the program would
+# then need to start, for a tray the app never shows.
+[target.'cfg(not(any(target_arch = "wasm32", target_os = "linux")))'.dependencies]
+tray-icon = "0.26"  # MIT OR Apache-2.0; quick check's tray icon and menu (opt-in)
+
+# Quick check on Windows: UI Automation for the selected text, the clipboard fallback, the Explorer entry.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Accessibility", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_System_Ole", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging", "Win32_System_Registry", "Win32_Security", "Win32_System_Variant", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_System_Threading", "Win32_UI_HiDpi"] }  # MIT OR Apache-2.0
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "=0.2.126"  # MIT OR Apache-2.0; pinned to the wasm-bindgen-cli that writes the glue
+wasm-bindgen-futures = "0.4"  # MIT OR Apache-2.0
+js-sys = "0.3"  # MIT OR Apache-2.0
+web-sys = { version = "0.3", features = ["Window", "Document", "Element", "HtmlCanvasElement", "HtmlElement", "Worker", "WorkerOptions", "WorkerType", "MessageEvent", "ErrorEvent", "Location", "Storage"] }  # MIT OR Apache-2.0
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+
+# The browser build: smaller over faster for the UI, the engine's kernels still at full speed.
+[profile.web]
+inherits = "release"
+opt-level = "s"
+
+[profile.web.package.litmus-engine]
+opt-level = 3

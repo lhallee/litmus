@@ -1,0 +1,1037 @@
+{
+ "about": "Every file in this repository that can reach the network, start a process, use the clipboard, the Windows registry, or global input, read other applications' text, write files, use browser storage, or load code or pickled data, with the reason; and every Rust file's count of `unsafe`. security/check_capabilities.py fails when the source and this file disagree.",
+ "vendored_directories": [
+  "training/foundry"
+ ],
+ "components": {
+  "engine": {
+   "paths": [
+    "engine/"
+   ],
+   "summary": "The inference engine (litmus-engine), file reading and the reading cache (litmus-files), the `litmus` command line (litmus-cli), and the Python module litmus_engine (litmus-py), which reads a release's three files and writes none. No network code. `engine/litmus-py/build_wheel.sh` builds the Linux wheel by `docker run`, which the scan's shell patterns do not see: it pulls maturin's image, and the container downloads the pinned Rust and the locked crates, writing only the wheel to the folder it is given. `litmus mcp` (litmus-cli) serves the Model Context Protocol on standard input and output: it reads the texts and the one file path an agent sends, writes nothing, keeps no cache, and uses no network; a PDF is read through the same child process as `litmus score`."
+  },
+  "app": {
+   "paths": [
+    "app/"
+   ],
+   "summary": "The desktop and browser app (egui). No network code except the contribute feature's browser build, which the published page does not use."
+  },
+  "site": {
+   "paths": [
+    "site/"
+   ],
+   "summary": "The static site and the browser page's host page and worker, which load the page's own files and the model's three files from the page's own address."
+  },
+  "contribute": {
+   "paths": [
+    "contribute/"
+   ],
+   "summary": "The contribute site's server, written and not deployed: the one place a checked text is sent and stored."
+  },
+  "training": {
+   "paths": [
+    "corpus/",
+    "teacher/",
+    "student/",
+    "benchmarks/",
+    "launch/",
+    "training/"
+   ],
+   "summary": "Corpus building, training, evaluation, and the vendored foundry library they import. Runs on the trainer's machine in Docker; downloads datasets and models from the Hugging Face Hub and logs to Weights and Biases."
+  },
+  "demo": {
+   "paths": [
+    "demo/"
+   ],
+   "summary": "The advertisement and its teaser, rendered with Node from code, real captures of the app and the site, and measured numbers; never shipped. Its tools run the `litmus` command line, ffmpeg and headless Chromium, download public-domain documents, and record the Linux app on a virtual display in Docker on a machine the user names."
+  },
+  "verification": {
+   "paths": [
+    "tools/"
+   ],
+   "summary": "The checks in this file's family and the build and model verifiers."
+  },
+  "release": {
+   "paths": [
+    "release/"
+   ],
+   "summary": "The release build and the release driver (`release/cut.py`, `release/litmus_release/`): the shipped programs, site, and contribute page built from the source and a trained release folder, and the staged commands that fetch, measure, fill the documents, build, and publish a release. The build has no network, except `release/build_linux.sh`, which the scan's shell patterns do not see: it runs the Linux build by `docker run` of maturin's pinned manylinux2014 image, whose container downloads the pinned Rust and the locked crates and writes only to the output folder it is given. The driver reads the model repository and the stored baseline scores from the Hugging Face Hub, and sends to the Hub, GitHub, and Pages only in a stage run with `--confirm`."
+  },
+  "workflows": {
+   "paths": [
+    ".github/workflows/"
+   ],
+   "summary": "`release-build.yml`, which the scan does not read: run by hand or on a published release, never on a push or pull request, with read-only repository access and no secrets. On GitHub's runners it downloads the release's model files from a URL, pinned Python packages, the pinned Rust, the locked crates, and maturin's pinned image; builds and tests on macOS, Linux, and Windows; and keeps the programs as the run's artifacts. It publishes nothing."
+  },
+  "agents": {
+   "paths": [
+    ".agents/",
+    ".claude-plugin/",
+    ".mcp.json"
+   ],
+   "summary": "The Litmus agent skill (`.agents/skills/litmus`), its install scripts, and the Claude Code plugin and MCP registration files that point at it. The scripts download one program and the release's file list from github.com/lhallee/litmus releases, check the program against the list, and write only the program; nothing else here reaches the network."
+  }
+ },
+ "files": {
+  ".agents/skills/litmus/scripts/install.ps1": {
+   "component": "agents",
+   "capabilities": {
+    "network": "downloads litmus.exe and SHA256SUMS over HTTPS from github.com/lhallee/litmus/releases (the latest release or the tag named) and nowhere else, checks the program against the list, and only then writes it to the folder named (default %LOCALAPPDATA%\\Litmus\\bin); with -AddToPath it also adds that folder to this user's PATH (HKCU\\Environment); -FromDir reads a folder instead of downloading"
+   }
+  },
+  ".agents/skills/litmus/scripts/install.sh": {
+   "component": "agents",
+   "capabilities": {
+    "network": "downloads the program for this system and SHA256SUMS over HTTPS from github.com/lhallee/litmus/releases (the latest release or the tag named) and nowhere else, checks the program against the list, and only then writes it to the folder named (default ~/.local/bin); changes no shell startup file; --from-dir reads a folder instead of downloading"
+   }
+  },
+  "app/build.rs": {
+   "component": "app",
+   "capabilities": {
+    "filesystem_write": "the build script writes the Windows icon resource into Cargo's build output folder"
+   }
+  },
+  "app/src/contribute.rs": {
+   "component": "app",
+   "capabilities": {
+    "network": "the contribute site's build only (feature `contribute`), to the server that served the page: GET /api/terms; POST /api/score, sent only while the visitor's consent box is ticked; POST /api/contributions/{id}/annotation; and POST /api/removals from the removal form"
+   }
+  },
+  "app/src/demo.rs": {
+   "component": "app",
+   "capabilities": {
+    "filesystem_write": "demo mode only (LITMUS_DEMO set): writes a screenshot's error note beside the path the caller named"
+   }
+  },
+  "app/src/history.rs": {
+   "component": "app",
+   "capabilities": {
+    "filesystem_write": "the history of readings, written whole then renamed into place, in the app's data folder"
+   }
+  },
+  "app/src/instance.rs": {
+   "component": "app",
+   "capabilities": {
+    "filesystem_write": "the one-app-at-a-time lock file and the inbox of requests from a second launch, in the app's data folder"
+   }
+  },
+  "app/src/main.rs": {
+   "component": "app",
+   "capabilities": {
+    "filesystem_write": "`--write-icon <file>` writes the app icon's SVG to the file named on the command line"
+   }
+  },
+  "app/src/quick/mod.rs": {
+   "component": "app",
+   "capabilities": {
+    "input": "quick check (opt-in, off by default): the global hotkey and the tray icon, registered only while quick check is on"
+   }
+  },
+  "app/src/quick/unix.rs": {
+   "component": "app",
+   "capabilities": {
+    "process": "quick check on macOS and Linux (Linux run on X11, macOS never compiled): runs pbpaste, pbcopy, osascript, wl-paste, or xclip to read the selected text, saving and restoring the clipboard on macOS"
+   }
+  },
+  "app/src/quick/windows.rs": {
+   "component": "app",
+   "capabilities": {
+    "clipboard": "quick check fallback when UI Automation offers no text: saves every clipboard format, simulates Copy, reads the text, and puts the saved contents back",
+    "registry": "the Explorer \"Check with Litmus\" entry, added and removed from Settings, under HKEY_CURRENT_USER\\Software\\Classes\\SystemFileAssociations only",
+    "other_apps": "quick check: UI Automation's text pattern reads the selected text of the foreground app when the hotkey is pressed",
+    "input": "quick check: SendInput simulates Ctrl+C for the clipboard fallback, only while the window the hotkey was pressed over is still in front, and GetAsyncKeyState waits for the hotkey's keys to be released"
+   }
+  },
+  "app/src/settings.rs": {
+   "component": "app",
+   "capabilities": {
+    "filesystem_write": "creates the app's data folder and writes settings.json in it",
+    "browser_storage": "in the browser, the page's settings (theme, detail level) in the page's own localStorage"
+   }
+  },
+  "app/src/views/mod.rs": {
+   "component": "app",
+   "capabilities": {
+    "filesystem_write": "on the desktop, an export (CSV, JSON, PNG) is written to the file the user chose in the save dialog",
+    "clipboard": "in the browser, an export the user asked for is copied to the clipboard, since the page cannot save files"
+   }
+  },
+  "app/src/views/quick.rs": {
+   "component": "app",
+   "capabilities": {
+    "registry": "the Settings text that names the registry keys of the Explorer entry; no registry call here"
+   }
+  },
+  "app/src/views/contribute.rs": {
+   "component": "app",
+   "capabilities": {
+    "process": "the contribute build's links in the served notice and consent label (the terms, the privacy notice, the private page), opened by the browser in a new tab; the private page and desktop builds do not compile this"
+   }
+  },
+  "app/tests/quick_windows.rs": {
+   "component": "app",
+   "capabilities": {
+    "registry": "a test that writes and deletes the Explorer entry under a scratch key HKEY_CURRENT_USER\\Software\\LitmusTest_<pid>",
+    "process": "a test that starts WordPad to check UI Automation reads its selection, then closes it"
+   }
+  },
+  "app/tests/release.rs": {
+   "component": "app",
+   "capabilities": {
+    "filesystem_write": "a test that removes its own temporary cache folder"
+   }
+  },
+  "benchmarks/src/litmus_benchmarks/catalog.py": {
+   "component": "training",
+   "capabilities": {
+    "network": "downloads each benchmark's files from the Hugging Face Hub at a pinned revision"
+   }
+  },
+  "benchmarks/src/litmus_benchmarks/detectors.py": {
+   "component": "training",
+   "capabilities": {
+    "network": "loads each compared detector's model from the Hugging Face Hub at a pinned revision"
+   }
+  },
+  "benchmarks/src/litmus_benchmarks/gpu_use.py": {
+   "component": "training",
+   "capabilities": {
+    "process": "runs `nvidia-smi` (read-only queries of the GPU's utilization, memory and compute processes, several times a second) and starts one Python process per compared detector to read the documents",
+    "filesystem_write": "writes the one JSON of GPU measurements to the file named on its command line, and its folder"
+   }
+  },
+  "benchmarks/tests/test_gpu_use.py": {
+   "component": "training",
+   "capabilities": {
+    "process": "starts a stand-in Python process that plays a detector, to test the measurement's hand-offs without a GPU"
+   }
+  },
+  "benchmarks/src/litmus_benchmarks/figures.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "contribute/src/litmus_contribute/compact.py": {
+   "component": "contribute",
+   "capabilities": {
+    "network": "merges stored contribution shards and uploads them to a private Hugging Face dataset, and after a removal rewrites or deletes the dataset's files and squashes its history to one commit, so no earlier revision keeps a removed text",
+    "filesystem_write": "writes the merged parquet shard before upload"
+   }
+  },
+  "contribute/src/litmus_contribute/deploy_compact.py": {
+   "component": "contribute",
+   "capabilities": {
+    "network": "deploys the compaction job to Modal"
+   }
+  },
+  "contribute/src/litmus_contribute/deploy_web.py": {
+   "component": "contribute",
+   "capabilities": {
+    "network": "deploys the contribute server to Modal"
+   }
+  },
+  "contribute/src/litmus_contribute/shards.py": {
+   "component": "contribute",
+   "capabilities": {
+    "filesystem_write": "the server's append-only shards of stored contributions on its volume"
+   }
+  },
+  "contribute/src/litmus_contribute/web.py": {
+   "component": "contribute",
+   "capabilities": {
+    "network": "the contribute server itself (Starlette): receives texts to score, labels, and removal requests"
+   }
+  },
+  "contribute/tests/conftest.py": {
+   "component": "contribute",
+   "capabilities": {
+    "network": "builds the server app in-process for tests; no socket is opened",
+    "filesystem_write": "test fixtures in pytest's temporary folder"
+   }
+  },
+  "contribute/tests/test_compact.py": {
+   "component": "contribute",
+   "capabilities": {
+    "filesystem_write": "test fixtures in pytest's temporary folder"
+   }
+  },
+  "contribute/tests/test_deploy.py": {
+   "component": "contribute",
+   "capabilities": {
+    "filesystem_write": "test fixtures in pytest's temporary folder"
+   }
+  },
+  "contribute/tests/test_legal.py": {
+   "component": "contribute",
+   "capabilities": {
+    "filesystem_write": "copies the legal documents into pytest's temporary folder to test a changed version"
+   }
+  },
+  "corpus/src/litmus_corpus/catalog_check.py": {
+   "component": "training",
+   "capabilities": {
+    "network": "checks that each source in the catalog exists on the Hugging Face Hub at its pinned revision"
+   }
+  },
+  "corpus/src/litmus_corpus/language.py": {
+   "component": "training",
+   "capabilities": {
+    "network": "downloads the fastText language-identification model once, to the folder named",
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "corpus/src/litmus_corpus/linking.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "corpus/src/litmus_corpus/pipeline.py": {
+   "component": "training",
+   "capabilities": {
+    "process": "worker processes that read sources in parallel",
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "corpus/src/litmus_corpus/publish.py": {
+   "component": "training",
+   "capabilities": {
+    "network": "uploads the built corpus to a private Hugging Face dataset"
+   }
+  },
+  "corpus/src/litmus_corpus/read.py": {
+   "component": "training",
+   "capabilities": {
+    "network": "reads each source dataset from the Hugging Face Hub at its pinned revision",
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "corpus/src/litmus_corpus/storage.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "corpus/src/litmus_corpus/tokenization.py": {
+   "component": "training",
+   "capabilities": {
+    "network": "downloads ModernBERT's tokenizer at a pinned revision"
+   }
+  },
+  "corpus/src/litmus_corpus/write.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "corpus/tests/conftest.py": {
+   "component": "training",
+   "capabilities": {
+    "network": "imports the datasets library to build local fixture datasets; no download",
+    "filesystem_write": "test fixtures and outputs in pytest's temporary folder"
+   }
+  },
+  "corpus/tests/test_families.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "test catalogs, corpora and outputs in pytest's temporary folder"
+   }
+  },
+  "corpus/tests/test_read.py": {
+   "component": "training",
+   "capabilities": {
+    "network": "imports the datasets library to build local fixture datasets; no download"
+   }
+  },
+  "corpus/tests/test_write.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "test fixtures and outputs in pytest's temporary folder"
+   }
+  },
+  "demo/render.mjs": {
+   "component": "demo",
+   "capabilities": {
+    "process": "runs the browser renderer and ffmpeg that turn the film's frames into video",
+    "filesystem_write": "writes frames and videos to the work folder named on the command line"
+   }
+  },
+  "engine/litmus-cli/tests/mcp.rs": {
+   "component": "engine",
+   "capabilities": {
+    "process": "starts `litmus mcp` and `litmus score` (the built program, `CARGO_BIN_EXE_litmus`) to compare the server's readings with the command line's",
+    "filesystem_write": "writes the test texts to a temporary folder it removes again"
+   }
+  },
+  "engine/litmus-files/src/cache.rs": {
+   "component": "engine",
+   "capabilities": {
+    "filesystem_write": "the reading cache, one JSON file per reading in the user's cache folder or LITMUS_CACHE_DIR; --no-cache turns it off"
+   }
+  },
+  "engine/litmus-files/src/extract.rs": {
+   "component": "engine",
+   "capabilities": {
+    "process": "runs this same executable with `__pdf-text <file>` to read a PDF's text in a child process, so a malformed PDF cannot crash or print into the main run"
+   }
+  },
+  "engine/litmus-files/src/walk.rs": {
+   "component": "engine",
+   "capabilities": {
+    "filesystem_write": "a test that creates and removes a temporary folder to walk"
+   }
+  },
+  "engine/litmus-py/tests/test_release.py": {
+   "component": "engine",
+   "capabilities": {
+    "process": "a test that runs the `litmus` command line built from the same checkout, to compare its reading with the Python module's",
+    "filesystem_write": "tests that write their texts, and copies of release files for the load errors, to pytest's temporary folder"
+   }
+  },
+  "engine/scripts/tokenizer_fixture.py": {
+   "component": "engine",
+   "capabilities": {
+    "filesystem_write": "writes the tokenizer parity fixtures to the folder named on the command line"
+   }
+  },
+  "engine/scripts/unicode14.py": {
+   "component": "engine",
+   "capabilities": {
+    "filesystem_write": "regenerates engine/litmus-engine/src/unicode14.rs from Python's unicodedata"
+   }
+  },
+  "launch/Dockerfile": {
+   "component": "training",
+   "capabilities": {
+    "network": "the training image installs system packages and Python dependencies while it is built"
+   }
+  },
+  "launch/raid_survey.py": {
+   "component": "training",
+   "capabilities": {
+    "network": "downloads RAID's train and extra CSV files from the Hugging Face Hub at the pinned revision, to count them",
+    "filesystem_write": "writes the survey's JSON counts to the path named on its command line"
+   }
+  },
+  "launch/save_run.py": {
+   "component": "training",
+   "capabilities": {
+    "network": "uploads a training run's outputs to a private Hugging Face repository"
+   }
+  },
+  "release/build_release.py": {
+   "component": "release",
+   "capabilities": {
+    "process": "runs cargo, rustc, git, and wasm-bindgen to build the shipped files, and the built litmus (litmus.exe on Windows) once to check its built-in release",
+    "filesystem_write": "copies the source and the release folder into the fixed build root, and writes the shipped files, manifest.json, and SHA256SUMS into the folder --out names"
+   }
+  },
+  "release/litmus_release/benchmarking.py": {
+   "component": "release",
+   "capabilities": {
+    "filesystem_write": "writes the Litmus score CSVs the scoring stage relabels and checks, inside the work folder"
+   }
+  },
+  "release/litmus_release/building.py": {
+   "component": "release",
+   "capabilities": {
+    "process": "runs the build scripts, the built programs once to check them, and git to find the build commit, from the build stages; the person names where they run",
+    "filesystem_write": "clears and recreates the work folder's build output before a build"
+   }
+  },
+  "release/litmus_release/bundle.py": {
+   "component": "release",
+   "capabilities": {
+    "filesystem_write": "copies the release folder and the record files into the bundle folder the person names, which must be empty"
+   }
+  },
+  "release/litmus_release/cli.py": {
+   "component": "release",
+   "capabilities": {
+    "filesystem_write": "writes the empty record template to the file the person names"
+   }
+  },
+  "release/litmus_release/commands.py": {
+   "component": "release",
+   "capabilities": {
+    "process": "runs one external command (git, cargo, docker, node, the Litmus scripts, gh) for a stage, with its output kept in the work folder's logs and no shell"
+   }
+  },
+  "release/litmus_release/documents.py": {
+   "component": "release",
+   "capabilities": {
+    "filesystem_write": "writes the filled documents, site data, and the model file list in the checkout by replacing each file whole through a temporary file"
+   }
+  },
+  "release/litmus_release/hub.py": {
+   "component": "release",
+   "capabilities": {
+    "network": "downloads the model repository at a pinned revision and the stored baseline scores from the Hugging Face Hub with huggingface_hub, reading only",
+    "filesystem_write": "writes the fetched model, record, and baselines into the work folder and clears a partial download"
+   }
+  },
+  "release/litmus_release/measuring.py": {
+   "component": "release",
+   "capabilities": {
+    "filesystem_write": "writes the speed measurements and the adopted browser measurement into the work folder"
+   }
+  },
+  "release/litmus_release/packaging.py": {
+   "component": "release",
+   "capabilities": {
+    "filesystem_write": "lays out the three publish folders (GitHub assets, Hub files, site) and SHA256SUMS in the work folder"
+   }
+  },
+  "release/litmus_release/plan.py": {
+   "component": "release",
+   "capabilities": {
+    "filesystem_write": "creates the work folder and writes plan.json in it"
+   }
+  },
+  "release/litmus_release/publishing.py": {
+   "component": "release",
+   "capabilities": {
+    "network": "uploads the model files to the Hugging Face Hub with huggingface_hub and tags the commit, only when run with --confirm; a dry run sends nothing",
+    "process": "runs git and gh to create the tag, the draft GitHub release, the gh-pages commit, and the macOS workflow, only with --confirm; a dry run prints the commands",
+    "filesystem_write": "makes a temporary clone of the public repository for the Pages commit and removes it afterward"
+   }
+  },
+  "release/litmus_release/receipts.py": {
+   "component": "release",
+   "capabilities": {
+    "filesystem_write": "writes each stage's receipt in the work folder"
+   }
+  },
+  "release/litmus_release/versions.py": {
+   "component": "release",
+   "capabilities": {
+    "filesystem_write": "sets the release version in the files that state it, changing only the version lines and keeping each file's line endings"
+   }
+  },
+  "release/tests/conftest.py": {
+   "component": "release",
+   "capabilities": {
+    "filesystem_write": "test fixtures in pytest's temporary folder"
+   }
+  },
+  "release/tests/test_documents.py": {
+   "component": "release",
+   "capabilities": {
+    "filesystem_write": "test fixtures in pytest's temporary folder"
+   }
+  },
+  "release/tests/test_hub_and_bundle.py": {
+   "component": "release",
+   "capabilities": {
+    "filesystem_write": "test fixtures in pytest's temporary folder"
+   }
+  },
+  "release/tests/test_plan.py": {
+   "component": "release",
+   "capabilities": {
+    "filesystem_write": "test fixtures in pytest's temporary folder"
+   }
+  },
+  "release/tests/test_publishing.py": {
+   "component": "release",
+   "capabilities": {
+    "filesystem_write": "test fixtures in pytest's temporary folder",
+    "process": "runs git in a temporary folder to make a repository and a bare remote for the gate and the dry run"
+   }
+  },
+  "release/tests/test_stages.py": {
+   "component": "release",
+   "capabilities": {
+    "filesystem_write": "test fixtures in pytest's temporary folder"
+   }
+  },
+  "release/tests/test_values.py": {
+   "component": "release",
+   "capabilities": {
+    "filesystem_write": "test fixtures in pytest's temporary folder"
+   }
+  },
+  "release/tests/test_versions.py": {
+   "component": "release",
+   "capabilities": {
+    "filesystem_write": "test fixtures in pytest's temporary folder"
+   }
+  },
+  "site/app/index.html": {
+   "component": "site",
+   "capabilities": {
+    "browser_storage": "reads the saved theme from the page's own localStorage before the module starts, to avoid a flash of the wrong theme",
+    "network": "fetches the page's own WebAssembly module from the page's own address"
+   }
+  },
+  "site/app/worker.js": {
+   "component": "site",
+   "capabilities": {
+    "network": "three same-origin GET requests for the model's files (model.safetensors, config.json, tokenizer.json); the text never leaves the worker"
+   }
+  },
+  "site/site.js": {
+   "component": "site",
+   "capabilities": {
+    "browser_storage": "keeps the visitor's choice of the light or dark look under one localStorage key, litmus.site.theme",
+    "network": "two same-origin GET requests for the site's own data files, assets/results.json and assets/links.json; it sends nothing"
+   }
+  },
+  "student/reference.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line",
+    "network": "loads ModernBERT's tokenizer from the Hugging Face Hub at a pinned revision when no local file is given"
+   }
+  },
+  "student/src/litmus_student/data.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "student/src/litmus_student/dense.py": {
+   "component": "training",
+   "capabilities": {
+    "network": "loads the teacher encoder from the Hugging Face Hub at a pinned revision"
+   }
+  },
+  "student/src/litmus_student/evaluate.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "student/src/litmus_student/poc.py": {
+   "component": "training",
+   "capabilities": {
+    "process": "worker processes for the proof of concept's data preparation",
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "student/src/litmus_student/search.py": {
+   "component": "training",
+   "capabilities": {
+    "process": "runs each search trial in its own process",
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "student/src/litmus_student/train.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line",
+    "dynamic_code": "torch.load of the run's own checkpoint (pickle) to resume or export; never a file from elsewhere"
+   }
+  },
+  "student/tests/test_data.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "test fixtures and outputs in pytest's temporary folder"
+   }
+  },
+  "student/tests/test_distill.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "test fixtures and outputs in pytest's temporary folder"
+   }
+  },
+  "student/tests/test_export.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "test fixtures and outputs in pytest's temporary folder"
+   }
+  },
+  "student/tests/test_integer_attention.py": {
+   "component": "training",
+   "capabilities": {
+    "dynamic_code": "torch.load of a checkpoint the same test just wrote"
+   }
+  },
+  "student/tests/test_poc.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "test fixtures and outputs in pytest's temporary folder"
+   }
+  },
+  "teacher/src/litmus_teacher/bank.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "teacher/src/litmus_teacher/calibrate.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "teacher/src/litmus_teacher/embed.py": {
+   "component": "training",
+   "capabilities": {
+    "network": "loads the encoder and tokenizer from the Hugging Face Hub at a pinned revision",
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "teacher/src/litmus_teacher/evaluate.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "teacher/src/litmus_teacher/export.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "teacher/src/litmus_teacher/head.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "teacher/src/litmus_teacher/reuse.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "teacher/src/litmus_teacher/search.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "teacher/src/litmus_teacher/split.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "teacher/src/litmus_teacher/strata.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "teacher/src/litmus_teacher/train.py": {
+   "component": "training",
+   "capabilities": {
+    "dynamic_code": "torch.load of the run's own checkpoint (pickle) to resume; never a file from elsewhere",
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "teacher/tests/test_embed_plan.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "test fixtures and outputs in pytest's temporary folder"
+   }
+  },
+  "teacher/tests/test_reuse.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "test fixtures and outputs in pytest's temporary folder"
+   }
+  },
+  "teacher/tests/test_search.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "test fixtures and outputs in pytest's temporary folder"
+   }
+  },
+  "tools/run_tests.py": {
+   "component": "verification",
+   "capabilities": {
+    "process": "runs each test suite's command (cargo, pytest) as a child process"
+   }
+  },
+  "tools/security/check_dependencies.py": {
+   "component": "verification",
+   "capabilities": {
+    "filesystem_write": "`--write` rewrites security/dependencies.json from the lock files"
+   }
+  },
+  "tools/security/tests/test_agent_install.py": {
+   "component": "verification",
+   "capabilities": {
+    "process": "runs install.sh and install.ps1 (with --from-dir and -FromDir, so no network) against stand-in programs",
+    "filesystem_write": "writes stand-in releases and install folders in pytest's temporary folder"
+   }
+  },
+  "tools/security/tests/test_capabilities.py": {
+   "component": "verification",
+   "capabilities": {
+    "dynamic_code": "a string planted in a temporary test file to prove the scan finds torch.load; never executed",
+    "filesystem_write": "plants test files in pytest's temporary folder"
+   }
+  },
+  "tools/security/tests/test_verify.py": {
+   "component": "verification",
+   "capabilities": {
+    "filesystem_write": "writes a stand-in release folder in pytest's temporary folder"
+   }
+  },
+  "tools/verify_build.py": {
+   "component": "verification",
+   "capabilities": {
+    "process": "runs cargo to build each artifact twice, or with --model the release's two programs, and git to name the checkout's commit",
+    "filesystem_write": "copies the source into build folders, in a temporary folder or the one --keep names, and into the fixed build root with the release's model files"
+   }
+  },
+  "training/foundry/downloads/hub/__init__.py": {
+   "component": "training",
+   "capabilities": {
+    "network": "downloads one Hugging Face Hub file at a pinned commit and checks its digest"
+   }
+  },
+  "training/foundry/downloads/hub/copies.py": {
+   "component": "training",
+   "capabilities": {
+    "network": "lists a Hugging Face repository's files to compare copies"
+   }
+  },
+  "training/foundry/logging/revision.py": {
+   "component": "training",
+   "capabilities": {
+    "process": "runs git to record the code's commit in a run"
+   }
+  },
+  "training/foundry/logging/run.py": {
+   "component": "training",
+   "capabilities": {
+    "network": "logs training runs to Weights and Biases",
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "training/foundry/modal_image/__init__.py": {
+   "component": "training",
+   "capabilities": {
+    "network": "defines Modal container images for the contribute deployment"
+   }
+  },
+  "training/foundry/pilot/__init__.py": {
+   "component": "training",
+   "capabilities": {
+    "process": "runs a short pilot of a training command before the full run"
+   }
+  },
+  "training/foundry/plotting/regression.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "training/foundry/secrets_env/__main__.py": {
+   "component": "training",
+   "capabilities": {
+    "process": "runs a command with the secrets file's variables loaded, never printing their values"
+   }
+  },
+  "training/foundry/serialization/__init__.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line",
+    "dynamic_code": "pickle.load of a file this library wrote itself, for cached intermediate results"
+   }
+  },
+  "training/foundry/serialization/atomic.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "training/foundry/training/checkpointing.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line",
+    "dynamic_code": "torch.load of the run's own checkpoint to resume"
+   }
+  },
+  "training/foundry/training/metric_logger.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "training/foundry/training/pair_masks.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "benchmarks/cost_chain.sh": {
+   "component": "training",
+   "capabilities": {
+    "network": "installs the compared detectors' Python packages with pip inside the measurement container"
+   }
+  },
+  "benchmarks/src/litmus_benchmarks/estimate.py": {
+   "component": "training",
+   "capabilities": {
+    "network": "reads each compared detector's config and file list from the Hugging Face Hub, to size models whose speed is estimated"
+   }
+  },
+  "benchmarks/src/litmus_benchmarks/report.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "benchmarks/src/litmus_benchmarks/results.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line",
+    "process": "worker processes that compute the metric table's bootstrap intervals in parallel"
+   }
+  },
+  "student/tests/conftest.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "test fixtures and outputs in pytest's temporary folder"
+   }
+  },
+  "demo/make.mjs": {
+   "component": "demo",
+   "capabilities": {
+    "process": "runs node on the demo's own tools in order: sample readings, the one-core run, the site capture, footage preparation and the render",
+    "filesystem_write": "writes captures, measurements and renders to the work folder named on its command line"
+   }
+  },
+  "demo/tools/music.mjs": {
+   "component": "demo",
+   "capabilities": {
+    "filesystem_write": "writes the synthesized music track as a WAV file to the path named on its command line"
+   }
+  },
+  "demo/tools/prepare_footage.mjs": {
+   "component": "demo",
+   "capabilities": {
+    "process": "runs ffmpeg to cut and scale captured footage",
+    "filesystem_write": "writes captures, measurements and renders to the work folder named on its command line"
+   }
+  },
+  "demo/tools/read_samples.mjs": {
+   "component": "demo",
+   "capabilities": {
+    "process": "runs the `litmus` command line on the demo's sample texts",
+    "filesystem_write": "writes the sample readings to demo/data/ad"
+   }
+  },
+  "demo/capture/Dockerfile": {
+   "component": "demo",
+   "capabilities": {
+    "network": "installs ffmpeg, a text editor, fonts and X11 tools with apt when the capture image is built"
+   }
+  },
+  "demo/capture/linux_capture.py": {
+   "component": "demo",
+   "capabilities": {
+    "process": "inside the capture container, starts a virtual display, the Litmus app, a text editor, xdotool and ffmpeg to record the app",
+    "filesystem_write": "writes the recorded clips and their event times to the folder named on its command line"
+   }
+  },
+  "demo/capture/site_capture.mjs": {
+   "component": "demo",
+   "capabilities": {
+    "filesystem_write": "writes captures, measurements and renders to the work folder named on its command line"
+   }
+  },
+  "demo/tools/fetch_sets.mjs": {
+   "component": "demo",
+   "capabilities": {
+    "network": "downloads the speed run's two document sets: public-domain rules from the Federal Register's public API and one public dataset from the Hugging Face datasets server, about one request a second",
+    "filesystem_write": "writes captures, measurements and renders to the work folder named on its command line"
+   }
+  },
+  "demo/tools/measure_run.mjs": {
+   "component": "demo",
+   "capabilities": {
+    "process": "runs the `litmus` command line pinned to one processor core on the document sets, and PowerShell with tools/sample_process.ps1 to read the memory and processor time of the processes named litmus while they run",
+    "filesystem_write": "writes captures, measurements and renders to the work folder named on its command line (it clears its own run folder there first), and the measured numbers to demo/data/ad"
+   }
+  },
+  "demo/tools/merge_gpu_use.mjs": {
+   "component": "demo",
+   "capabilities": {
+    "filesystem_write": "writes the merged GPU measurements to the file named on its command line"
+   }
+  },
+  "demo/tools/read_app_memory.mjs": {
+   "component": "demo",
+   "capabilities": {
+    "filesystem_write": "writes the app's measured memory to the file named on its command line"
+   }
+  }
+ },
+ "unsafe": {
+  "app/src/instance.rs": {
+   "count": 1,
+   "reason": "one Win32 call, AllowSetForegroundWindow, so the running app may take the focus when a second launch hands it a file"
+  },
+  "app/src/quick/windows.rs": {
+   "count": 26,
+   "reason": "the Win32 calls of quick check: COM and UI Automation, the clipboard, SendInput, the registry entry, all behind Settings"
+  },
+  "app/src/window_place.rs": {
+   "count": 2,
+   "reason": "two Win32 calls, GetDpiForSystem and MonitorFromPoint, to restore the window on a screen that exists"
+  },
+  "app/tests/quick_windows.rs": {
+   "count": 3,
+   "reason": "the Windows quick-check test's own Win32 calls on its scratch registry key and the clipboard"
+  },
+  "app/tests/release.rs": {
+   "count": 1,
+   "reason": "std::env::set_var in a test, which Rust 2024 marks unsafe"
+  },
+  "engine/litmus-cli/src/memory.rs": {
+   "count": 11,
+   "reason": "a counting global allocator for `litmus bench`'s peak memory, forwarding every call to the system allocator"
+  },
+  "engine/litmus-cli/src/strip.rs": {
+   "count": 2,
+   "reason": "three Win32 console calls that turn on color escapes for this process's own standard output"
+  },
+  "engine/litmus-engine/examples/wasm_probe.rs": {
+   "count": 13,
+   "reason": "a WebAssembly test module that passes raw pointers to JavaScript for timing; not part of any release"
+  },
+  "engine/litmus-engine/src/codes.rs": {
+   "count": 6,
+   "reason": "AVX2 intrinsics for the integer dot products of the int8 compare, called only after a runtime CPU check; the portable loops give the same integers"
+  },
+  "engine/litmus-engine/src/dense.rs": {
+   "count": 32,
+   "reason": "AVX2 intrinsics for the float64 products, called only after a runtime CPU check; the scalar path gives the same bits"
+  },
+  "engine/litmus-engine/src/dense_neon.rs": {
+   "count": 28,
+   "reason": "NEON intrinsics for the float64 products; the scalar path gives the same bits"
+  },
+  "engine/litmus-engine/src/dense_simd128.rs": {
+   "count": 20,
+   "reason": "WebAssembly SIMD128 intrinsics for the float64 products; the scalar path gives the same bits"
+  },
+  "engine/litmus-engine/src/integer_attention.rs": {
+   "count": 26,
+   "reason": "SIMD intrinsics for integer attention on each backend, tested equal to the portable path"
+  },
+  "engine/litmus-engine/src/kernels/avx2.rs": {
+   "count": 18,
+   "reason": "AVX2 intrinsics of the ternary kernels, called only after a runtime CPU check"
+  },
+  "engine/litmus-engine/src/kernels/mod.rs": {
+   "count": 7,
+   "reason": "the calls into each backend's intrinsics, made only for a backend the CPU check selected"
+  },
+  "engine/litmus-engine/src/kernels/neon.rs": {
+   "count": 15,
+   "reason": "NEON intrinsics of the ternary kernels"
+  },
+  "engine/litmus-engine/src/kernels/simd128.rs": {
+   "count": 4,
+   "reason": "WebAssembly SIMD128 intrinsics of the ternary kernels"
+  }
+ }
+}

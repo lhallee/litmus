@@ -1,0 +1,7 @@
+# The exact compiler every build of this workspace uses, so that a build from the same source gives the same bytes.
+# `tools/verify_build.py` rebuilds and compares; rust-version in Cargo.toml stays the oldest supported compiler.
+[toolchain]
+channel = "1.100.0"
+profile = "minimal"
+components = ["clippy", "rustfmt"]
+targets = ["wasm32-unknown-unknown"]

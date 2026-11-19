@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en" data-build="private">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Litmus</title>
+<meta name="description" content="Litmus reads text in your browser and says whether a person, a model, or both wrote it, with its uncertainty and its reasons. Your text never leaves the page.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<style>
+  /* The site's grounds and inks (site/style.css), inlined so the page stands alone. The app opens dark; the light
+     look applies when the visitor chose it (the address's #light, or the app's saved choice). */
+  :root { color-scheme: dark; --paper: #16141A; --surface: #201D25; --ink: #EEE8DC; --ink-soft: #B9B2A8; --rule: #3A3540; --human-ink: #8DB2F5; }
+  :root.light { color-scheme: light; --paper: #F3EEE4; --surface: #FBF8F2; --ink: #1E1B22; --ink-soft: #4F4A55; --rule: #D6CDBE; --human-ink: #1F55B5; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--paper); }
+  #litmus_canvas { position: absolute; inset: 0; width: 100%; height: 100%; outline: none; }
+  #loader {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 0.75rem; padding: 1.5rem; text-align: center; color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+  #loader h1 { margin: 0.25rem 0 0; font-size: 1.5rem; font-weight: 600; }
+  #loader p { margin: 0; max-width: 30rem; line-height: 1.5; }
+  #loader .soft { color: var(--ink-soft); font-size: 0.95rem; }
+  #loader .bar { width: min(20rem, 80vw); height: 6px; border-radius: 3px; background: var(--rule); overflow: hidden; }
+  #loader .bar span { display: block; height: 100%; width: 0; background: var(--human-ink); transition: width 0.15s; }
+  #loader .num { font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; font-size: 0.9rem; color: var(--ink-soft); }
+  /* One host page for two builds: the contribute site's copy says data-build="contribute" (the release build and
+     app/scripts/build_web.sh --contribute set it), so the loader never promises there that the text stays put. */
+  [data-build="private"] .contribute-only, [data-build="contribute"] .private-only { display: none; }
+</style>
+<script>
+  // Pick the loader's look before it paints: the address's #light or #dark, else the app's saved choice.
+  (function () {
+    let light = location.hash.includes("light");
+    if (!light && !location.hash.includes("dark")) {
+      try { light = (JSON.parse(localStorage.getItem("litmus.settings") || "{}").theme === "light"); } catch (e) { light = false; }
+    }
+    if (light) document.documentElement.classList.add("light");
+  })();
+</script>
+</head>
+<body>
+<canvas id="litmus_canvas" aria-label="Litmus"></canvas>
+<div id="loader" role="status" aria-live="polite">
+  <img src="favicon.svg" width="40" height="56" alt="">
+  <h1>Litmus</h1>
+  <p class="private-only">Your text is read right here in this page and never leaves it.</p>
+  <p class="contribute-only">A text you check here is sent to the Litmus server and stored, as the notice beside Check says.</p>
+  <div class="bar" aria-hidden="true"><span id="loader_bar"></span></div>
+  <p id="loader_text" class="num">Loading the app</p>
+  <noscript><p>Litmus runs in your browser and needs JavaScript and WebAssembly.</p></noscript>
+</div>
+<script type="module">
+  import init, { start } from "./litmus_app.js";
+  const text = document.getElementById("loader_text");
+  const bar = document.getElementById("loader_bar");
+  const mb = (bytes) => (bytes / 1e6).toFixed(1) + " MB";
+
+  // Fetch the app's module with its progress shown, then start it from those bytes.
+  async function module() {
+    const response = await fetch(new URL("litmus_app_bg.wasm", location.href));
+    if (!response.ok) throw new Error(`litmus_app_bg.wasm: HTTP ${response.status}`);
+    const total = Number(response.headers.get("Content-Length")) || 0;
+    if (!response.body || !total) return new Uint8Array(await response.arrayBuffer());
+    const reader = response.body.getReader();
+    const parts = [];
+    let done = 0;
+    for (;;) {
+      const { done: finished, value } = await reader.read();
+      if (finished) break;
+      parts.push(value);
+      done += value.length;
+      bar.style.width = `${Math.min(100, (100 * done) / total)}%`;
+      text.textContent = `Loading the app: ${mb(done)} of ${mb(total)}`;
+    }
+    const bytes = new Uint8Array(done);
+    let at = 0;
+    for (const part of parts) { bytes.set(part, at); at += part.length; }
+    return bytes;
+  }
+
+  try {
+    await init({ module_or_path: await module() });
+    text.textContent = "Starting";
+    await start("litmus_canvas");
+    document.getElementById("loader").remove();
+  } catch (error) {
+    text.textContent = "Litmus could not start in this browser: " + error;
+    console.error(error);
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+[project]
+name = "litmus-benchmarks"
+version = "1.0.0"
+description = "Litmus against other detectors of model-written text on public benchmarks: catalog, metrics, figures"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "scikit-learn>=1.5",
+    "matplotlib>=3.9",
+    "tqdm>=4.66",
+    "huggingface-hub>=0.34",
+    "datasets>=3.0",
+]
+
+[project.optional-dependencies]
+detectors = ["torch>=2.5", "transformers>=4.56", "safetensors>=0.6", "psutil>=5.9"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "../../../.."]
+cache_dir = "C:/ws-cache/pytest"

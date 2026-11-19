@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 560" width="1280" height="560" role="img">
+<title>One encoder layer: quantities computed per text and fixed ternary weights</title>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="context-stroke"/></marker><linearGradient id="strip" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#2F6FDB"/><stop offset="0.5" stop-color="#8E5BC9"/><stop offset="1" stop-color="#D9483B"/></linearGradient><pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" stroke="#B9B2C6" stroke-width="2" stroke-opacity="0.5"/></pattern></defs>
+<rect width="1280" height="560" rx="24" fill="#17151D"/>
+<rect x="40" y="60" width="150" height="62" rx="12" fill="#173238" stroke="#5CC2CF" stroke-width="1.5"/>
+<text x="115.0" y="50" font-size="19" font-weight="400" fill="#F2EEF7" text-anchor="middle" font-family="'Cambria Math', 'STIX Two Math', 'Times New Roman', serif" font-style="italic">X</text>
+<text x="115.0" y="89.0" font-size="15.5" font-weight="600" fill="#F2EEF7" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">residual</text>
+<text x="115.0" y="110.0" font-size="13.5" font-weight="400" fill="#B9B2C6" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">n × 192</text>
+<rect x="240" y="60" width="150" height="62" rx="12" fill="#173238" stroke="#5CC2CF" stroke-width="1.5"/>
+<text x="315.0" y="50" font-size="19" font-weight="400" fill="#F2EEF7" text-anchor="middle" font-family="'Cambria Math', 'STIX Two Math', 'Times New Roman', serif" font-style="italic">A</text>
+<text x="315.0" y="89.0" font-size="15.5" font-weight="600" fill="#F2EEF7" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">normed, int8</text>
+<text x="315.0" y="110.0" font-size="13.5" font-weight="400" fill="#B9B2C6" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">n × 192</text>
+<rect x="440" y="60" width="150" height="62" rx="12" fill="#3A2F18" stroke="#D9A94E" stroke-width="1.5"/>
+<text x="515.0" y="50" font-size="19" font-weight="400" fill="#F2EEF7" text-anchor="middle" font-family="'Cambria Math', 'STIX Two Math', 'Times New Roman', serif" font-style="italic">W_q, W_k, W_v</text>
+<text x="515.0" y="89.0" font-size="15.5" font-weight="600" fill="#F2EEF7" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">ternary</text>
+<text x="515.0" y="110.0" font-size="13.5" font-weight="400" fill="#B9B2C6" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">3 × 192 × 192</text>
+<rect x="640" y="60" width="150" height="62" rx="12" fill="#173238" stroke="#5CC2CF" stroke-width="1.5"/>
+<text x="715.0" y="50" font-size="19" font-weight="400" fill="#F2EEF7" text-anchor="middle" font-family="'Cambria Math', 'STIX Two Math', 'Times New Roman', serif" font-style="italic">Q, K, V</text>
+<text x="715.0" y="89.0" font-size="15.5" font-weight="600" fill="#F2EEF7" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">heads of 64</text>
+<text x="715.0" y="110.0" font-size="13.5" font-weight="400" fill="#B9B2C6" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">3 × n × 192</text>
+<rect x="840" y="60" width="150" height="62" rx="12" fill="#173238" stroke="#5CC2CF" stroke-width="1.5"/>
+<text x="915.0" y="50" font-size="19" font-weight="400" fill="#F2EEF7" text-anchor="middle" font-family="'Cambria Math', 'STIX Two Math', 'Times New Roman', serif" font-style="italic">O</text>
+<text x="915.0" y="89.0" font-size="15.5" font-weight="600" fill="#F2EEF7" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">block attention</text>
+<text x="915.0" y="110.0" font-size="13.5" font-weight="400" fill="#B9B2C6" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">n × 192</text>
+<rect x="1060" y="60" width="150" height="62" rx="12" fill="#3A2F18" stroke="#D9A94E" stroke-width="1.5"/>
+<text x="1135.0" y="50" font-size="19" font-weight="400" fill="#F2EEF7" text-anchor="middle" font-family="'Cambria Math', 'STIX Two Math', 'Times New Roman', serif" font-style="italic">W_o</text>
+<text x="1135.0" y="89.0" font-size="15.5" font-weight="600" fill="#F2EEF7" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">ternary</text>
+<text x="1135.0" y="110.0" font-size="13.5" font-weight="400" fill="#B9B2C6" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">192 × 192</text>
+<path d="M190 91 L236 91" fill="none" stroke="#8E86A0" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M390 91 L436 91" fill="none" stroke="#8E86A0" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M590 91 L636 91" fill="none" stroke="#8E86A0" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M790 91 L836 91" fill="none" stroke="#8E86A0" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M990 91 L1056 91" fill="none" stroke="#8E86A0" stroke-width="2.5" marker-end="url(#arrow)"/>
+<rect x="1060" y="220" width="150" height="62" rx="12" fill="#173238" stroke="#5CC2CF" stroke-width="1.5"/>
+<text x="1135.0" y="210" font-size="19" font-weight="400" fill="#F2EEF7" text-anchor="middle" font-family="'Cambria Math', 'STIX Two Math', 'Times New Roman', serif" font-style="italic">X₁</text>
+<text x="1135.0" y="249.0" font-size="15.5" font-weight="600" fill="#F2EEF7" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">after attention</text>
+<text x="1135.0" y="270.0" font-size="13.5" font-weight="400" fill="#B9B2C6" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">n × 192</text>
+<path d="M1210 91 L1240 91 L1240 251 L1214 251" fill="none" stroke="#8E86A0" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M115 122 L115 160 L1000 160 L1000 251 L1056 251" fill="none" stroke="#8E86A0" stroke-width="2.5" marker-end="url(#arrow)" stroke-dasharray="6 5"/>
+<rect x="840" y="380" width="150" height="62" rx="12" fill="#173238" stroke="#5CC2CF" stroke-width="1.5"/>
+<text x="915.0" y="370" font-size="19" font-weight="400" fill="#F2EEF7" text-anchor="middle" font-family="'Cambria Math', 'STIX Two Math', 'Times New Roman', serif" font-style="italic">A₂</text>
+<text x="915.0" y="409.0" font-size="15.5" font-weight="600" fill="#F2EEF7" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">normed, int8</text>
+<text x="915.0" y="430.0" font-size="13.5" font-weight="400" fill="#B9B2C6" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">n × 192</text>
+<rect x="640" y="380" width="150" height="62" rx="12" fill="#3A2F18" stroke="#D9A94E" stroke-width="1.5"/>
+<text x="715.0" y="370" font-size="19" font-weight="400" fill="#F2EEF7" text-anchor="middle" font-family="'Cambria Math', 'STIX Two Math', 'Times New Roman', serif" font-style="italic">W_up</text>
+<text x="715.0" y="409.0" font-size="15.5" font-weight="600" fill="#F2EEF7" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">ternary</text>
+<text x="715.0" y="430.0" font-size="13.5" font-weight="400" fill="#B9B2C6" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">768 × 192</text>
+<rect x="440" y="380" width="150" height="62" rx="12" fill="#173238" stroke="#5CC2CF" stroke-width="1.5"/>
+<text x="515.0" y="370" font-size="19" font-weight="400" fill="#F2EEF7" text-anchor="middle" font-family="'Cambria Math', 'STIX Two Math', 'Times New Roman', serif" font-style="italic">G</text>
+<text x="515.0" y="409.0" font-size="15.5" font-weight="600" fill="#F2EEF7" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">squared ReLU</text>
+<text x="515.0" y="430.0" font-size="13.5" font-weight="400" fill="#B9B2C6" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">n × 768</text>
+<rect x="240" y="380" width="150" height="62" rx="12" fill="#3A2F18" stroke="#D9A94E" stroke-width="1.5"/>
+<text x="315.0" y="370" font-size="19" font-weight="400" fill="#F2EEF7" text-anchor="middle" font-family="'Cambria Math', 'STIX Two Math', 'Times New Roman', serif" font-style="italic">W_down</text>
+<text x="315.0" y="409.0" font-size="15.5" font-weight="600" fill="#F2EEF7" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">ternary</text>
+<text x="315.0" y="430.0" font-size="13.5" font-weight="400" fill="#B9B2C6" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">192 × 768</text>
+<rect x="40" y="380" width="150" height="62" rx="12" fill="#173238" stroke="#5CC2CF" stroke-width="1.5"/>
+<text x="115.0" y="370" font-size="19" font-weight="400" fill="#F2EEF7" text-anchor="middle" font-family="'Cambria Math', 'STIX Two Math', 'Times New Roman', serif" font-style="italic">X'</text>
+<text x="115.0" y="409.0" font-size="15.5" font-weight="600" fill="#F2EEF7" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">next layer's input</text>
+<text x="115.0" y="430.0" font-size="13.5" font-weight="400" fill="#B9B2C6" text-anchor="middle" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">n × 192</text>
+<path d="M1135 282 L1135 411 L994 411" fill="none" stroke="#8E86A0" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M840 411 L794 411" fill="none" stroke="#8E86A0" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M640 411 L594 411" fill="none" stroke="#8E86A0" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M440 411 L394 411" fill="none" stroke="#8E86A0" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M240 411 L194 411" fill="none" stroke="#8E86A0" stroke-width="2.5" marker-end="url(#arrow)"/>
+<path d="M1100 282 L1100 340 L22 340 L22 411 L36 411" fill="none" stroke="#8E86A0" stroke-width="2.5" marker-end="url(#arrow)" stroke-dasharray="6 5"/>
+<rect x="40" y="500" width="22" height="22" rx="6" fill="#173238" stroke="#5CC2CF" stroke-width="1.5"/>
+<text x="72" y="517" font-size="16" font-weight="400" fill="#B9B2C6" text-anchor="start" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">computed for each text</text>
+<rect x="330" y="500" width="22" height="22" rx="6" fill="#3A2F18" stroke="#D9A94E" stroke-width="1.5"/>
+<text x="362" y="517" font-size="16" font-weight="400" fill="#B9B2C6" text-anchor="start" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">fixed after training (ternary)</text>
+<path d="M660 511 L720 511" fill="none" stroke="#8E86A0" stroke-width="2.5" stroke-dasharray="6 5"/>
+<text x="732" y="517" font-size="16" font-weight="400" fill="#B9B2C6" text-anchor="start" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">residual path</text>
+</svg>

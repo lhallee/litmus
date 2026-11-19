@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=77"]  # SPDX `license` expressions
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "litmus-contribute"
+version = "1.0.0"
+description = "The Litmus contribute site's server: serves the app, stores checked texts with their readings and annotations, compacts them to a private Hub dataset"
+requires-python = ">=3.11"
+license = "LicenseRef-PolyForm-Noncommercial-1.0.0"  # ../LICENSE; source available, free for noncommercial use
+# Exact pins at the research lock's versions (environments/research/lock.txt), the stack the tests ran on. The web
+# image installs starlette and its dependencies only; pyarrow and huggingface-hub are for compaction.
+dependencies = [
+    "starlette==1.6.0",
+    "anyio==4.15.1",
+    "pyarrow==25.0.1",
+    "huggingface-hub==1.32.0",
+]
+
+[project.optional-dependencies]
+deploy = ["modal==1.5.5"]
+# tzdata: pyarrow reads UTC timestamps through zoneinfo, which has no time zone database on Windows.
+test = ["pytest==9.1.1", "httpx==0.28.1", "modal==1.5.5", "tzdata==2026.4"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# src: the package; the workspace root: foundry.modal_image, which the deployment modules read pins with.
+pythonpath = ["src", "../../../.."]
+addopts = "-p no:cacheprovider"

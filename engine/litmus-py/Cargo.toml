@@ -1,0 +1,22 @@
+[package]
+name = "litmus-py"
+description = "Python binding of the Litmus engine (package litmus_engine), built with maturin"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# The Python module is litmus_engine (#[pymodule] name); the Rust library is litmus_py, apart from the engine crate.
+name = "litmus_py"
+crate-type = ["cdylib"]
+
+[dependencies]
+litmus-engine = { path = "../litmus-engine" }
+# Exactly the version engine/Cargo.lock holds. abi3-py310: one wheel for CPython 3.10 and later; a higher floor would
+# stop `cargo build` of this workspace wherever the `python` on PATH is older (README, Python interface).
+pyo3 = { version = "=0.25.1", features = ["extension-module", "abi3-py310"] }  # MIT OR Apache-2.0
+serde = "1"  # MIT OR Apache-2.0
+serde_json = "1"  # MIT OR Apache-2.0
+sha2 = "0.10"  # MIT OR Apache-2.0; the release's version when its provenance names none

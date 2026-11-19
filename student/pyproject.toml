@@ -1,0 +1,28 @@
+[project]
+name = "litmus-student"
+version = "1.0.0"
+description = "Litmus's student: a BitNet b1.58 encoder distilled from the teacher, its release format and NumPy reference"
+requires-python = ">=3.11"
+license = "PolyForm-Noncommercial-1.0.0"  # ../LICENSE; Required Notice: Copyright Logan Hallee (https://github.com/lhallee/litmus)
+# Exact pins at the tested stack, since this runs as an application in Docker.
+# reference.py alone needs only numpy and tokenizers.
+dependencies = [
+    "numpy==2.5.3",
+    "tokenizers==0.23.2",
+    "torch==2.14.0",
+    "pyarrow==25.0.1",
+    "safetensors==0.8.0",
+    "tqdm==4.70.1",
+    "wandb==0.30.0",  # read by foundry.logging, which train.py logs through
+    "scikit-learn==1.9.1",  # read by foundry.metrics.ranking, which train.py scores validation with
+]
+
+[project.optional-dependencies]
+test = ["pytest==9.1.1"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# src: the package; ".": reference.py; "../../../..": the folder that holds foundry; the teacher: litmus_teacher.calibrate; the corpus:
+# litmus_corpus.standardize, which the standard reading is checked against.
+pythonpath = ["src", ".", "../../../..", "../teacher/src", "../corpus/src"]
+cache_dir = "C:/ws-cache/pytest"
