@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="34 10 142 198" role="img">
+  <title>Litmus</title>
+  <desc>A cursive capital L drawn as one strip: blue through the top loop and stem (human), purple with a pale band through the lower loop (mixed, and what cannot be ruled out), red along the tail (AI). At 32 px and under the stroke is heavier and the pale band is left out.</desc>
+  <g fill="none" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M70 95 C100 95 140 70 138 45 C137 28 118 26 112 45 C106 70 104 110 96 140" stroke="#2F6FDB"/>
+    <path d="M104 180 C120 190 140 192 160 178" stroke="#D9483B"/>
+    <path d="M96 140 C92 160 86 178 70 182 C56 185 50 172 62 166 C76 160 92 172 104 180" stroke="#8E5BC9"/>
+    <path d="M94 150 C93 154 92 158 90 162" stroke="#C9B8E6" stroke-linecap="butt"/>
+  </g>
+</svg>

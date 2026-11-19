@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>How Litmus works</title>
+<meta name="description" content="How Litmus reads a text: a small model compares it with a bank of texts of known origin, and calibration says which origins it cannot rule out and how sure it is.">
+<link rel="icon" href="litmus_mark.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+<script src="site.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+<header class="site-header">
+  <div class="wrap bar">
+    <a class="brand" href="index.html"><img src="litmus_mark.svg" alt="" width="22" height="30">Litmus</a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="use.html">Use Litmus</a>
+      <a href="download.html">Download</a>
+      <a href="how.html" aria-current="page">How it works</a>
+      <a href="benchmarks.html">Results</a>
+      <a href="privacy.html">Privacy</a>
+    </nav>
+    <div class="bar-end">
+      <a class="icon-link" href="https://github.com/lhallee/litmus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/></svg><span class="label">GitHub</span></a>
+      <button class="theme-toggle" type="button" hidden aria-label="Switch the look"><svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg><svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap page-head">
+    <h1>How Litmus works</h1>
+    <p class="lead">Litmus asks which known texts your text resembles. A small model reads the text and compares it with a bank of texts whose origin is known, and calibration then checks how unusual that comparison would be for each origin. Whatever it cannot rule out, it tells you.</p>
+    <svg class="svg-defs" width="0" height="0" aria-hidden="true" focusable="false">
+      <defs>
+        <marker id="ar1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="d-soft"/></marker>
+        <linearGradient id="g-strip1" x1="0" x2="1" y1="0" y2="0"><stop offset="0" style="stop-color: var(--human)"/><stop offset="0.5" style="stop-color: var(--mixed)"/><stop offset="1" style="stop-color: var(--ai)"/></linearGradient>
+      </defs>
+    </svg>
+    <figure class="diagram">
+      <div class="frame"><svg class="wide" viewBox="0 0 900 190" role="img" aria-labelledby="d-overview">
+        <title id="d-overview">Your text goes to a small model on your device, which compares it with a reference bank of human, AI, and mixed texts; calibration turns the comparison into how sure the reading is, and the reading is drawn on the strip.</title>
+        <rect x="10" y="20" width="150" height="150" rx="16" class="d-box"/>
+        <text x="85" y="50" text-anchor="middle" class="d-ink t-head">Your text</text>
+        <rect x="32" y="72" width="106" height="8" rx="4" class="d-soft" opacity="0.5"/>
+        <rect x="32" y="92" width="92" height="8" rx="4" class="d-soft" opacity="0.5"/>
+        <rect x="32" y="112" width="104" height="8" rx="4" class="d-soft" opacity="0.5"/>
+        <rect x="32" y="132" width="70" height="8" rx="4" class="d-soft" opacity="0.5"/>
+        <line x1="164" y1="95" x2="186" y2="95" class="d-line" marker-end="url(#ar1)"/>
+
+        <rect x="190" y="20" width="150" height="150" rx="16" class="d-strong"/>
+        <text x="265" y="50" text-anchor="middle" class="d-ink t-head">Small model</text>
+        <text x="265" y="70" text-anchor="middle" class="d-soft t-small">on your device</text>
+        <g class="t-mono" text-anchor="middle">
+          <rect x="217" y="88" width="28" height="24" rx="6" class="d-box"/><text x="231" y="105" class="d-ink t-small">−1</text>
+          <rect x="251" y="88" width="28" height="24" rx="6" class="d-box"/><text x="265" y="105" class="d-soft t-small">0</text>
+          <rect x="285" y="88" width="28" height="24" rx="6" class="d-box"/><text x="299" y="105" class="d-ink t-small">+1</text>
+          <rect x="217" y="118" width="28" height="24" rx="6" class="d-box"/><text x="231" y="135" class="d-ink t-small">+1</text>
+          <rect x="251" y="118" width="28" height="24" rx="6" class="d-box"/><text x="265" y="135" class="d-ink t-small">−1</text>
+          <rect x="285" y="118" width="28" height="24" rx="6" class="d-box"/><text x="299" y="135" class="d-soft t-small">0</text>
+        </g>
+        <line x1="344" y1="95" x2="366" y2="95" class="d-line" marker-end="url(#ar1)"/>
+
+        <rect x="370" y="20" width="150" height="150" rx="16" class="d-box"/>
+        <text x="445" y="50" text-anchor="middle" class="d-ink t-head">Reference bank</text>
+        <g class="d-human"><circle cx="400" cy="84" r="6"/><circle cx="416" cy="96" r="6"/><circle cx="398" cy="108" r="6"/><circle cx="414" cy="120" r="6"/></g>
+        <g class="d-ai"><circle cx="440" cy="84" r="6"/><circle cx="456" cy="96" r="6"/><circle cx="438" cy="108" r="6"/><circle cx="454" cy="120" r="6"/></g>
+        <g class="d-mixed"><circle cx="480" cy="84" r="6"/><circle cx="496" cy="96" r="6"/><circle cx="478" cy="108" r="6"/><circle cx="494" cy="120" r="6"/></g>
+        <text x="407" y="152" text-anchor="middle" class="t-human t-small">human</text>
+        <text x="447" y="152" text-anchor="middle" class="t-ai t-small">AI</text>
+        <text x="487" y="152" text-anchor="middle" class="t-mixed t-small">mixed</text>
+        <line x1="524" y1="95" x2="546" y2="95" class="d-line" marker-end="url(#ar1)"/>
+
+        <rect x="550" y="20" width="150" height="150" rx="16" class="d-box"/>
+        <text x="625" y="50" text-anchor="middle" class="d-ink t-head">Calibration</text>
+        <line x1="572" y1="128" x2="678" y2="128" class="d-line"/>
+        <g class="d-human"><circle cx="590" cy="118" r="5"/><circle cx="604" cy="118" r="5"/><circle cx="618" cy="118" r="5"/><circle cx="632" cy="118" r="5"/><circle cx="646" cy="118" r="5"/><circle cx="660" cy="118" r="5"/><circle cx="618" cy="105" r="5"/><circle cx="632" cy="105" r="5"/><circle cx="646" cy="105" r="5"/><circle cx="632" cy="92" r="5"/></g>
+        <rect x="578" y="80" width="5" height="56" rx="2.5" class="d-ink"/>
+        <text x="580" y="155" text-anchor="middle" class="d-ink t-small">yours</text>
+        <line x1="704" y1="95" x2="726" y2="95" class="d-line" marker-end="url(#ar1)"/>
+
+        <rect x="730" y="20" width="160" height="150" rx="16" class="d-strong"/>
+        <text x="810" y="50" text-anchor="middle" class="d-ink t-head">Reading</text>
+        <text x="810" y="84" text-anchor="middle" class="d-ink t-head">Uncertain</text>
+        <rect x="748" y="104" width="124" height="14" rx="7" fill="url(#g-strip1)"/>
+        <rect x="808" y="99" width="66" height="24" rx="8" class="d-band"/>
+        <rect x="836" y="94" width="5" height="34" rx="2.5" class="d-ink"/>
+        <text x="752" y="148" class="t-human t-small">human</text>
+        <text x="870" y="148" text-anchor="end" class="t-ai t-small">AI</text>
+      </svg><svg class="narrow" viewBox="0 0 360 444" role="img" aria-labelledby="d-overview-n"><title id="d-overview-n">Your text goes to a small model on your device, which compares it with a reference bank of human, AI, and mixed texts; calibration turns the comparison into how sure the reading is, and the reading is drawn on the strip.</title><rect x="20" y="10" width="320" height="64" rx="14" class="d-box"/><line x1="180" y1="76" x2="180" y2="96" class="d-line" marker-end="url(#ar1)"/><rect x="20" y="100" width="320" height="64" rx="14" class="d-strong"/><line x1="180" y1="166" x2="180" y2="186" class="d-line" marker-end="url(#ar1)"/><rect x="20" y="190" width="320" height="64" rx="14" class="d-box"/><line x1="180" y1="256" x2="180" y2="276" class="d-line" marker-end="url(#ar1)"/><rect x="20" y="280" width="320" height="64" rx="14" class="d-box"/><line x1="180" y1="346" x2="180" y2="366" class="d-line" marker-end="url(#ar1)"/><rect x="20" y="370" width="320" height="64" rx="14" class="d-strong"/><text x="40" y="48" class="d-ink t-head">Your text</text><rect x="196" y="26" width="120" height="7" rx="3.5" class="d-soft" opacity="0.5"/><rect x="196" y="39" width="100" height="7" rx="3.5" class="d-soft" opacity="0.5"/><rect x="196" y="52" width="112" height="7" rx="3.5" class="d-soft" opacity="0.5"/><text x="40" y="130" class="d-ink t-head">Small model</text><text x="40" y="149" class="d-soft t-small">on your device</text><rect x="214" y="120" width="30" height="24" rx="6" class="d-box"/><text x="229" y="137" text-anchor="middle" class="d-ink t-mono t-small">−1</text><rect x="250" y="120" width="30" height="24" rx="6" class="d-box"/><text x="265" y="137" text-anchor="middle" class="d-soft t-mono t-small">0</text><rect x="286" y="120" width="30" height="24" rx="6" class="d-box"/><text x="301" y="137" text-anchor="middle" class="d-ink t-mono t-small">+1</text><text x="40" y="228" class="d-ink t-head">Reference bank</text><g class="d-human"><circle cx="214.0" cy="214" r="5"/><circle cx="228.0" cy="214" r="5"/><circle cx="214.0" cy="230" r="5"/><circle cx="228.0" cy="230" r="5"/></g><g class="d-ai"><circle cx="254.0" cy="214" r="5"/><circle cx="268.0" cy="214" r="5"/><circle cx="254.0" cy="230" r="5"/><circle cx="268.0" cy="230" r="5"/></g><g class="d-mixed"><circle cx="294.0" cy="214" r="5"/><circle cx="308.0" cy="214" r="5"/><circle cx="294.0" cy="230" r="5"/><circle cx="308.0" cy="230" r="5"/></g><text x="40" y="318" class="d-ink t-head">Calibration</text><line x1="200" y1="328" x2="320" y2="328" class="d-line"/><g class="d-human"><circle cx="226.0" cy="320" r="4.5"/><circle cx="238.0" cy="320" r="4.5"/><circle cx="250.0" cy="320" r="4.5"/><circle cx="262.0" cy="320" r="4.5"/><circle cx="274.0" cy="320" r="4.5"/><circle cx="286.0" cy="320" r="4.5"/><circle cx="298.0" cy="320" r="4.5"/><circle cx="250.0" cy="310" r="4.5"/><circle cx="262.0" cy="310" r="4.5"/><circle cx="274.0" cy="310" r="4.5"/><circle cx="262.0" cy="300" r="4.5"/></g><rect x="206" y="292" width="5" height="42" rx="2.5" class="d-ink"/><text x="40" y="400" class="d-ink t-head">Reading</text><text x="40" y="419" class="d-soft t-small">Uncertain</text><rect x="196" y="396" width="124" height="12" rx="6" fill="url(#g-strip1)"/><rect x="256" y="390" width="66" height="24" rx="8" class="d-band"/><rect x="284" y="384" width="5" height="36" rx="2.5" class="d-ink"/></svg></div>
+      <figcaption>A reading in five steps. Everything here happens on your device: in the Windows program, or inside the browser page.</figcaption>
+    </figure>
+  </div>
+
+  <section class="section" aria-labelledby="reads">
+    <div class="wrap prose">
+      <span class="eyebrow">Step 1</span>
+      <h2 id="reads">What the model reads</h2>
+      <p>Litmus reads up to 8,192 tokens at a time, where a token is a word or a piece of one, and longer texts in parts. It keeps the text as written, with its formatting and code. This release is an English detector: almost all of the text it learned from was English, it was tested mainly on English text, and other languages are not supported yet.</p>
+      <p>It learned three origins from public datasets only: human writing, text written by AI models, and mixed text that a person and a model both wrote or edited. Every human text it learned from is dated before 2022, and no text was generated for it.</p>
+      <details class="more">
+        <summary>More detail: the model and its data</summary>
+        <div class="body">
+          <p>The model is a <strong>BitNet b1.58 encoder</strong>: every weight is −1, 0, or +1, and the values passing between layers are 8-bit integers, so its heaviest arithmetic is adding and subtracting.</p>
+          <figure class="diagram" style="margin:1rem 0">
+            <div class="frame"><svg class="wide" viewBox="0 0 640 180" role="img" aria-labelledby="d-ternary">
+              <title id="d-ternary">A row of ternary weights, minus 1, 0, plus 1, plus 1, 0, minus 1, times a row of inputs a1 to a6 gives minus a1 plus a3 plus a4 minus a6.</title>
+              <text x="10" y="26" class="d-soft t-small">weights</text>
+              <g class="t-mono" text-anchor="middle">
+                <rect x="10" y="36" width="50" height="38" rx="10" class="d-box"/><text x="35" y="60" class="d-ink">−1</text>
+                <rect x="66" y="36" width="50" height="38" rx="10" class="d-box"/><text x="91" y="60" class="d-soft">0</text>
+                <rect x="122" y="36" width="50" height="38" rx="10" class="d-box"/><text x="147" y="60" class="d-ink">+1</text>
+                <rect x="178" y="36" width="50" height="38" rx="10" class="d-box"/><text x="203" y="60" class="d-ink">+1</text>
+                <rect x="234" y="36" width="50" height="38" rx="10" class="d-box"/><text x="259" y="60" class="d-soft">0</text>
+                <rect x="290" y="36" width="50" height="38" rx="10" class="d-box"/><text x="315" y="60" class="d-ink">−1</text>
+              </g>
+              <text x="10" y="110" class="d-soft t-small">inputs</text>
+              <g class="t-mono" text-anchor="middle">
+                <rect x="10" y="120" width="50" height="38" rx="10" class="d-box"/><text x="35" y="144" class="d-ink">a1</text>
+                <rect x="66" y="120" width="50" height="38" rx="10" class="d-box"/><text x="91" y="144" class="d-ink">a2</text>
+                <rect x="122" y="120" width="50" height="38" rx="10" class="d-box"/><text x="147" y="144" class="d-ink">a3</text>
+                <rect x="178" y="120" width="50" height="38" rx="10" class="d-box"/><text x="203" y="144" class="d-ink">a4</text>
+                <rect x="234" y="120" width="50" height="38" rx="10" class="d-box"/><text x="259" y="144" class="d-ink">a5</text>
+                <rect x="290" y="120" width="50" height="38" rx="10" class="d-box"/><text x="315" y="144" class="d-ink">a6</text>
+              </g>
+              <line x1="352" y1="98" x2="392" y2="98" class="d-line" marker-end="url(#ar1)"/>
+              <rect x="400" y="72" width="230" height="52" rx="14" class="d-strong"/>
+              <text x="515" y="104" text-anchor="middle" class="d-ink t-mono" style="font-size:17px">−a1 + a3 + a4 − a6</text>
+            </svg><svg class="narrow" viewBox="0 0 340 232" role="img" aria-labelledby="d-ternary-n"><title id="d-ternary-n">A row of ternary weights, minus 1, 0, plus 1, plus 1, 0, minus 1, times a row of inputs a1 to a6 gives minus a1 plus a3 plus a4 minus a6.</title><text x="10" y="18" class="d-soft t-small">weights</text><text x="10" y="90" class="d-soft t-small">inputs</text><rect x="10" y="26" width="48" height="36" rx="10" class="d-box"/><text x="34" y="49" text-anchor="middle" class="d-ink t-mono">−1</text><rect x="10" y="98" width="48" height="36" rx="10" class="d-box"/><text x="34" y="121" text-anchor="middle" class="d-ink t-mono">a1</text><rect x="64" y="26" width="48" height="36" rx="10" class="d-box"/><text x="88" y="49" text-anchor="middle" class="d-soft t-mono">0</text><rect x="64" y="98" width="48" height="36" rx="10" class="d-box"/><text x="88" y="121" text-anchor="middle" class="d-ink t-mono">a2</text><rect x="118" y="26" width="48" height="36" rx="10" class="d-box"/><text x="142" y="49" text-anchor="middle" class="d-ink t-mono">+1</text><rect x="118" y="98" width="48" height="36" rx="10" class="d-box"/><text x="142" y="121" text-anchor="middle" class="d-ink t-mono">a3</text><rect x="172" y="26" width="48" height="36" rx="10" class="d-box"/><text x="196" y="49" text-anchor="middle" class="d-ink t-mono">+1</text><rect x="172" y="98" width="48" height="36" rx="10" class="d-box"/><text x="196" y="121" text-anchor="middle" class="d-ink t-mono">a4</text><rect x="226" y="26" width="48" height="36" rx="10" class="d-box"/><text x="250" y="49" text-anchor="middle" class="d-soft t-mono">0</text><rect x="226" y="98" width="48" height="36" rx="10" class="d-box"/><text x="250" y="121" text-anchor="middle" class="d-ink t-mono">a5</text><rect x="280" y="26" width="48" height="36" rx="10" class="d-box"/><text x="304" y="49" text-anchor="middle" class="d-ink t-mono">−1</text><rect x="280" y="98" width="48" height="36" rx="10" class="d-box"/><text x="304" y="121" text-anchor="middle" class="d-ink t-mono">a6</text><line x1="170" y1="142" x2="170" y2="166" class="d-line" marker-end="url(#ar1)"/><rect x="50" y="172" width="240" height="50" rx="14" class="d-strong"/><text x="170" y="203" text-anchor="middle" class="d-ink t-mono" style="font-size:17px">−a1 + a3 + a4 − a6</text></svg></div>
+            <figcaption>A weight of 0 skips its input, and the others add or subtract it; one multiply per output scales the sum.</figcaption>
+          </figure>
+          <p>Each layer looks at nearby tokens, in blocks that shift by half a block on alternate layers so that information still crosses them, which keeps the cost in proportion to the text's length. The model was trained from scratch on labeled pairs of texts: for every pair in a batch it learned to say whether the two share an origin. Its tokenizer is ModernBERT's, which works on bytes, so no text is unreadable to it.</p>
+          <p>The texts were split into five sets by whole clusters of similar texts, so that near-copies never cross from training into the sets used to choose, test, or calibrate the model: training, validation, test, the reference bank, and calibration. Training includes the official training splits of some public benchmark families, and the test split of every public benchmark in the <a href="benchmarks.html">results</a> is held out of all five sets.</p>
+          <p><a data-link="links.training_guide" href="https://github.com/lhallee/litmus/blob/main/docs/TRAINING.md">How Litmus was trained, step by step</a></p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="bank">
+    <div class="wrap prose">
+      <span class="eyebrow">Step 2</span>
+      <h2 id="bank">The reference bank</h2>
+      <p>Litmus does not ask a model "is this AI?" outright. It compares your text with a bank of reference texts of known origin and asks, for each one, how likely the two are to share an origin. Averaged over each origin's references, those likelihoods become the reading's three shares.</p>
+      <p>The bank holds only the model's vectors of those texts and a description of each, such as its source, the model that wrote it, its domain, format, and language. It never holds the texts themselves.</p>
+    </div>
+    <div class="wrap">
+      <figure class="diagram">
+        <div class="frame"><svg class="wide" viewBox="0 0 860 250" role="img" aria-labelledby="d-bank">
+          <title id="d-bank">Your text's vector goes through the pair head and is compared with every text in the human, AI, and mixed banks; the average same-origin probability per bank gives the three shares.</title>
+          <rect x="10" y="100" width="130" height="50" rx="14" class="d-box"/>
+          <text x="75" y="130" text-anchor="middle" class="d-ink t-head">Your text</text>
+          <line x1="144" y1="125" x2="176" y2="125" class="d-line" marker-end="url(#ar1)"/>
+          <rect x="180" y="92" width="130" height="66" rx="14" class="d-strong"/>
+          <text x="245" y="130" text-anchor="middle" class="d-ink t-head">Pair head</text>
+          <line x1="314" y1="114" x2="384" y2="70" class="d-line" marker-end="url(#ar1)"/>
+          <line x1="314" y1="125" x2="544" y2="70" class="d-line" marker-end="url(#ar1)"/>
+          <line x1="314" y1="136" x2="704" y2="70" class="d-line" marker-end="url(#ar1)"/>
+          <text x="440" y="22" text-anchor="middle" class="t-human t-head">Human bank</text>
+          <text x="600" y="22" text-anchor="middle" class="t-ai t-head">AI bank</text>
+          <text x="760" y="22" text-anchor="middle" class="t-mixed t-head">Mixed bank</text>
+          <g class="d-human"><circle cx="410" cy="40" r="6"/><circle cx="430" cy="40" r="6"/><circle cx="450" cy="40" r="6"/><circle cx="470" cy="40" r="6"/><circle cx="410" cy="58" r="6"/><circle cx="430" cy="58" r="6"/><circle cx="450" cy="58" r="6"/><circle cx="470" cy="58" r="6"/></g>
+          <g class="d-ai"><circle cx="570" cy="40" r="6"/><circle cx="590" cy="40" r="6"/><circle cx="610" cy="40" r="6"/><circle cx="630" cy="40" r="6"/><circle cx="570" cy="58" r="6"/><circle cx="590" cy="58" r="6"/><circle cx="610" cy="58" r="6"/><circle cx="630" cy="58" r="6"/></g>
+          <g class="d-mixed"><circle cx="730" cy="40" r="6"/><circle cx="750" cy="40" r="6"/><circle cx="770" cy="40" r="6"/><circle cx="790" cy="40" r="6"/><circle cx="730" cy="58" r="6"/><circle cx="750" cy="58" r="6"/><circle cx="770" cy="58" r="6"/><circle cx="790" cy="58" r="6"/></g>
+          <rect x="400" y="170" width="90" height="18" rx="9" class="d-human"/>
+          <rect x="560" y="170" width="44" height="18" rx="9" class="d-ai"/>
+          <rect x="720" y="170" width="28" height="18" rx="9" class="d-mixed"/>
+          <text x="400" y="214" class="t-human t-small">share, human</text>
+          <text x="560" y="214" class="t-ai t-small">share, AI</text>
+          <text x="720" y="214" class="t-mixed t-small">share, mixed</text>
+        </svg><svg class="narrow" viewBox="0 0 360 290" role="img" aria-labelledby="d-bank-n"><title id="d-bank-n">Your text's vector goes through the pair head and is compared with every text in the human, AI, and mixed banks; the average same-origin probability per bank gives the three shares.</title><rect x="110" y="10" width="140" height="40" rx="12" class="d-box"/><text x="180" y="35" text-anchor="middle" class="d-ink t-head">Your text</text><line x1="180" y1="52" x2="180" y2="74" class="d-line" marker-end="url(#ar1)"/><rect x="110" y="78" width="140" height="44" rx="12" class="d-strong"/><text x="180" y="105" text-anchor="middle" class="d-ink t-head">Pair head</text><line x1="180" y1="124" x2="60" y2="160" class="d-line" marker-end="url(#ar1)"/><text x="60" y="180" text-anchor="middle" class="t-human t-head">Human bank</text><g class="d-human"><circle cx="36.0" cy="196" r="5"/><circle cx="52.0" cy="196" r="5"/><circle cx="68.0" cy="196" r="5"/><circle cx="84.0" cy="196" r="5"/><circle cx="36.0" cy="212" r="5"/><circle cx="52.0" cy="212" r="5"/><circle cx="68.0" cy="212" r="5"/><circle cx="84.0" cy="212" r="5"/></g><rect x="20" y="232" width="80" height="16" rx="8" class="d-human"/><text x="60" y="272" text-anchor="middle" class="t-human t-small">share, human</text><line x1="180" y1="124" x2="180" y2="160" class="d-line" marker-end="url(#ar1)"/><text x="180" y="180" text-anchor="middle" class="t-ai t-head">AI bank</text><g class="d-ai"><circle cx="156.0" cy="196" r="5"/><circle cx="172.0" cy="196" r="5"/><circle cx="188.0" cy="196" r="5"/><circle cx="204.0" cy="196" r="5"/><circle cx="156.0" cy="212" r="5"/><circle cx="172.0" cy="212" r="5"/><circle cx="188.0" cy="212" r="5"/><circle cx="204.0" cy="212" r="5"/></g><rect x="160" y="232" width="40" height="16" rx="8" class="d-ai"/><text x="180" y="272" text-anchor="middle" class="t-ai t-small">share, AI</text><line x1="180" y1="124" x2="300" y2="160" class="d-line" marker-end="url(#ar1)"/><text x="300" y="180" text-anchor="middle" class="t-mixed t-head">Mixed bank</text><g class="d-mixed"><circle cx="276.0" cy="196" r="5"/><circle cx="292.0" cy="196" r="5"/><circle cx="308.0" cy="196" r="5"/><circle cx="324.0" cy="196" r="5"/><circle cx="276.0" cy="212" r="5"/><circle cx="292.0" cy="212" r="5"/><circle cx="308.0" cy="212" r="5"/><circle cx="324.0" cy="212" r="5"/></g><rect x="288" y="232" width="24" height="16" rx="8" class="d-mixed"/><text x="300" y="272" text-anchor="middle" class="t-mixed t-small">share, mixed</text></svg></div>
+        <figcaption>The comparison with the bank. Each pair gives a probability that the two texts share an origin, and the average over each bank, divided by the three averages' sum, is that origin's share.</figcaption>
+      </figure>
+    </div>
+    <div class="wrap prose">
+      <details class="more">
+        <summary>More detail: the pair head</summary>
+        <div class="body">
+          <p>The pair head turns a text's vector into a unit query <em>q</em> and key <em>k</em>. The same-origin score of texts <em>a</em> and <em>b</em> is <code>scale · (q_a · k_b + q_b · k_a) / 2 + bias</code>, the same whichever text comes first. It was trained on every pair across two batches of texts with the true answer for each pair, so it learned what makes two human texts alike, two AI texts alike, and the two different, across many sources and formats.</p>
+          <p>Per origin, the reading keeps the mean and the spread of the same-origin probabilities over that origin's bank. The normalized means are the three shares, and one minus the human share is the score. Every reading can list its five nearest bank texts with their descriptions, so that a person can see what it was compared with.</p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="sure">
+    <div class="wrap prose">
+      <span class="eyebrow">Step 3</span>
+      <h2 id="sure">How sure, and what Uncertain means</h2>
+      <p>A raw score is hard to read, so Litmus compares every reading with calibration texts: texts of known origin and about the same length that it never trained on. For each origin it counts how many of that origin's calibration texts look less like that origin than yours does. If very few do, the origin is ruled out.</p>
+    </div>
+    <div class="wrap">
+      <figure class="diagram">
+        <div class="frame"><svg class="wide" viewBox="0 0 760 170" role="img" aria-labelledby="d-cal">
+          <title id="d-cal">Human calibration texts of about the same length lie along an axis from less human to more human; your text sits near the less human end, with only two calibration texts beyond it.</title>
+          <text x="30" y="26" class="t-human t-head">human calibration texts, about this length</text>
+          <rect x="30" y="44" width="148" height="70" rx="12" class="d-soft" opacity="0.12"/>
+          <g class="d-human">
+            <circle cx="70" cy="100" r="6"/><circle cx="128" cy="100" r="6"/>
+            <circle cx="236" cy="100" r="6"/><circle cx="292" cy="100" r="6"/><circle cx="340" cy="100" r="6"/>
+            <circle cx="388" cy="100" r="6"/><circle cx="420" cy="100" r="6"/><circle cx="452" cy="100" r="6"/>
+            <circle cx="480" cy="100" r="6"/><circle cx="506" cy="100" r="6"/><circle cx="530" cy="100" r="6"/>
+            <circle cx="552" cy="100" r="6"/><circle cx="574" cy="100" r="6"/><circle cx="596" cy="100" r="6"/>
+            <circle cx="618" cy="100" r="6"/><circle cx="640" cy="100" r="6"/><circle cx="662" cy="100" r="6"/><circle cx="690" cy="100" r="6"/>
+            <circle cx="452" cy="82" r="6"/><circle cx="530" cy="82" r="6"/><circle cx="574" cy="82" r="6"/><circle cx="618" cy="82" r="6"/>
+            <circle cx="596" cy="64" r="6"/><circle cx="552" cy="64" r="6"/>
+          </g>
+          <line x1="30" y1="118" x2="730" y2="118" class="d-line"/>
+          <rect x="175" y="54" width="6" height="74" rx="3" class="d-ink"/>
+          <text x="178" y="150" text-anchor="middle" class="d-ink t-small">your text</text>
+          <text x="30" y="150" class="d-soft t-small">less human</text>
+          <text x="730" y="150" text-anchor="end" class="d-soft t-small">more human</text>
+        </svg><svg class="narrow" viewBox="0 0 360 140" role="img" aria-labelledby="d-cal-n"><title id="d-cal-n">Human calibration texts of about the same length lie along an axis from less human to more human; your text sits near the less human end, with only two calibration texts beyond it.</title><text x="20" y="20" class="t-human t-head">human calibration texts, about this length</text><rect x="20" y="40" width="66" height="64" rx="10" class="d-soft" opacity="0.12"/><g class="d-human"><circle cx="38.3" cy="96" r="4.2"/><circle cx="64.8" cy="96" r="4.2"/><circle cx="114.2" cy="96" r="4.2"/><circle cx="139.8" cy="96" r="4.2"/><circle cx="161.7" cy="96" r="4.2"/><circle cx="183.7" cy="96" r="4.2"/><circle cx="198.3" cy="96" r="4.2"/><circle cx="212.9" cy="96" r="4.2"/><circle cx="225.7" cy="96" r="4.2"/><circle cx="237.6" cy="96" r="4.2"/><circle cx="248.6" cy="96" r="4.2"/><circle cx="258.6" cy="96" r="4.2"/><circle cx="268.7" cy="96" r="4.2"/><circle cx="278.7" cy="96" r="4.2"/><circle cx="288.8" cy="96" r="4.2"/><circle cx="298.9" cy="96" r="4.2"/><circle cx="308.9" cy="96" r="4.2"/><circle cx="321.7" cy="96" r="4.2"/><circle cx="212.9" cy="86" r="4.2"/><circle cx="248.6" cy="86" r="4.2"/><circle cx="268.7" cy="86" r="4.2"/><circle cx="288.8" cy="86" r="4.2"/><circle cx="278.7" cy="76" r="4.2"/><circle cx="258.6" cy="76" r="4.2"/></g><line x1="20" y1="104" x2="340" y2="104" class="d-line"/><rect x="83.5" y="46" width="5" height="66" rx="2.5" class="d-ink"/><text x="96" y="58" class="d-ink t-small">your text</text><text x="20" y="130" class="d-soft t-small">less human</text><text x="340" y="130" text-anchor="end" class="d-soft t-small">more human</text></svg></div>
+        <figcaption>Counting for the human origin. Here 2 of the 24 human calibration texts read at most as human as yours, so the human p-value is (1 + 2) / (24 + 1) = 12%, and human is not ruled out at the 10% level. A real group holds many more texts.</figcaption>
+      </figure>
+    </div>
+    <div class="wrap prose">
+      <p>The origins it cannot rule out at the 10% level make the verdict. One origin gives <strong>Human</strong>, <strong>AI</strong>, or <strong>Mixed</strong>. Two or three give <strong>Uncertain</strong>: the evidence cannot separate them, and the band on the strip shows which remain. None gives <strong>Unlike reference</strong>, because the text resembles none of the reference texts closely enough for a call.</p>
+      <p>The guarantee is concrete. Among human texts like the calibration texts, at most 5% are called not human at the 5% level. That bounds false flags of human writing, and says nothing about how much AI text is caught, which the <a href="benchmarks.html">results</a> measure.</p>
+      <details class="more">
+        <summary>More detail: p-values, the probability, and its interval</summary>
+        <div class="body">
+          <p>The count is a split conformal p-value, <code>p = (1 + k) / (n + 1)</code>, where <em>k</em> of the <em>n</em> calibration texts of that origin and length group read at most this much like the origin. Sets are reported at the 5% and 10% levels.</p>
+          <p>The <strong>probability that the text is not human</strong> comes from inductive Venn-Abers calibration, which calibrates the score twice, once as if the text were human and once as if it were not. The two answers are the ends of the <strong>interval</strong>, so the interval is narrow where many calibration texts scored alike and wide where they are scarce.</p>
+          <p>A text that sits farther from its nearest bank texts than 99% of calibration texts of its length is flagged as <strong>unlike the reference</strong>, whatever its verdict. The calibration tables are a few kilobytes and ship inside the model's files.</p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="long">
+    <div class="wrap prose">
+      <span class="eyebrow">Step 4</span>
+      <h2 id="long">Long texts, and where the reading changes</h2>
+      <p>A text longer than 8,192 tokens is cut into equal chunks, each read like a text of its own, and the verdict combines them. The tint over the text, a heat map in cells of 128 tokens, shows where the reading changes. The map shows where to look; the verdict comes from the chunks, never from the most extreme passage.</p>
+    </div>
+    <div class="wrap">
+      <figure class="diagram">
+        <div class="frame"><svg class="wide" viewBox="0 0 760 210" role="img" aria-labelledby="d-long">
+          <title id="d-long">A long document is cut into four equal chunks. Inside a chunk, windows 512 tokens wide start every 128 tokens, and each 128-token cell is colored by the windows over it.</title>
+          <text x="10" y="24" class="d-soft t-small">document</text>
+          <rect x="10" y="34" width="180" height="32" rx="10" class="d-strong"/><text x="100" y="55" text-anchor="middle" class="d-ink t-small">chunk 1</text>
+          <rect x="196" y="34" width="180" height="32" rx="10" class="d-box"/><text x="286" y="55" text-anchor="middle" class="d-ink t-small">chunk 2</text>
+          <rect x="382" y="34" width="180" height="32" rx="10" class="d-box"/><text x="472" y="55" text-anchor="middle" class="d-ink t-small">chunk 3</text>
+          <rect x="568" y="34" width="180" height="32" rx="10" class="d-box"/><text x="658" y="55" text-anchor="middle" class="d-ink t-small">chunk 4</text>
+          <text x="10" y="94" class="d-soft t-small">windows in chunk 1</text>
+          <g class="d-soft" opacity="0.5">
+            <rect x="10" y="104" width="368" height="10" rx="5"/>
+            <rect x="102" y="118" width="368" height="10" rx="5"/>
+            <rect x="194" y="132" width="368" height="10" rx="5"/>
+            <rect x="286" y="146" width="368" height="10" rx="5"/>
+            <rect x="378" y="160" width="368" height="10" rx="5"/>
+          </g>
+          <rect x="10" y="182" width="88" height="20" rx="6" class="d-human"/>
+          <rect x="102" y="182" width="88" height="20" rx="6" class="d-human"/>
+          <rect x="194" y="182" width="88" height="20" rx="6" class="d-human"/>
+          <rect x="286" y="182" width="88" height="20" rx="6" class="d-mixed"/>
+          <rect x="378" y="182" width="88" height="20" rx="6" class="d-ai"/>
+          <rect x="470" y="182" width="88" height="20" rx="6" class="d-ai"/>
+          <rect x="562" y="182" width="88" height="20" rx="6" class="d-ai"/>
+          <rect x="654" y="182" width="92" height="20" rx="6" class="d-ai"/>
+        </svg><svg class="narrow" viewBox="0 0 360 196" role="img" aria-labelledby="d-long-n"><title id="d-long-n">A long document is cut into four equal chunks. Inside a chunk, windows 512 tokens wide start every 128 tokens, and each 128-token cell is colored by the windows over it.</title><text x="10" y="16" class="d-soft t-small">document</text><rect x="10" y="24" width="80" height="30" rx="10" class="d-strong"/><text x="50" y="44" text-anchor="middle" class="d-ink t-small">chunk 1</text><rect x="96" y="24" width="80" height="30" rx="10" class="d-box"/><text x="136" y="44" text-anchor="middle" class="d-ink t-small">chunk 2</text><rect x="182" y="24" width="80" height="30" rx="10" class="d-box"/><text x="222" y="44" text-anchor="middle" class="d-ink t-small">chunk 3</text><rect x="268" y="24" width="80" height="30" rx="10" class="d-box"/><text x="308" y="44" text-anchor="middle" class="d-ink t-small">chunk 4</text><text x="10" y="82" class="d-soft t-small">windows in chunk 1</text><g class="d-soft" opacity="0.5"><rect x="10" y="92" width="168" height="8" rx="4"/><rect x="52" y="104" width="168" height="8" rx="4"/><rect x="94" y="116" width="168" height="8" rx="4"/><rect x="136" y="128" width="168" height="8" rx="4"/><rect x="178" y="140" width="168" height="8" rx="4"/></g><rect x="10" y="164" width="38" height="20" rx="6" class="d-human"/><rect x="52" y="164" width="38" height="20" rx="6" class="d-human"/><rect x="94" y="164" width="38" height="20" rx="6" class="d-human"/><rect x="136" y="164" width="38" height="20" rx="6" class="d-mixed"/><rect x="178" y="164" width="38" height="20" rx="6" class="d-ai"/><rect x="220" y="164" width="38" height="20" rx="6" class="d-ai"/><rect x="262" y="164" width="38" height="20" rx="6" class="d-ai"/><rect x="304" y="164" width="38" height="20" rx="6" class="d-ai"/></svg></div>
+        <figcaption>Chunks decide the verdict; windows and cells draw the map. Here the first three cells lean human, the fourth mixed, and the rest AI.</figcaption>
+      </figure>
+    </div>
+    <div class="wrap prose">
+      <details class="more">
+        <summary>More detail: combining chunks and drawing the map</summary>
+        <div class="body">
+          <p>A text of <em>n</em> tokens is read as ⌈<em>n</em> / 8,192⌉ equal chunks. Each origin's p-value for the whole text is twice the chunks' mean p-value, capped at 1, which stays valid however much the chunks resemble each other (Vovk and Wang, Biometrika, 2020). The probability is the chunks' mean, its interval widened when they disagree. When one chunk reads clearly as AI and another clearly as human, a separate mixed-document signal says which chunks.</p>
+          <p>The map's windows are 512 tokens wide and start every 128 tokens. The model keeps running totals as it reads, so each window costs a subtraction rather than a second pass. A cell is colored by the windows over it and hatched when they leave a wide band. A window is read with its neighbors in view, so its reading is close to, but not the same as, the reading of those words alone.</p>
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="limits">
+    <div class="wrap prose">
+      <h2 id="limits">What it cannot tell you</h2>
+      <ul class="checks">
+        <li><strong>Who wrote the text, or why.</strong> It reads the words on the page, not the process that made them, so it cannot say whether a model was used with permission, disclosed, or used only to fix spelling.</li>
+        <li><strong>How much of a mixed text a model wrote.</strong> The heat map shows where a long text's reading changes, and the verdict does not measure a share.</li>
+        <li><strong>Anything certain about a short text.</strong> Short texts are less reliable: a sentence or two carries little evidence, and the band and the interval stay wide to show it.</li>
+        <li><strong>Anything reliable about a language other than English.</strong> This release is an English detector: almost all of the text it learned from was English, it was tested mainly on English text, and other languages are not supported yet.</li>
+        <li><strong>Anything reliable about text unlike its references.</strong> New models and unusual formats can fall outside what it has seen, and the Unlike reference verdict catches some of these, not all.</li>
+        <li><strong>Proof.</strong> Some human text is called not human at the rate the level allows, and more often when it is unlike the calibration texts.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="runs">
+    <div class="wrap prose">
+      <h2 id="runs">Where it runs</h2>
+      <p>One engine, written in Rust, runs the same model in the Windows program, the command line, and the browser page, where it is compiled to WebAssembly. Its fast paths for x86, Arm, and WebAssembly processors are tested to give exactly the same numbers as a plain reference version. On one processor core the program reads about <span data-value="results.release.app_tokens_per_second" data-format="int">28,267</span> tokens a second and the browser page about <span data-value="results.release.browser_tokens_per_second" data-format="int">5,540</span>, with no graphics card.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="reading.html">How to read a result</a>
+        <a class="btn" href="use.html">Try it in your browser</a>
+      </div>
+      <p class="small soft">For the whole training recipe, data, and evaluation: <a data-link="links.training_guide" href="https://github.com/lhallee/litmus/blob/main/docs/TRAINING.md">How Litmus was trained, step by step</a>.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="foot">
+      <div class="about">
+        <a class="brand" href="index.html"><img src="litmus_mark.svg" alt="" width="22" height="30">Litmus</a>
+        <p>Litmus is a free detector of AI written text that says how sure it is.</p>
+      </div>
+      <nav aria-label="Litmus">
+        <h2>Litmus</h2>
+        <ul>
+          <li><a href="use.html">Use Litmus</a></li>
+          <li><a href="download.html">Download</a></li>
+          <li><a href="how.html">How it works</a></li>
+          <li><a href="reading.html">Reading a result</a></li>
+          <li><a href="benchmarks.html">Results</a></li>
+        </ul>
+      </nav>
+      <nav aria-label="More">
+        <h2>More</h2>
+        <ul>
+          <li><a href="privacy.html">Privacy</a></li>
+          <li><a href="license.html">License</a></li>
+          <li><a href="https://github.com/lhallee/litmus">GitHub</a></li>
+          <li data-show="links.model_on_hugging_face" hidden><a data-link="links.model_on_hugging_face">Model on Hugging Face</a></li>
+          <li data-hide="links.model_on_hugging_face" class="later">Model on Hugging Face: coming soon</li>
+          <li><a href="https://github.com/lhallee/litmus/blob/main/docs/DEVELOPING.md">Developer guide</a></li>
+          <li><a href="https://paypal.me/lnblog">Support Litmus</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="legal">
+      <p>Free for noncommercial use under the <a href="license.html">PolyForm Noncommercial License 1.0.0</a>.</p>
+      <p class="notice">Required Notice: Copyright Logan Hallee (https://github.com/lhallee/litmus)</p>
+    </div>
+  </div>
+</footer>
+</body>
+</html>

@@ -1,0 +1,8 @@
+{
+ "schema": 1,
+ "training_guide": "https://github.com/lhallee/litmus/blob/main/docs/TRAINING.md",
+ "contribute_site": "",
+ "model_on_hugging_face": "https://huggingface.co/lhallee/litmus",
+ "download_macos_app": "",
+ "download_linux_app": "https://github.com/lhallee/litmus/releases/download/v1.0.0/litmus-app-linux-x86_64"
+}
