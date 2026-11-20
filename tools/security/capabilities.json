@@ -207,6 +207,12 @@
     "filesystem_write": "writes the one JSON of GPU measurements to the file named on its command line, and its folder"
    }
   },
+  "benchmarks/tests/test_detectors.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes stand-in /proc/cpuinfo files under pytest's temporary folder, to test how the processor is named"
+   }
+  },
   "benchmarks/tests/test_gpu_use.py": {
    "component": "training",
    "capabilities": {
