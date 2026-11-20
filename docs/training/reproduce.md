@@ -42,23 +42,25 @@ python -m litmus_teacher embed --corpus /work/corpus2/run2/corpus/data --out /wo
 # Token store, then the split and the store's rows
 python -m litmus_student.data --corpus /work/corpus2/run2/corpus/data --out /work/corpus2/student_store --tokens-only
 python -m litmus_teacher split --corpus /work/corpus2/run2/corpus/data --embeddings /work/corpus2/embed/modernbert_base \
-    --out /work/corpus2/teacher/split_english --keep-docs-together \
-    --targets test=20000,calibration=20000,validation=10000,bank=0,bank_draw=4096 --bank-draw-origins mixed \
-    --rows-per-cluster 1000 --cap 100 --train-language-ratio 1.5 --held-out-languages en und
-python -m litmus_student.data --corpus /work/corpus2/run2/corpus/data --out /work/corpus2/student_store \
-    --split /work/corpus2/teacher/split_english/split.parquet
-# Training, labels only, through launch/student_chain.sh (SIZE=s192_l4 MINUTES=240 TEACHER= LABELS_ONLY=1
-# BANK_RECIPE=mixed_out BANK_PER_ORIGIN=2048 INTEGER_ATTENTION=1 INT8_OUTPUT=1 SETTINGS=/work/student/search/summary.json)
-python -m litmus_student.train --config s192_l4 --data /work/corpus2/student_store --experiment-id 2026-11-18_second_build \
-    --out /work/corpus2/student/s192_l4_labels_only/train --steps 60000 --minutes 240 --texts-per-step 1024 --micro-tokens 262144 \
-    --eval-every 500 --memory-fraction 1.0 --settings /work/student/search/summary.json --labels-only \
-    --bank-recipe mixed_out --bank-per-origin 2048 --integer-attention --int8-output
-# Patience (a host watcher): from reading 42 every reading's checkpoint is kept, and training stops after ten readings
-# with no new best validation PR AUC; reading 55's checkpoint is the release's best.pt
-python -m litmus_student.export --checkpoint <run>/train/best.pt --data /work/corpus2/student_store \
-    --corpus /work/corpus2/run2/corpus/data --out <run>/release --bank-recipe mixed_out --bank-per-origin 2048
-python -m litmus_student.evaluate --checkpoint <run>/train/best.pt --release <run>/release --data /work/corpus2/student_store \
-    --experiment-id 2026-11-18_second_build --out <run>/evaluation_validation --split validation --long-documents 1500 \
+    --out /work/corpus2/teacher/split_v11 --keep-docs-together \
+    --targets test=20000,calibration=20000,validation=10000,bank=9300,bank_draw=0 --mixed-share 1.0 \
+    --rows-per-cluster 1000 --cap 50 --train-language-ratio 1.5 --held-out-languages en und
+python -m litmus_student.data --corpus /work/corpus2/run2/corpus/data --out /work/corpus2/student_store_v11 \
+    --split /work/corpus2/teacher/split_v11/split.parquet   # the token store's tokens, linked, with this split's rows
+# The text store the presentation reads, and the synonym table (WordNet 3.0 through nltk, in a throwaway folder)
+python -m litmus_student.data --corpus /work/corpus2/run2/corpus/data --out /work/corpus2/student_texts --texts
+bash experiments/tooling/quill/2026-11-19_canonical_retrain/scripts/synonym_table.sh /work/corpus2/synonyms/wordnet.json
+# Training, labels only, through launch/student_chain.sh (experiments/.../2026-11-19_canonical_retrain/scripts/v11_queue.sh)
+python -m litmus_student.train --config s512_l6 --data /work/corpus2/student_store_v11 --experiment-id 2026-11-19_canonical_retrain \
+    --out /work/corpus2/student_v11/s512_l6_labels_only/train --steps 60000 --minutes 0 --texts-per-step 1024 \
+    --micro-tokens 65536 --eval-every 500 --memory-fraction 1.0 --settings /work/student/search/summary.json --labels-only \
+    --bank-recipe reference --bank-per-origin 8192 --integer-attention --int8-output --cut-ends 0.5 --cut-starts 0.25 \
+    --texts /work/corpus2/student_texts --present-workers 16 --synonyms /work/corpus2/synonyms/wordnet.json --uniform \
+    --mlm-share 0.5 --mlm-weight 0.1 --epochs 4 --eval-every-epochs 0.5 --select pr_auc --patience 3 --eval-per-origin 10000
+python -m litmus_student.export --checkpoint <run>/train/best.pt --data /work/corpus2/student_store_v11 \
+    --corpus /work/corpus2/run2/corpus/data --out <run>/release --bank-recipe reference --bank-per-origin 8192
+python -m litmus_student.evaluate --checkpoint <run>/train/best.pt --release <run>/release --data /work/corpus2/student_store_v11 \
+    --experiment-id 2026-11-19_canonical_retrain --out <run>/evaluation_validation --split validation --long-documents 1500 \
     --spliced-per-cell 100
 python -m litmus_student.evaluate ... --out <run>/evaluation_test --split test (the same arguments, read once)
 ```
@@ -85,16 +87,19 @@ bash launch/teacher_chain.sh
 python -m litmus_student.data --corpus $CORPUS --out /work/student_store --split /work/teacher/split/split.parquet
 
 # 6. Training: a pilot, then the run. The release trains on labels alone, from scratch, with no teacher export;
-#    a distilled run adds --teacher-export /work/teacher/export and drops --labels-only. A split with no `bank` set,
-#    as the release's, needs the bank recipe the export will use
+#    a distilled run adds --teacher-export /work/teacher/export and drops --labels-only. The release reads its
+#    validation against the bank the export will draw (`reference`, the held-out bank set); its presentation reads
+#    the corpus's texts from a text store (`python -m litmus_student.data --corpus $CORPUS --out /work/texts --texts`)
 python -m litmus_student.train --config SIZE --data /work/student_store --experiment-id ID --out /work/student/SIZE \
-    --labels-only --minutes M [--settings SEARCH/summary.json] [--bank-recipe mixed_out --bank-per-origin N] --pilot
+    --labels-only --minutes M [--settings SEARCH/summary.json] [--bank-recipe reference --bank-per-origin N] --pilot
 python -m litmus_student.train --config SIZE --data /work/student_store --experiment-id ID --out /work/student/SIZE \
-    --labels-only --minutes M [--settings SEARCH/summary.json] [--bank-recipe mixed_out --bank-per-origin N]
+    --labels-only [--settings SEARCH/summary.json] [--bank-recipe reference --bank-per-origin N] \
+    [--uniform --texts /work/texts --synonyms SYNONYMS.json --cut-ends 0.5 --cut-starts 0.25 --mlm-share 0.5 \
+     --epochs E --eval-every-epochs 0.5 --select pr_auc --patience 3]
 
 # 7. Export the release: weights, bank, calibration, checked against the reference
 python -m litmus_student.export --checkpoint /work/student/SIZE/best.pt --data /work/student_store \
-    --corpus $CORPUS --out /work/release [--bank-recipe mixed_out --bank-per-origin N] [--attention integer]
+    --corpus $CORPUS --out /work/release [--bank-recipe reference --bank-per-origin N] [--attention integer]
 
 # 8. Evaluate: validation, then test once
 python -m litmus_student.evaluate --checkpoint /work/student/SIZE/best.pt --release /work/release \
@@ -133,11 +138,13 @@ Tests: `python -m pytest` in `corpus/`, `teacher/`, `student/`, and `benchmarks/
 | Token store, 4.52e9 tokens | NVIDIA GH200 machine, 12 CPU cores | 17 min |
 | Teacher embeddings of 5,003,766 new rows (ModernBERT-base, 9,835,199 rows reused) | NVIDIA GH200 | 75 min |
 | Split (e-means, 14,828,377 rows to 14,828 clusters) and the token store's rows | NVIDIA GH200 | 4 min, then the rows |
-| Release ablations, 16 arms of 1,000 steps | NVIDIA A10 (one arm also on a GH200) | about 0.65 h an arm |
-| Training, `s192_l4`, 32,500 steps | NVIDIA GH200 | 3 h 5 min |
-| Export, validation and one test read of two candidates | NVIDIA GH200 | 15 min |
+| The v1.1 split (e-means, five sets, cap 50) and the store's rows | NVIDIA GH200 | 5 min, then the rows |
+| Text store (17.4 million texts, 18.1 GB) and the synonym table | NVIDIA GH200 machine, CPU | 3 min |
+| Training, `s512_l6`, four epochs, 43,452 steps | NVIDIA GH200 | 19 h 30 min |
+| Export, validation and one test read | NVIDIA GH200 | 12 min |
+| Benchmarks, 16 sets of at most 3,000 rows | NVIDIA GH200 | 4 min |
 
-The first build's corpus and its stored embeddings (on an NVIDIA H100 and a GH200, 2026-11-17) are reused, not recomputed. Litmus's own release needs no GPU: the engine reads on one CPU core.
+The first build's corpus and its stored embeddings (on an NVIDIA H100 and a GH200, 2026-11-17) are reused, not recomputed, and so are 1.0.0's release ablations (on an NVIDIA A10). Litmus's own release needs no GPU: the engine reads on one CPU core.
 <!--/litmus-->
 
 For planning, [`teacher/README.md`](../../teacher/README.md) (Cost on an H100) projects each teacher step from FLOP

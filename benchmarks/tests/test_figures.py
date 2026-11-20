@@ -7,7 +7,8 @@ import pytest
 from pathlib import Path
 from litmus_benchmarks.evaluate import evaluate_scores
 from litmus_benchmarks.figures import (THEME_NAMES, claims_figure, draw_site_figures, headline_figure, origins_figure,
-                                       pareto_figure, pareto_frontier, raid_figure, reporter_category, strata_figure)
+                                       own_split_lengths, pareto_figure, pareto_frontier, raid_figure, reporter_category,
+                                       speed_figure, strata_figure)
 from litmus_benchmarks.results import align_texts, attack_rows, length_rows, mean_pr_auc
 from PIL import Image
 
@@ -51,6 +52,7 @@ def costs() -> pd.DataFrame:
     return pd.DataFrame({"detector": ["Litmus engine", "ai-vs-human-checker", "Binoculars", "e5-small-lora",
                                       "Desklib v1.01", "TMR (Target Mining RoBERTa)"],
                          "tokens_per_second": [9000.0, 260.0, 4.3, 1600.0, 120.0, 490.0],
+                         "words_per_second": [7300.0, 210.0, 3.5, 1300.0, 98.0, 400.0],
                          "measured": [True, True, True, True, True, False]})
 
 
@@ -59,7 +61,9 @@ def evaluation() -> dict:
     rng = np.random.default_rng(2)
     labels = rng.integers(0, 3, size=300)
     return {"split": "validation", "passages": [{"label": int(label), "probability": float(np.clip(0.3 * label + rng.normal(0.2, 0.15), 0, 1))}
-                                                for label in labels]}
+                                                for label in labels],
+            "rows": [{"evaluation": "passages", "stratum_kind": "tokens", "stratum": band, "metric": "pr_auc", "value": value}
+                     for band, value in (("1-128", 0.92), ("129-512", 0.99), ("2049-8192", 1.0), ("all", 0.95))]}
 
 
 def assert_png_at_300_dpi(path: Path) -> None:
@@ -94,6 +98,18 @@ def test_pareto_figure_and_frontier(scores: pd.DataFrame, costs: pd.DataFrame, p
     assert pareto_frontier(np.array([3.0, 1.0, 2.0, 4.0]), np.array([0.9, 0.5, 0.4, 0.8])).tolist() == [1, 0]
 
 
+@pytest.mark.parametrize("theme", THEME_NAMES)
+def test_speed_figure_with_and_without_the_own_split(scores: pd.DataFrame, costs: pd.DataFrame, evaluation: dict,
+                                                     tmp_path: Path, theme: str) -> None:
+    fair = mean_pr_auc(scores, ["beemo"], replicates=10)
+    lengths = length_rows(scores, ["mage", "beemo"], replicates=10)
+    assert_png_at_300_dpi(speed_figure(fair, costs, lengths, tmp_path / "speed.png", theme=theme, evaluation=evaluation))
+    assert_png_at_300_dpi(speed_figure(fair, costs, lengths, tmp_path / "speed_public.png", theme=theme))
+    assert own_split_lengths(evaluation, "pr_auc")["stratum"].tolist() == ["1-128", "129-512", "2049-8192"]
+    with pytest.raises(ValueError, match="no roc_auc rows"):
+        own_split_lengths(evaluation, "roc_auc")
+
+
 def test_origins_figure_reads_own_split(scores: pd.DataFrame, evaluation: dict, tmp_path: Path) -> None:
     assert_png_at_300_dpi(origins_figure(scores, tmp_path / "origins.png", theme="dark", evaluation=evaluation))
     assert_png_at_300_dpi(origins_figure(scores, tmp_path / "origins_pooled.png", theme="light"))
@@ -107,7 +123,7 @@ def test_site_figures_write_both_themes_and_docs_copies(metrics: pd.DataFrame, s
               "every": mean_pr_auc(scores, ["beemo", "mage"], replicates=10), "mapping": MAPPING, "evaluation": evaluation}
     paths = draw_site_figures(inputs, tmp_path / "site", tmp_path / "docs")
     names = {path.name for path in paths}
-    for name in ("headline", "raid", "pareto", "strata", "origins"):
+    for name in ("headline", "raid", "pareto", "speed", "strata", "origins"):
         for theme in THEME_NAMES:
             assert f"{name}_{theme}.png" in names and f"benchmarks_{name}_{theme}.png" in names
 

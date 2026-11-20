@@ -42,7 +42,8 @@ from typing import Any
 from torch import Tensor
 
 from .contract import reference
-from .data import BANK_RECIPES, TokenStore, cluster_stratified_rows, recipe_bank_rows
+from .data import BANK_RECIPES, TokenStore, cluster_stratified_rows, pack, packed_batch, recipe_bank_rows
+from .evaluate import bank_readings
 from .model import StudentModel, single_text_batch
 
 
@@ -119,6 +120,12 @@ def model_tensors(model: StudentModel) -> dict[str, np.ndarray]:
         tensors[f"head.{name}.weight"] = linear.weight.detach().half().cpu().numpy()
         tensors[f"head.{name}.bias"] = linear.bias.detach().half().cpu().numpy()
     tensors["head.pair"] = np.asarray([head.scale.item(), head.bias.item()], dtype=np.float32)
+    if model.mlm is not None:  # the masked language head, for the surprise reading (SPEC.md, Surprise)
+        tensors["mlm.proj_norm"] = gain(model.mlm.project.norm)
+        tensors.update(ternary_tensors("mlm.proj", model.mlm.project.linear))
+        tensors["mlm.norm"] = gain(model.mlm.norm)
+        tensors["mlm.scale"] = np.asarray([model.mlm.log_scale.exp().item()], dtype=np.float32)
+        tensors["mlm.bias"] = model.mlm.token_bias.detach().float().cpu().numpy()  # (V,)
 
     return tensors  # name to array (SPEC.md, section 6)
 
@@ -183,6 +190,33 @@ def text_vectors(model: StudentModel, ids: np.ndarray) -> dict[str, np.ndarray]:
     return {"pooled": pooled[0].float().cpu().numpy(), "query": query_key[:w], "key": query_key[w:]}  # (2d,), (w,), (w,)
 
 
+@torch.no_grad()
+def mean_log_probabilities(model: StudentModel, texts: list[np.ndarray], micro_tokens: int, device: torch.device) -> np.ndarray:
+    """Each text's mean token log probability under the masked language head with nothing masked, in eval mode and
+    float32, the release's arithmetic (SPEC.md, Surprise): texts of at most a chunk, (l_i,) ids each, to (m,) float64."""
+    assert model.mlm is not None, "the model has a masked language head"
+    model.eval()
+    W = model.config.block_size
+    lengths = np.asarray([len(ids) for ids in texts], dtype=np.int64)  # (m,)
+    assert lengths.max(initial=0) <= model.config.chunk_tokens, "a text longer than a chunk is read as chunks"
+    out = np.zeros(len(texts))  # (m,)
+    for plan in pack(lengths, micro_tokens, W):
+        batch = packed_batch(plan, texts, W, W).to(device)
+        states = model.encoder(batch)  # (t, d) float32
+        valid = batch.segment >= 0  # (t,)
+        values = model.mlm.log_probabilities(states[valid], batch.tokens[valid], model.encoder.embed).double()  # (t_v,)
+        sums = torch.zeros(batch.texts, dtype=torch.float64, device=device).index_add_(0, batch.segment[valid], values)  # (n,)
+        counts = torch.bincount(batch.segment[valid], minlength=batch.texts).double()  # (n,)
+        out[[placement.row for placement in plan]] = (sums / counts).cpu().numpy()
+
+    return out  # (m,)
+
+
+# The surprise reading against `reference.py`: the same states feed the head, whose logits are float32 sums over 128
+# products in different orders, so the mean token log probability is held to a few thousandths of a nat.
+SURPRISE_TOLERANCES = {"worst": 2e-2, "median": 2e-3}
+
+
 # The model against `reference.py` on the release (SPEC.md, Parity). The two round in different orders, and one
 # quantized activation that lands on the other side of a half moves a short text's vectors by a step that pooling
 # does not average out: on a trained checkpoint (s192_l4, a 64-wide head) queries and keys
@@ -225,8 +259,18 @@ def verify_release(model: StudentModel, release: Path, texts: list[np.ndarray]) 
     if any(worst[name] > tolerances[name] for name in worst) or any(typical[name] > typical_tolerances[name] for name in typical):
         raise AssertionError(f"the release disagrees with the model beyond {tolerances} at worst or {typical_tolerances} at the "
                              f"median: worst {worst}, median {typical}")
+    report = {**worst, **{f"median_{name}": value for name, value in typical.items()}}
+    if model.mlm is not None and loaded.language is not None:
+        device = next(model.parameters()).device
+        mine = mean_log_probabilities(model, texts, 65536, device)  # (k,)
+        theirs = np.asarray([loaded.surprise(ids)["mean_log_probability"] for ids in texts])  # (k,)
+        gaps = np.abs(mine - theirs)  # (k,)
+        report |= {"surprise": float(gaps.max()), "median_surprise": float(np.median(gaps))}
+        if gaps.max() > SURPRISE_TOLERANCES["worst"] or np.median(gaps) > SURPRISE_TOLERANCES["median"]:
+            raise AssertionError(f"the release's surprise disagrees with the model beyond {SURPRISE_TOLERANCES}: worst {gaps.max()}, "
+                                 f"median {np.median(gaps)}")
 
-    return {**worst, **{f"median_{name}": value for name, value in typical.items()}}
+    return report
 
 
 def export_release(checkpoint_path: Path, store_directory: Path, corpus: Path, out: Path, *, bank_split: str = "bank",
@@ -280,6 +324,8 @@ def export_release(checkpoint_path: Path, store_directory: Path, corpus: Path, o
     if "int8" in (output, trained_output):
         provenance["output"] = {"release": output, "trained": trained_output}
     config_json = reference.release_config(model.config, counts, bank_name, names, None, provenance, attention, output)
+    if store.reading != "standard":  # the reading the model was trained in is the one every text must be read in
+        config_json["text_reading"] = store.reading
     reference.write_release(out, tensors, config_json)
 
     # Calibration texts are read as texts of their own, so each is at most a chunk long; whole long documents are not.
@@ -287,12 +333,22 @@ def export_release(checkpoint_path: Path, store_directory: Path, corpus: Path, o
     calibration_vectors = model_vectors(model, store, calibration_rows, micro_tokens, device, precise=True).cpu().numpy()  # (n_c, 2w)
     loaded = reference.ReferenceModel.load(out)
     w = model.config.head_out
-    readings = [loaded.bank_reading(*loaded.head_output(row[:w], row[w:])) for row in calibration_vectors.astype(np.float32)]
+    vectors = calibration_vectors.astype(np.float32)  # (n_c, 2w)
+    Q, K = loaded.head_output(vectors[:, :w], vectors[:, w:])  # (n_c, w) each
+    readings = bank_readings(loaded, Q, K, reference.TOP_K)  # every text against the whole bank in matrix products
     table, explained = reference.fitted_calibration(np.asarray([reading["mean"] for reading in readings]),  # (n_c, 3)
                                                     np.asarray([reading["spread"] for reading in readings]),  # (n_c, 3)
                                                     np.asarray([reading["closeness"] for reading in readings]),  # (n_c,)
                                                     store.length[calibration_rows], store.label[calibration_rows].astype(np.int64))
     config_json["calibration"] = table
+    if model.mlm is not None:  # the surprise table: where each origin's calibration texts fall (SPEC.md, Surprise)
+        surprise = mean_log_probabilities(model, [store.ids(int(row)) for row in calibration_rows], micro_tokens, device)  # (n_c,)
+        labels = store.label[calibration_rows].astype(np.int64)  # (n_c,)
+        config_json["surprise"] = reference.surprise_table(surprise, labels, calibration_split)
+        # Every calibration text's value beside its reading, for the study of surprise as a calibration feature: written
+        # beside the release folder, never in it, so it is not shipped.
+        np.savez(out.parent / f"{out.name}_calibration_surprise.npz", rows=calibration_rows, labels=labels, surprise=surprise,
+                 mean=np.asarray([reading["mean"] for reading in readings]), tokens=store.length[calibration_rows])
     reference.write_release(out, {**tensors, **explained}, config_json)
 
     validation = np.flatnonzero(store.split_mask("validation") & ~store.long_eval)  # (n_v,)

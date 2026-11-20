@@ -23,6 +23,8 @@ pub struct ModelMeta {
     pub license: String,
     /// Where it came from: a folder, "built in", or "this site".
     pub source: String,
+    /// The release carries its masked language head and surprise table, so a reading's details show its surprise.
+    pub surprise: bool,
 }
 
 /// A release is the placeholder when its provenance says its weights are random.
@@ -54,6 +56,7 @@ impl ModelMeta {
             out_of_reference_level: calibration["out_of_reference_level"].as_f64().unwrap_or(f64::NAN),
             license: config["license"].as_str().unwrap_or("").to_owned(),
             source,
+            surprise: config["surprise"].is_object(),
         })
     }
 
@@ -72,6 +75,7 @@ impl ModelMeta {
             out_of_reference_level: f64::NAN,
             license: String::new(),
             source: "the contribute site".into(),
+            surprise: false,
         }
     }
 

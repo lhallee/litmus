@@ -5,6 +5,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::{HANDLE, HGLOBAL, HWND, POINT};
+use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromPoint};
 use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx};
 use windows::Win32::System::DataExchange::{
     CloseClipboard, EmptyClipboard, EnumClipboardFormats, GetClipboardData, GetClipboardSequenceNumber, IsClipboardFormatAvailable, OpenClipboard,
@@ -17,7 +18,10 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput, VIRTUAL_KEY, VK_C, VK_CONTROL, VK_LWIN, VK_MENU,
     VK_RWIN, VK_SHIFT,
 };
-use windows::Win32::UI::WindowsAndMessaging::{CreateWindowExW, DestroyWindow, GetCursorPos, GetForegroundWindow, HWND_MESSAGE, WINDOW_EX_STYLE, WINDOW_STYLE};
+use windows::Win32::UI::WindowsAndMessaging::{
+    CreateWindowExW, DestroyWindow, FindWindowExW, GetCursorPos, GetForegroundWindow, GetWindowThreadProcessId, HWND_MESSAGE, IsWindowVisible, WINDOW_EX_STYLE,
+    WINDOW_STYLE,
+};
 use windows::core::{HSTRING, PCWSTR, w};
 
 use super::{Captured, How};
@@ -56,6 +60,41 @@ pub fn pointer() -> Option<(i32, i32)> {
     // SAFETY: GetCursorPos writes the POINT it is given.
     unsafe { GetCursorPos(&mut point).ok()? };
     Some((point.x, point.y))
+}
+
+/// Whether Esc, and whether a mouse button, is down now: read from the keys' state, never taken from the app in front
+/// (a popup without the focus watches them so that Esc and a click elsewhere still close it).
+pub fn dismiss_keys() -> (bool, bool) {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{VK_ESCAPE, VK_LBUTTON, VK_MBUTTON, VK_RBUTTON};
+    (held(VK_ESCAPE), [VK_LBUTTON, VK_RBUTTON, VK_MBUTTON].into_iter().any(held))
+}
+
+/// Whether this process shows a top-level window with this title (the scripted demo checks that a closed popup's
+/// window is gone from the screen, not only from the app's state).
+pub fn shows_window(title: &str) -> bool {
+    let title = HSTRING::from(title);
+    let mut after = None;
+    // SAFETY: window lookups by title, and reads of each found window's process and visibility.
+    unsafe {
+        while let Ok(window) = FindWindowExW(None, after, None, &title) {
+            let mut process = 0u32;
+            GetWindowThreadProcessId(window, Some(&mut process));
+            if process == std::process::id() && IsWindowVisible(window).as_bool() {
+                return true;
+            }
+            after = Some(window);
+        }
+    }
+    false
+}
+
+/// The work area of the monitor nearest a point, in physical pixels.
+pub fn work_area_at((x, y): (i32, i32)) -> Option<[i32; 4]> {
+    let mut info = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
+    // SAFETY: MonitorFromPoint takes values; GetMonitorInfoW writes the MONITORINFO it is given, its size set above.
+    unsafe { GetMonitorInfoW(MonitorFromPoint(POINT { x, y }, MONITOR_DEFAULTTONEAREST), &mut info).ok().ok()? };
+    let work = info.rcWork;
+    Some([work.left, work.top, work.right, work.bottom])
 }
 
 fn automation() -> Option<IUIAutomation> {
@@ -225,14 +264,32 @@ pub fn restore_clipboard(saved: &Saved) -> Result<(), String> {
     Ok(())
 }
 
+/// The clipboard format that tells clipboard history and the cloud clipboard to skip the contents beside it.
+pub fn exclusion_format() -> u32 {
+    // SAFETY: registering a format name has no other effect.
+    unsafe { RegisterClipboardFormatW(w!("ExcludeClipboardContentFromMonitorProcessing")) }
+}
+
+/// Contents with the format that tells clipboard history and the cloud clipboard to skip them.
+fn private(mut formats: Vec<(u32, Vec<u8>)>) -> Saved {
+    let exclude = exclusion_format();
+    formats.retain(|(format, _)| *format != exclude);
+    formats.push((exclude, vec![0]));
+    Saved(formats)
+}
+
 /// Put text on the clipboard, marked so that clipboard history and cloud clipboard skip it (for tests).
 pub fn set_private_text(text: &str) -> Result<(), String> {
     let mut units: Vec<u16> = text.encode_utf16().collect();
     units.push(0);
     let bytes: Vec<u8> = units.iter().flat_map(|u| u.to_le_bytes()).collect();
-    // SAFETY: registering a format name has no other effect.
-    let exclude = unsafe { RegisterClipboardFormatW(w!("ExcludeClipboardContentFromMonitorProcessing")) };
-    restore_clipboard(&Saved(vec![(CF_UNICODETEXT, bytes), (exclude, vec![0])]))
+    restore_clipboard(&private(vec![(CF_UNICODETEXT, bytes)]))
+}
+
+/// Put saved contents back as `restore_clipboard` does, marked so that clipboard history does not record them a second
+/// time (the copy path's own write; the source app's copy before it is the source app's).
+pub fn restore_clipboard_privately(saved: &Saved) -> Result<(), String> {
+    restore_clipboard(&private(saved.0.clone()))
 }
 
 fn key(vk: VIRTUAL_KEY, up: bool) -> INPUT {
@@ -288,7 +345,7 @@ fn copy_selection() -> Result<String, String> {
         let _open = Opened::new(None)?;
         unicode_text().unwrap_or_default()
     };
-    restore_clipboard(&saved).map_err(|e| format!("the text was read, but the clipboard could not be put back: {e}"))?;
+    restore_clipboard_privately(&saved).map_err(|e| format!("the text was read, but the clipboard could not be put back: {e}"))?;
     Ok(text)
 }
 

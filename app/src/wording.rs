@@ -139,6 +139,21 @@ pub fn format_percent(level: f64) -> String {
     format!("{text}%")
 }
 
+/// Where a text's surprise falls among each origin's calibration texts (human, AI, mixed): the share of each that
+/// the model found at least as surprising.
+pub fn surprise_sentence(percentile: [f64; 3]) -> String {
+    let share = |p: f64| format!("{:.0}%", 100.0 * p);
+    format!(
+        "Less surprising to the model than {} of the human-written calibration texts, {} of the AI-written, and {} of the mixed.",
+        share(percentile[0]),
+        share(percentile[1]),
+        share(percentile[2])
+    )
+}
+
+/// What the surprise reading is, and what it is not.
+pub const SURPRISE_CAUTION: &str = "Surprise is how unexpected each token is to the model, given the rest of the text. It is evidence about the text and the model together, not a verdict: unusual topics, formats, and languages raise it too.";
+
 /// A probability with its interval: "0.62 [0.41, 0.80]".
 pub fn probability(value: f64, interval: [f64; 2]) -> String {
     format!("{value:.2} [{:.2}, {:.2}]", interval[0], interval[1])

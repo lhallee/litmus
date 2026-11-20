@@ -76,7 +76,7 @@ is explained in [references/reading-results.md](references/reading-results.md).
 - **Code is weaker than prose.** Source files read as plain text, and the reference texts are mostly prose.
 - **Text unlike the references.** New models, rare formats, heavy editing after generation, and quoted or templated text
   fall outside what it learned. Every human reference text predates 2022, and long AI text is scarce in public data.
-- **An accuracy figure holds for its test set only.** For the release model, <!--litmus:t:accuracy_summary-->on held-out test texts it wrongly called 5.9% of human texts not human at the 5% level, and it caught 62.1% of AI texts when 5% of human texts are wrongly flagged (35.1% at 1%)<!--/litmus-->. A model built from source with
+- **An accuracy figure holds for its test set only.** For the release model, <!--litmus:t:accuracy_summary-->on held-out test texts it wrongly called 7.4% of human texts not human at the 5% level, and it caught 67.2% of AI texts when 5% of human texts are wrongly flagged (53.0% at 1%)<!--/litmus-->. A model built from source with
   random placeholder weights (`litmus info` says so) reads meaninglessly. Never quote an accuracy from memory.
 - **Not an accusation.** A reading is not proof that a person used a model, so do not report it as one. What to do with
   a reading is the user's decision; our recommendation is not to use one alone for a decision about a person, and to

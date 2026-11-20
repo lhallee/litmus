@@ -16,9 +16,11 @@ pub mod windows;
 #[cfg(all(unix, not(target_arch = "wasm32")))]
 pub mod unix;
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
+use eframe::egui::ViewportId;
 use global_hotkey::hotkey::HotKey;
 use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager, HotKeyState};
 
@@ -66,9 +68,23 @@ pub enum How {
 
 /// What the popup shows.
 pub enum PopupState {
-    Scoring { job: u64, how: How },
+    /// Captured while the model was still loading: read as soon as it is ready, with no second press.
+    Waiting { text: String, how: How },
+    /// The reading's job, and its progress in words once the engine reports some.
+    Scoring { job: u64, how: How, progress: String },
     Shown { scored: crate::scoring::Scored, how: How },
     Failed(String),
+}
+
+/// What keeps a popup up besides the pointer resting on it: nothing for a person's, more for the scripted demo's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Keep {
+    Nothing,
+    /// The clock still closes it; the focus, Esc and clicks do not (a person at the desk may click while a script
+    /// waits for the clock).
+    AgainstInput,
+    /// Up whatever the focus, the input and the clock (the demo's screenshot).
+    Always,
 }
 
 pub struct Popup {
@@ -79,13 +95,69 @@ pub struct Popup {
     /// Since when the popup has held the focus. A window that briefly gets the focus and loses it at once (Windows
     /// keeps the app in front when another process opens a window) is not closed by that.
     pub focused_since: Option<Instant>,
-    /// Kept open whatever the focus and the clock (the scripted demo's screenshot).
-    pub pinned: bool,
+    pub keep: Keep,
+    /// Unique to each change of `state`, so the popup's window is redrawn when it changes and only then.
+    pub revision: u64,
+    /// How long a reading stays up unless the pointer rests on it (`POPUP_SECONDS`; the scripted demo's is shorter).
+    pub lifetime: Duration,
+    /// Where it is on the screen, in physical pixels: left, top, right, bottom.
+    pub screen: Option<[i32; 4]>,
+    /// Esc and every mouse button have been seen up since it opened (`dismissed_unfocused`).
+    armed: bool,
 }
 
+static REVISIONS: AtomicU64 = AtomicU64::new(1);
+
 impl Popup {
+    pub fn new(state: PopupState, at: eframe::egui::Pos2) -> Self {
+        Self {
+            state,
+            at,
+            opened: Instant::now(),
+            focused_since: None,
+            keep: Keep::Nothing,
+            revision: REVISIONS.fetch_add(1, Ordering::Relaxed),
+            lifetime: Duration::from_secs(POPUP_SECONDS),
+            screen: None,
+            armed: false,
+        }
+    }
+
+    /// While the popup does not hold the focus (Windows opens a window without it when the app was in the background
+    /// and had no right to take it), Esc and a click elsewhere never reach it; it watches their state instead. True
+    /// once Esc, or a mouse button with the pointer outside the popup, goes down after all were seen up since it
+    /// opened, so a key or button already held then does not close it. Neither is taken from the app in front.
+    pub fn dismissed_unfocused(&mut self, escape: bool, button: bool, pointer: Option<(i32, i32)>) -> bool {
+        if !escape && !button {
+            self.armed = true;
+            return false;
+        }
+        let over = pointer.zip(self.screen).is_some_and(|((x, y), [left, top, right, bottom])| (left..right).contains(&x) && (top..bottom).contains(&y));
+        self.armed && self.keep == Keep::Nothing && (escape || (button && !over))
+    }
+
+    /// Show another state, restarting the clock that closes the popup.
+    pub fn set(&mut self, state: PopupState) {
+        self.state = state;
+        self.opened = Instant::now();
+        self.touch();
+    }
+
+    /// Mark the state as changed in place (progress), so the popup's window is redrawn.
+    pub fn touch(&mut self) {
+        self.revision = REVISIONS.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// The reading's job while it is still being read (to cancel when the popup goes).
+    pub fn scoring_job(&self) -> Option<u64> {
+        match self.state {
+            PopupState::Scoring { job, .. } => Some(job),
+            _ => None,
+        }
+    }
+
     pub fn expired(&self, hovered: bool) -> bool {
-        !self.pinned && !hovered && self.opened.elapsed() > Duration::from_secs(POPUP_SECONDS)
+        self.keep != Keep::Always && !hovered && self.opened.elapsed() > self.lifetime
     }
 
     /// Track the focus; true when the popup held it for a moment and then lost it (a click elsewhere).
@@ -97,7 +169,7 @@ impl Popup {
             }
             Some(false) => {
                 let held = self.focused_since.take().is_some_and(|since| since.elapsed() > Duration::from_millis(600));
-                held && !self.pinned
+                held && self.keep == Keep::Nothing
             }
             None => false,
         }
@@ -155,7 +227,7 @@ fn tray(ctx: &eframe::egui::Context) -> Result<Tray, String> {
     let waker = ctx.clone();
     MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
         MENU_EVENTS.lock().expect("the tray's queue").push(event.id);
-        waker.request_repaint();
+        waker.request_repaint_of(ViewportId::ROOT);
     }));
     let ids = vec![(check.id().clone(), TrayAction::CheckCopied), (open.id().clone(), TrayAction::Open), (pause.id().clone(), TrayAction::Pause), (quit.id().clone(), TrayAction::Quit)];
     Ok(Tray { _icon: built, pause, ids })
@@ -171,10 +243,12 @@ impl Quick {
         let hotkey = parse_hotkey(hotkey_words)?;
         let manager = GlobalHotKeyManager::new().map_err(|e| format!("the hotkey service did not start: {e}"))?;
         manager.register(hotkey).map_err(|e| format!("{hotkey_words} could not be registered (another app may hold it): {e}"))?;
+        // Every waker names the main window: its logic drains these queues, and a plain `request_repaint` from another
+        // thread reaches whichever window is mid-pass, the popup's included.
         let waker = ctx.clone();
         GlobalHotKeyEvent::set_event_handler(Some(move |event: GlobalHotKeyEvent| {
             HOTKEY_EVENTS.lock().expect("the hotkey queue").push(event);
-            waker.request_repaint();
+            waker.request_repaint_of(ViewportId::ROOT);
         }));
         #[cfg(not(target_os = "linux"))]
         let tray = Some(tray(ctx)?);
@@ -231,9 +305,15 @@ impl Quick {
         std::thread::spawn(move || {
             let result = if copied_only { platform::clipboard_text().map(|text| Captured { text, how: How::Clipboard }) } else { platform::selected_text() };
             let _ = sender.send(result);
-            waker.request_repaint();
+            waker.request_repaint_of(ViewportId::ROOT);
         });
         self.capture = Some(receiver);
+    }
+
+    /// A capture is under way. Another press waits for it: two copies at once would each save the clipboard, and the
+    /// second would save the first's copied selection and put that back instead of the user's own contents.
+    pub fn capturing(&self) -> bool {
+        self.capture.is_some()
     }
 
     pub fn poll_capture(&mut self) -> Option<Result<Captured, String>> {
@@ -255,6 +335,37 @@ impl Drop for Quick {
 /// The pointer's place on the screen in physical pixels, where the platform says.
 pub fn pointer() -> Option<(i32, i32)> {
     platform::pointer()
+}
+
+/// Whether Esc, and whether a mouse button, is down now (Windows; elsewhere never).
+pub fn dismiss_keys() -> (bool, bool) {
+    platform::dismiss_keys()
+}
+
+/// Whether this process shows a window with this title (Windows; elsewhere always false).
+pub fn shows_window(title: &str) -> bool {
+    platform::shows_window(title)
+}
+
+/// The work area (the screen less the taskbar) of the monitor nearest a point, in physical pixels: left, top, right,
+/// bottom. `None` where the platform does not say.
+pub fn work_area_at(point: (i32, i32)) -> Option<[i32; 4]> {
+    platform::work_area_at(point)
+}
+
+/// Where the popup's top-left corner goes, in physical pixels: `gap` below and to the right of the pointer, flipped
+/// above or to the left of it where the work area would cut it off, and always inside the work area, so a selection
+/// near a screen's edge never opens a popup half off the screen.
+pub fn popup_origin(pointer: (i32, i32), size: (i32, i32), gap: (i32, i32), work: Option<[i32; 4]>) -> (i32, i32) {
+    let (mut x, mut y) = (pointer.0 + gap.0, pointer.1 + gap.1);
+    let Some([left, top, right, bottom]) = work else { return (x, y) };
+    if x + size.0 > right {
+        x = pointer.0 - gap.0 - size.0;
+    }
+    if y + size.1 > bottom {
+        y = pointer.1 - gap.1 - size.1;
+    }
+    (x.clamp(left, (right - size.0).max(left)), y.clamp(top, (bottom - size.1).max(top)))
 }
 
 #[cfg(windows)]
@@ -289,5 +400,44 @@ mod tests {
         assert!(parse_hotkey("Shift+L").unwrap_err().contains("needs Ctrl"));
         assert!(parse_hotkey("Ctrl+Nope").is_err());
         assert_eq!(parse_hotkey("Ctrl+Alt+L").unwrap().id(), parse_hotkey("alt+ctrl+l").unwrap().id());
+    }
+
+    #[test]
+    fn a_popup_without_the_focus_closes_on_esc_or_a_click_elsewhere() {
+        let popup = || {
+            let mut popup = Popup::new(PopupState::Failed("test".into()), eframe::egui::pos2(0.0, 0.0));
+            popup.screen = Some([100, 100, 480, 276]);
+            popup
+        };
+        let (inside, outside) = (Some((200, 150)), Some((50, 50)));
+        let mut held = popup();
+        assert!(!held.dismissed_unfocused(true, false, outside), "Esc already down when the popup opened");
+        assert!(!held.dismissed_unfocused(false, true, outside), "a button already down when it opened");
+        assert!(!held.dismissed_unfocused(false, false, outside), "all up");
+        assert!(held.dismissed_unfocused(true, false, inside), "then Esc closes it, wherever the pointer is");
+        let mut click = popup();
+        click.dismissed_unfocused(false, false, outside);
+        assert!(!click.dismissed_unfocused(false, true, inside), "a click on the popup gives it the focus instead");
+        assert!(click.dismissed_unfocused(false, true, outside), "a click elsewhere closes it");
+        for keep in [Keep::AgainstInput, Keep::Always] {
+            let mut kept = popup();
+            kept.keep = keep;
+            kept.dismissed_unfocused(false, false, outside);
+            assert!(!kept.dismissed_unfocused(true, true, outside), "the demo's popup kept {keep:?} stays");
+        }
+    }
+
+    #[test]
+    fn the_popup_stays_on_the_screen() {
+        let work = Some([0, 0, 1920, 1040]); // a 1080-pixel screen less a 40-pixel taskbar
+        let (size, gap) = ((380, 176), (14, 18));
+        assert_eq!(popup_origin((500, 400), size, gap, work), (514, 418), "below and right of the pointer");
+        assert_eq!(popup_origin((1800, 400), size, gap, work), (1800 - 14 - 380, 418), "left of a pointer near the right edge");
+        assert_eq!(popup_origin((500, 1000), size, gap, work), (514, 1000 - 18 - 176), "above a pointer near the taskbar");
+        assert_eq!(popup_origin((1900, 1030), size, gap, work), (1900 - 14 - 380, 1030 - 18 - 176), "both, in the corner");
+        let second = Some([1920, -200, 3840, 880]); // a second monitor to the right, set higher
+        assert_eq!(popup_origin((1925, -195), size, gap, second), (1939, -177), "on the monitor it is on, negative coordinates included");
+        assert_eq!(popup_origin((10, 10), size, gap, Some([0, 0, 300, 100])), (0, 0), "a work area smaller than the popup keeps its top left");
+        assert_eq!(popup_origin((500, 400), size, gap, None), (514, 418), "no work area known: by the pointer");
     }
 }

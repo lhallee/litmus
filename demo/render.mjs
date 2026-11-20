@@ -146,12 +146,17 @@ const mux = async (ffmpegPath, silent, wav, final, seconds, target) => {
 
 /** GitHub takes a video of up to 10 MB into a README on a free plan (docs.github.com, "Attaching files"); stay under it with room to spare. */
 const README_BUDGET_BYTES = 9_500_000;
+// The README's animated preview: the whole wide cut at 800 pixels and 10 frames a second, about 4.7 MB at quality 70.
+const PREVIEW_WIDTH = 800;
+const PREVIEW_FPS = 10;
+const PREVIEW_BUDGET_BYTES = 6_000_000;
 
 /**
  * The wide cut's encodes for the web, made from the finished file: `litmus_wide_site.mp4` (1920 by 1080, for the site's own
  * video element), `litmus_wide_readme.mp4` (1280 by 720, the highest quality that fits README_BUDGET_BYTES, for the
- * README's upload), and `litmus_wide_poster.png` (the last frame, the whole end card with the site's address, for the video element's poster and as
- * the README's linked image). All H.264 high profile, yuv420p, BT.709, AAC, with the index at the front (faststart).
+ * README's upload), `litmus_wide_poster.png` (the last frame, the whole end card with the site's address, for the video element's poster), and
+ * `litmus_wide_preview.webp` (the whole cut as a silent animated WebP within PREVIEW_BUDGET_BYTES, the README's moving image, which the release's
+ * `film` stage copies to docs/images). The videos are H.264 high profile, yuv420p, BT.709, AAC, with the index at the front (faststart).
  */
 const webEncodes = async (ffmpegPath, final, timeline) => {
   const tags = ['-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-color_range', 'tv'];
@@ -170,7 +175,18 @@ const webEncodes = async (ffmpegPath, final, timeline) => {
   // The poster is the last frame, the whole end card with the site's address.
   const posterAt = seconds - 0.1;
   await run(ffmpegPath, ['-y', '-loglevel', 'error', '-ss', String(posterAt), '-i', final, '-frames:v', '1', poster]);
-  const sizes = { site_bytes: statSync(site).size, readme_bytes: statSync(readme).size, readme_crf: crf, poster_bytes: statSync(poster).size, poster_at_s: posterAt };
+  // The README's preview: GitHub plays no video stored in a repository, but an animated WebP autoplays, loops, and stays
+  // silent like an image (the captions are burned in). A GIF of the whole cut is four to five times larger.
+  const preview = join(outDir, 'litmus_wide_preview.webp');
+  let quality = 70;
+  for (; quality >= 40; quality -= 10) {
+    await run(ffmpegPath, ['-y', '-loglevel', 'error', '-i', final, '-an', '-vf', `fps=${PREVIEW_FPS},scale=${PREVIEW_WIDTH}:-2:flags=lanczos`,
+      '-c:v', 'libwebp_anim', '-quality', String(quality), '-compression_level', '6', '-loop', '0', preview]);
+    if (statSync(preview).size <= PREVIEW_BUDGET_BYTES) break;
+  }
+  if (statSync(preview).size > PREVIEW_BUDGET_BYTES) throw new Error(`the README preview is over ${PREVIEW_BUDGET_BYTES} bytes even at quality 40`);
+  const sizes = { site_bytes: statSync(site).size, readme_bytes: statSync(readme).size, readme_crf: crf, poster_bytes: statSync(poster).size, poster_at_s: posterAt,
+    preview_bytes: statSync(preview).size, preview_quality: quality };
   console.log(`wide web encodes: ${JSON.stringify(sizes)}`);
   return sizes;
 };

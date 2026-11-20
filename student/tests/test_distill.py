@@ -120,7 +120,7 @@ def test_searched_settings_replace_only_what_the_search_took(tmp_path: Path) -> 
 
     arguments, changed, weights, _ = read([name for name in DEFAULT_PARAMS if name not in SCHEDULE])  # loss and head only
     assert (changed.head_hidden, changed.head_out, changed.head_clamp) == (1024, 64, 5.0) and weights == loss_weights(best)
-    assert weights.temperature == 2.0 and arguments.lr == 1.5e-3 and arguments.texts_per_step == 2048
+    assert weights.temperature == 2.0 and arguments.lr == 1.5e-3 and arguments.texts_per_step is None  # train() then takes 2048
 
     arguments, _, _, _ = read(list(DEFAULT_PARAMS))  # the schedule too
     assert arguments.lr == 4e-3 and arguments.lr_second == pytest.approx(2e-3) and arguments.warmup == 100

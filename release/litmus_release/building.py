@@ -86,7 +86,7 @@ def build_linux(context: Context) -> None:
     ready_to_build(context)
     out = context.work / "build" / "linux"
     shutil.rmtree(out, ignore_errors=True)
-    run(["bash", "release/build_linux.sh", str(context.work / "model"), str(out)], context.repository)
+    run(["bash", "release/build_linux.sh", str(context.work / "model"), str(out), context.plan.version], context.repository)
 
 
 def adopter(platform_name: str) -> Callable[[Context, Path], None]:

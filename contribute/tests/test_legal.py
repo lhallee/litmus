@@ -15,10 +15,10 @@ from conftest import LEGAL, PRIVATE_PAGE
 CONTACT = "https://github.com/lhallee/litmus/issues"
 
 
-def test_documents_load_as_one_draft() -> None:
+def test_documents_load_as_one_approved_version() -> None:
     legal = load_legal(LEGAL, PRIVATE_PAGE)
     every = legal.notice + legal.consent_label + legal.terms_of_use + legal.privacy_notice
-    assert legal.status == "draft"  # only a maintainer sets approved
+    assert legal.status == "approved" and legal.version == "2026-11-19"  # Logan approved them on 2026-11-19
     assert PRIVATE_PAGE in legal.notice and "{private_page}" not in legal.notice
     assert legal.blanks() == []  # every blank is filled
     assert "open source" not in every.lower()

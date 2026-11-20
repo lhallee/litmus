@@ -1,11 +1,11 @@
 ---
-version: 2026-11-18-draft-2
-status: draft
-note: Draft, not in force. Written by a non-lawyer for Logan and a lawyer to review.
+version: 2026-11-19
+status: approved
+note: Approved by Logan Hallee on 2026-11-19.
 ---
 # Litmus contribute site: Terms of Use
 
-Version 2026-11-18-draft-2. Each text stored by the Service records the version of these Terms that applied when it was submitted.
+Version 2026-11-19. Each text stored by the Service records the version of these Terms that applied when it was submitted.
 
 These Terms are an agreement between you and **Logan Hallee**, an individual ("we", "us", "our"), who operates the Litmus contribute site (the "Service"). Contact: open an issue at https://github.com/lhallee/litmus/issues. Issues are public, so anyone can read them: please do not put private details in one, or the text of a Submission you want removed (use the removal form for that, section 7).
 

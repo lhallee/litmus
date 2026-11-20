@@ -43,6 +43,7 @@ pub mod model;
 pub mod profile;
 pub mod reading;
 pub mod release;
+pub mod surprise;
 pub mod text;
 pub mod tokenizer;
 mod unicode14;
@@ -52,6 +53,7 @@ use std::fmt;
 pub use kernels::Backend;
 pub use reading::{Cell, ChunkReading, ClosenessCount, ConformalCount, DocumentReading, Explain, Label, NearestEntry, Origin, Place, Reading, Strip, Verdict, WindowReading};
 pub use release::{MIXED_LEVEL, STRIP_LEVEL};
+pub use surprise::Surprise;
 pub use tokenizer::Token;
 
 use chunks::{ChunkPool, cell_spans, chunk_bounds, window_spans};
@@ -133,6 +135,8 @@ pub struct ModelInfo {
     pub adds_per_token: usize,
     /// Bytes held by the weights, the head and the bank.
     pub bytes: usize,
+    /// Whether the release has the masked language head, so `surprise` reads (SPEC.md, Surprise).
+    pub surprise: bool,
     pub provenance: serde_json::Value,
     /// The release's license (SPEC.md): PolyForm-Noncommercial-1.0.0.
     pub license: Option<String>,
@@ -149,6 +153,7 @@ pub struct Engine {
     tokenizer: Tokenizer,
     backend: Backend,
     info: ModelInfo,
+    surprise_table: Option<surprise::SurpriseTable>,
 }
 
 impl Engine {
@@ -188,11 +193,13 @@ impl Engine {
             strip_level: release::STRIP_LEVEL,
             mixed_level: release::MIXED_LEVEL,
             adds_per_token: encoder.adds_per_token(),
-            bytes: encoder.bytes() + head.bytes() + bank.bytes() + explainer.bytes(),
+            bytes: encoder.bytes() + head.bytes() + bank.bytes() + explainer.bytes() + encoder.language.as_ref().map_or(0, surprise::LanguageHead::bytes),
+            surprise: encoder.has_language(),
             license: config.license.clone(),
             provenance: config.provenance.clone(),
         };
-        Ok(Self { encoder, head, bank, calibration, explainer, tokenizer, backend: Backend::detect(), info })
+        let surprise_table = config.surprise.clone();
+        Ok(Self { encoder, head, bank, calibration, explainer, tokenizer, backend: Backend::detect(), info, surprise_table })
     }
 
     pub fn info(&self) -> &ModelInfo {
@@ -307,6 +314,100 @@ impl Engine {
         let mut document = self.document(n, parts);
         place(&mut document, &plan.boundaries, &boundary_bytes, text);
         Ok(document)
+    }
+
+    /// A text's surprise reading (SPEC.md, Surprise): its mean token log probability under the masked language head
+    /// with nothing masked, every chunk read as a text of its own, in a pass of its own. `progress` is called as in
+    /// `score_with` and may cancel; a release without the head gives `Error::Load`.
+    pub fn surprise_with(&self, text: &str, progress: &mut dyn FnMut(Progress) -> Flow) -> Result<Surprise, Error> {
+        if !self.encoder.has_language() {
+            return Err(Error::Load("this release has no masked language head, so no surprise reading".into()));
+        }
+        let bytes_total = text.len();
+        let counted = std::cell::Cell::new(0usize);
+        let mut counting = |done: usize| {
+            progress(Progress { bytes_done: done, bytes_total, tokens_done: counted.get(), ..Progress::default() }) == Flow::Continue
+        };
+        if !self.tokenizer.stream_standard(text, &mut |_| counted.set(counted.get() + 1), &mut counting) {
+            return Err(Error::Cancelled);
+        }
+        let n = counted.get();
+        if n == 0 {
+            return Err(Error::Empty);
+        }
+        let bounds = chunk_bounds(n, self.info.chunk_tokens);
+        let mut stream = self.surprise_stream(bounds[0].1);
+        let (position, chunks_done) = (std::cell::Cell::new(0usize), std::cell::Cell::new(0usize));
+        let mut failure = None;
+        let completed = {
+            let mut sink = |token: Token| {
+                stream.feed(token.id);
+                let p = position.get() + 1;
+                position.set(p);
+                let chunk = chunks_done.get();
+                if p == bounds[chunk].1 {
+                    let next = bounds.get(chunk + 1).map_or(0, |&(a, b)| b - a);
+                    if let Err(error) = stream.finish_chunk(next) {
+                        failure = Some(error);
+                    }
+                    chunks_done.set(chunk + 1);
+                }
+            };
+            let mut on_piece = |done: usize| {
+                let report = Progress {
+                    bytes_done: done,
+                    bytes_total,
+                    tokens_done: position.get(),
+                    tokens_total: n,
+                    chunks_done: chunks_done.get(),
+                    chunks_total: bounds.len(),
+                };
+                progress(report) == Flow::Continue
+            };
+            self.tokenizer.stream_standard(text, &mut sink, &mut on_piece)
+        };
+        if !completed {
+            return Err(Error::Cancelled);
+        }
+        if let Some(error) = failure {
+            return Err(error);
+        }
+        let (sum, count) = stream.surprise_sum().expect("a surprise stream keeps its sum");
+        assert_eq!(count, n, "every token of the text has its log probability");
+        Ok(Surprise::new(sum, n, self.surprise_table.as_ref()))
+    }
+
+    /// A text's surprise reading.
+    pub fn surprise(&self, text: &str) -> Result<Surprise, Error> {
+        self.surprise_with(text, &mut |_| Flow::Continue)
+    }
+
+    /// The surprise reading of token ids directly (parity tests).
+    #[doc(hidden)]
+    pub fn surprise_ids(&self, ids: &[u32]) -> Result<Surprise, Error> {
+        if !self.encoder.has_language() {
+            return Err(Error::Load("this release has no masked language head, so no surprise reading".into()));
+        }
+        if ids.is_empty() {
+            return Err(Error::Empty);
+        }
+        if let Some(&id) = ids.iter().find(|&&id| id as usize >= self.encoder.vocab) {
+            return Err(Error::Load(format!("token id {id} lies outside the vocabulary")));
+        }
+        let bounds = chunk_bounds(ids.len(), self.info.chunk_tokens);
+        let mut stream = self.surprise_stream(bounds[0].1);
+        for (chunk, &(start, end)) in bounds.iter().enumerate() {
+            stream.feed_all(&ids[start..end]);
+            let next = bounds.get(chunk + 1).map_or(0, |&(a, b)| b - a);
+            stream.finish_chunk(next)?;
+        }
+        let (sum, count) = stream.surprise_sum().expect("a surprise stream keeps its sum");
+        assert_eq!(count, ids.len(), "every token has its log probability");
+        Ok(Surprise::new(sum, ids.len(), self.surprise_table.as_ref()))
+    }
+
+    fn surprise_stream(&self, first_length: usize) -> Stream<'_> {
+        Stream::new(&self.encoder, self.backend, first_length, self.info.window_width, self.info.window_stride, 0).with_surprise(self.info.chunk_tokens)
     }
 
     /// Score token ids directly, fed in pieces of `piece` tokens (the contract's level; parity tests). Places carry

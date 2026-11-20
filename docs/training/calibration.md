@@ -217,7 +217,7 @@ for English text, and other languages are measured only where a benchmark holds 
 texts are whole texts and passages of at most 8,192 tokens, not chunks of longer documents; that difference is a stated
 limit, measured on the corpus's long documents.
 
-The release's table was fitted on <!--litmus:t:calibration_fit-->19,996 human, 19,996 AI, and 4,995 mixed calibration texts, in 12 length groups<!--/litmus-->.
+The release's table was fitted on <!--litmus:t:calibration_fit-->19,994 human, 19,994 AI, and 18,024 mixed calibration texts, in 12 length groups<!--/litmus-->.
 
 ## Where in the code
 

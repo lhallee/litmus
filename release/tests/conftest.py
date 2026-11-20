@@ -73,7 +73,10 @@ RESULTS = {
         {"benchmark": "mage", "detector": "Litmus", "task": "ai_vs_human", "stratum": "all", "pr_auc": 0.8, "roc_auc": 0.81234, "in_distribution": True},
         {"benchmark": "mage", "detector": "Other", "task": "ai_vs_human", "stratum": "all", "pr_auc": 0.7, "roc_auc": 0.7, "in_distribution": False},
     ],
-    "costs": [{"detector": "Litmus engine", "seconds_per_1k_words": 0.1321}],
+    "costs": [{"detector": "Litmus engine", "seconds_per_1k_words": 0.1321, "tokens_per_second": 23104.0, "measured": True, "machine": "Xeon / Linux"},
+              {"detector": "Other", "seconds_per_1k_words": 3.5, "tokens_per_second": 353.2, "measured": True, "machine": "Xeon / Linux"}],
+    "comparison": {"unseen_benchmarks": ["mage"],
+                   "mean_pr_auc_unseen": [{"detector": "Litmus", "pr_auc": 0.8}, {"detector": "Other", "pr_auc": 0.7}]},
     "release": {"version": "", "date": "", "app_exe_bytes": None},
 }
 PAGE = """<html><body>

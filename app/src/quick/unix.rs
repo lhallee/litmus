@@ -67,3 +67,18 @@ pub fn clipboard_text() -> Result<String, String> {
 pub fn pointer() -> Option<(i32, i32)> {
     None
 }
+
+/// Not read on these platforms: the popup closes on Esc and a click elsewhere only once it has the focus.
+pub fn dismiss_keys() -> (bool, bool) {
+    (false, false)
+}
+
+/// Not asked on these platforms (the scripted demo's check of a closed popup's window is Windows only).
+pub fn shows_window(_title: &str) -> bool {
+    false
+}
+
+/// The screen's work area is not read on these platforms.
+pub fn work_area_at(_point: (i32, i32)) -> Option<[i32; 4]> {
+    None
+}

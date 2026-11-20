@@ -83,4 +83,11 @@ fn the_clipboard_is_put_back_as_it_was() {
     quick::restore_clipboard(&before).unwrap();
     let after = quick::save_clipboard().unwrap();
     assert_eq!(after, before, "every saved format comes back byte for byte");
+    // The copy path puts the contents back marked to stay out of clipboard history: the same formats and bytes, and
+    // the marker.
+    quick::restore_clipboard_privately(&before).unwrap();
+    let marker = quick::exclusion_format();
+    let mut expected: Vec<u32> = before.formats().into_iter().filter(|f| *f != marker).collect();
+    expected.push(marker);
+    assert_eq!(quick::save_clipboard().unwrap().formats(), expected);
 }

@@ -141,16 +141,16 @@ so. The cost figure plots TPR at 1% FPR against this cost and marks measured and
 
 | Measure | Value |
 | --- | --- |
-| Test split, AI against human: PR AUC, ROC AUC, balanced MCC, TPR at 1% and 5% FPR, with 95% intervals | <!--litmus:t:test_ai_vs_human-->PR AUC 0.914 (0.905 to 0.923), ROC AUC 0.917 (0.909 to 0.926), balanced MCC 0.667, TPR at 1% FPR 0.351, at 5% FPR 0.621<!--/litmus--> |
-| Test split, AI or mixed against human; mixed against human | <!--litmus:t:test_other_tasks-->AI or mixed against human: PR AUC 0.950, ROC AUC 0.913; mixed against human: PR AUC 0.905, ROC AUC 0.909<!--/litmus--> |
-| Conformal coverage and mean set size at 5% and 10% on test, by length band | <!--litmus:t:test_coverage_all-->94.4% at 5% and 89.5% at 10%, mean set size 1.92 and 1.64 (by token band: the table of the model card)<!--/litmus--> |
-| Share of human test texts called not human at 5% and 10% | <!--litmus:t:test_human_called-->5.9% at 5% and 10.3% at 10%<!--/litmus--> |
-| Long documents, by number of chunks | <!--litmus:t:test_long_documents-->PR AUC 0.999, ROC AUC 0.999, coverage 96.2% at 10% (merged chunks; by number of chunks in `evaluation_test.csv`)<!--/litmus--> |
-| Spliced documents: cell accuracy and boundary error, sliding against fixed windows | <!--litmus:t:test_spliced-->sliding windows: cell accuracy 78.3%, median boundary error 113.00 tokens; fixed sections: cell accuracy 77.8%, median boundary error 127.00 tokens<!--/litmus--> |
-| Window context gap | <!--litmus:t:test_window_gap-->mean position gap 0.014 (95th percentile 0.075), mean pooled gap 0.139, on interior windows<!--/litmus--> |
+| Test split, AI against human: PR AUC, ROC AUC, balanced MCC, TPR at 1% and 5% FPR, with 95% intervals | <!--litmus:t:test_ai_vs_human-->PR AUC 0.937 (0.931 to 0.944), ROC AUC 0.934 (0.926 to 0.941), balanced MCC 0.697, TPR at 1% FPR 0.530, at 5% FPR 0.671<!--/litmus--> |
+| Test split, AI or mixed against human; mixed against human | <!--litmus:t:test_other_tasks-->AI or mixed against human: PR AUC 0.945, ROC AUC 0.900; mixed against human: PR AUC 0.861, ROC AUC 0.866<!--/litmus--> |
+| Conformal coverage and mean set size at 5% and 10% on test, by length band | <!--litmus:t:test_coverage_all-->94.3% at 5% and 90.1% at 10%, mean set size 2.08 and 1.87 (by token band: the table of the model card)<!--/litmus--> |
+| Share of human test texts called not human at 5% and 10% | <!--litmus:t:test_human_called-->7.4% at 5% and 12.5% at 10%<!--/litmus--> |
+| Long documents, by number of chunks | <!--litmus:t:test_long_documents-->PR AUC 0.998, ROC AUC 0.999, coverage 85.7% at 10% (merged chunks; by number of chunks in `evaluation_test.csv`)<!--/litmus--> |
+| Spliced documents: cell accuracy and boundary error, sliding against fixed windows | <!--litmus:t:test_spliced-->sliding windows: cell accuracy 78.4%, median boundary error 105.00 tokens; fixed sections: cell accuracy 77.8%, median boundary error 124.00 tokens<!--/litmus--> |
+| Window context gap | <!--litmus:t:test_window_gap-->mean position gap 0.012 (95th percentile 0.059), mean pooled gap 0.112, on interior windows<!--/litmus--> |
 | Every benchmark, every detector | <!--litmus:t:benchmarks_pointer-->6 other detectors on 14 benchmarks: the tables of [DEVELOPING.md](../DEVELOPING.md#results-in-full)<!--/litmus--> |
 | RAID leaderboard: TPR at 5% and 1% FPR, all attacks and none | <!--litmus:record.evaluation.raid_leaderboard-->Not submitted: RAID's test labels are hidden, and a submission is made only on the maintainer's word<!--/litmus--> |
-| Cost: ms per 1,000 words, peak memory, size on disk | <!--litmus:t:cost_row-->53 ms per 1,000 words on one core, a process peak of 37.9 MB, 10.8 MB on disk<!--/litmus--> |
+| Cost: ms per 1,000 words, peak memory, size on disk | <!--litmus:t:cost_row-->349 ms per 1,000 words on one core (Arm Neoverse-V2), a process peak of 65.1 MB, 18.5 MB on disk<!--/litmus--> |
 
 ## Where in the code
 

@@ -8,6 +8,7 @@ use crate::dense::{self, AttentionScratch};
 use crate::integer_attention::{self, IntegerScratch};
 use crate::kernels::{self, Backend, ColumnPairs, KernelScratch, PackedTernary, QuantRows};
 use crate::release::{Attention, ModelConfig, Safetensors};
+use crate::surprise::{LanguageHead, LanguageScratch};
 
 /// Tokens embedded at a time.
 const EMBED_BATCH: usize = 256;
@@ -66,6 +67,8 @@ pub struct Encoder {
     final_norm: Vec<f32>, // (d,)
     cosine: Vec<f32>,     // (W, d_h / 2)
     sine: Vec<f32>,       // (W, d_h / 2)
+    /// The masked language head of the surprise reading, when the release has one.
+    pub(crate) language: Option<LanguageHead>,
 }
 
 fn ternary(tensors: &Safetensors, name: &str, rows: usize, cols: usize) -> Result<PackedTernary, Error> {
@@ -121,7 +124,13 @@ impl Encoder {
             final_norm: tensors.f32s("final_norm", &[d])?,
             cosine,
             sine,
+            language: LanguageHead::load(tensors, v, e, d)?,
         })
+    }
+
+    /// Whether the release has the masked language head of the surprise reading.
+    pub fn has_language(&self) -> bool {
+        self.language.is_some()
     }
 
     /// Bytes of weights held.
@@ -355,6 +364,8 @@ pub struct Stream<'e> {
     trace: Option<Trace>,
     kept: Option<Trace>,
     fed: usize,
+    /// The surprise pass's buffers and running sum, when the stream reads it.
+    language: Option<LanguageScratch>,
 }
 
 impl<'e> Stream<'e> {
@@ -381,7 +392,22 @@ impl<'e> Stream<'e> {
             trace,
             kept: None,
             fed: 0,
+            language: None,
         }
+    }
+
+    /// Also read every token's log probability under the masked language head (SPEC.md, Surprise); chunks hold at
+    /// most `chunk_tokens` tokens.
+    pub fn with_surprise(mut self, chunk_tokens: usize) -> Self {
+        assert!(self.encoder.has_language(), "the surprise reading needs the release's masked language head");
+        let encoder = self.encoder;
+        self.language = Some(LanguageScratch::new(encoder.block_size, encoder.embed_width, encoder.vocab, chunk_tokens));
+        self
+    }
+
+    /// The sum of the log probabilities read so far, and their number (`None` without `with_surprise`).
+    pub fn surprise_sum(&self) -> Option<(f64, usize)> {
+        self.language.as_ref().map(|language| (language.sum, language.count))
     }
 
     /// Bytes held by the stream's buffers and its chunk's sums (not the weights).
@@ -389,6 +415,7 @@ impl<'e> Stream<'e> {
         4 * (self.open.iter().map(Vec::capacity).sum::<usize>() + self.embedded.capacity() + self.states.capacity())
             + self.scratch.bytes()
             + self.pool.bytes()
+            + self.language.as_ref().map_or(0, LanguageScratch::bytes)
     }
 
     /// Tokens of the current chunk fed so far.
@@ -400,6 +427,9 @@ impl<'e> Stream<'e> {
         assert!(self.fed < self.pool.length, "fed more tokens than the chunk holds");
         self.fed += 1;
         self.pending.push(id);
+        if let Some(language) = &mut self.language {
+            language.ids.push(id);
+        }
         if self.pending.len() == EMBED_BATCH {
             self.flush_pending();
         }
@@ -430,6 +460,10 @@ impl<'e> Stream<'e> {
         self.received.fill(0);
         self.open_start.fill(0);
         self.fed = 0;
+        if let Some(language) = &mut self.language {
+            assert_eq!(language.ids.len(), self.pool.length, "every token of the chunk reached the language head");
+            language.ids.clear();
+        }
         let next = ChunkPool::new(self.encoder.width, next_length, self.window_width, self.window_stride);
         Ok(std::mem::replace(&mut self.pool, next))
     }
@@ -516,6 +550,20 @@ impl<'e> Stream<'e> {
                     self.pool.add(row);
                 }
             });
+            if let Some(language) = &mut self.language {
+                let encoder = self.encoder;
+                let head = encoder.language.as_ref().expect("a surprise stream has the language head");
+                let e = encoder.embed_width;
+                let BlockScratch { normed, quant, kernel, .. } = &mut self.scratch;
+                let (norm_eps, act_eps) = (encoder.norm_eps, encoder.act_eps);
+                bitlinear(self.backend, &states[..rows * d], rows, &head.proj_norm, &head.proj, &mut language.projected[..rows * e], false, norm_eps, act_eps, normed, quant, kernel);
+                for row in 0..rows {
+                    dense::rms_norm(&language.projected[row * e..(row + 1) * e], &head.norm, norm_eps, &mut language.normed[row * e..(row + 1) * e]);
+                }
+                let ids = std::mem::take(&mut language.ids);
+                language.add(head, &encoder.embed, &encoder.embed_scale, &ids[start..start + rows]);
+                language.ids = ids;
+            }
             self.states = states;
         }
         self.open[index] = block;

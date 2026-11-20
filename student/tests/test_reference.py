@@ -260,3 +260,40 @@ def test_release_config_round_trips(tiny_release: Path) -> None:
     config = json.loads((tiny_release / "config.json").read_text(encoding="utf-8"))
     assert config["format"] == reference.FORMAT and config["calibration"]["format"] == reference.CALIBRATION_FORMAT
     assert reference.StudentConfig.from_release(config) == reference.named_config("tiny")
+
+
+def test_surprise_by_hand(tiny_model: Any, generator: np.random.Generator) -> None:
+    """Each token's log probability is its logit less the log-sum-exp of every logit, from the chunk's final states;
+    every chunk is read as a text of its own; the reading's mean, perplexity and percentiles follow (SPEC.md, Surprise)."""
+    assert tiny_model.language is not None
+    ids = generator.integers(1000, 2000, 150)  # (n,) two chunks of the tiny config
+    log_p = tiny_model.token_log_probabilities(ids)  # (n,)
+    assert log_p.shape == (150,) and (log_p < 0.0).all()
+    chunk = tiny_model.config.chunk_tokens
+    bounds = reference.chunk_bounds(150, chunk)
+    head, config = tiny_model.language, tiny_model.config
+    rows = tiny_model.embed_weight.astype(np.float64) * tiny_model.embed_scale[:, None].astype(np.float64)  # (V, e)
+    for start, end in bounds:
+        H, _ = tiny_model.encode(ids[start:end])  # (c, d)
+        G = reference.rms_norm(reference.bitlinear(H, head.proj_norm, head.proj, config), head.norm, config.norm_eps)  # (c, e)
+        L = float(head.scale) * (G @ rows.T) + head.bias  # (c, V)
+        total = np.log(np.exp(L - L.max(axis=1, keepdims=True)).sum(axis=1)) + L.max(axis=1)  # (c,)
+        assert np.allclose(log_p[start:end], L[np.arange(end - start), ids[start:end]] - total, atol=1e-5)
+        assert np.array_equal(tiny_model.token_log_probabilities(ids[start:end]), log_p[start:end])
+
+    reading = tiny_model.surprise(ids)
+    assert reading["n_tokens"] == 150 and reading["mean_log_probability"] == pytest.approx(log_p.mean(), abs=1e-12)
+    assert reading["perplexity"] == pytest.approx(np.exp(-log_p.mean()))
+    assert reading["percentile"] is not None and all(0.0 <= share <= 1.0 for share in reading["percentile"])
+
+
+def test_surprise_percentile_interpolates_its_quantiles() -> None:
+    quantiles = list(np.arange(reference.SURPRISE_QUANTILES, dtype=np.float64))  # 0, 1, ..., 100
+    assert reference.surprise_percentile(quantiles, -1.0) == 0.0 and reference.surprise_percentile(quantiles, 101.0) == 1.0
+    assert reference.surprise_percentile(quantiles, 25.5) == pytest.approx(0.255)
+    values = np.concatenate([np.linspace(-3.0, -1.0, 51), np.linspace(-4.0, -2.0, 51), np.linspace(-2.5, -0.5, 51)])  # (r,)
+    table = reference.surprise_table(values, np.repeat([0, 1, 2], 51), "calibration")
+    assert table["split"] == "calibration" and table["texts"] == [51, 51, 51]
+    assert table["quantiles"]["human"][0] == -3.0 and table["quantiles"]["human"][-1] == -1.0
+    reading = reference.surprise_reading(-2.0, 10, table)
+    assert reading["percentile"] == pytest.approx([0.5, 1.0, 0.25])

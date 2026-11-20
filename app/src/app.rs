@@ -40,18 +40,31 @@ pub struct Shown {
     pub counts: TextCounts,
     pub at_ms: i64,
     pub model: String,
+    /// The text's surprise reading (SPEC.md, Surprise), read the first time its details are shown.
+    pub surprise: SurpriseState,
+}
+
+/// Where a reading's surprise stands: read only once the user opens the reading's details.
+#[derive(Clone, Debug, PartialEq)]
+pub enum SurpriseState {
+    NotAsked,
+    Reading,
+    Read(litmus_engine::Surprise),
+    Failed(String),
 }
 
 impl Shown {
     pub fn new(title: String, source: String, scored: Scored, at_ms: i64, model: String) -> Self {
         let counts = TextCounts::of(&scored.text, scored.reading.n_tokens);
-        Self { title, source, scored, counts, at_ms, model }
+        Self { title, source, scored, counts, at_ms, model, surprise: SurpriseState::NotAsked }
     }
 }
 
 pub struct Running {
     pub job: u64,
     pub progress: Progress,
+    /// A file read and scored on the scoring thread (desktop): its text fills the editor when the reading arrives.
+    pub file: Option<String>,
 }
 
 /// A message over the screen: an error says what happened and what to do; an info line confirms something done.
@@ -206,7 +219,7 @@ impl LitmusApp {
         #[cfg(not(target_arch = "wasm32"))]
         let (settings, settings_error) = match crate::settings::disk::load() {
             Ok(settings) => (settings, None),
-            Err(error) => (Settings::default(), Some(format!("Settings could not be read, so the defaults are used: {error}"))),
+            Err(error) => (Settings::default(), Some(format!("{error}. The file is replaced by the defaults when a setting is next saved."))),
         };
         #[cfg(target_arch = "wasm32")]
         let (settings, settings_error): (Settings, Option<String>) = (crate::settings::browser::load(), None);
@@ -220,18 +233,23 @@ impl LitmusApp {
         #[cfg(not(target_arch = "wasm32"))]
         let (history, history_error) = match crate::settings::disk::data_folder().map(|folder| History::open(&folder.join("history"))) {
             Some(Ok(history)) => (history, None),
-            Some(Err(error)) => (History::in_memory(), Some(format!("The history could not be opened, so this session's is kept in memory only: {error}"))),
+            Some(Err(error)) => (History::in_memory(), Some(format!("{error}. This session's readings are kept in memory only; move or delete that file to start a new history."))),
             None => (History::in_memory(), None),
         };
         #[cfg(target_arch = "wasm32")]
-        let (history, history_error) = (History::in_memory(), None);
+        let (history, history_error): (History, Option<String>) = (History::in_memory(), None);
         let mut scorer = Scorer::new(ctx);
         #[cfg(not(target_arch = "wasm32"))]
         scorer.set_cache(settings.use_cache);
         scorer.load(settings.model_folder.clone());
         let size = 96;
         let mark = ctx.load_texture("mark", egui::ColorImage::from_rgba_unmultiplied([size, size], &brand::icon_rgba(size)), egui::TextureOptions::LINEAR);
-        let notice = settings_error.or(history_error).map(|error| Notice::error("Starting with defaults", error));
+        let notice = match (settings_error, history_error) {
+            (Some(settings), Some(history)) => Some(Notice::error("Starting with default settings, and the history could not be opened", format!("{settings} {history}"))),
+            (Some(settings), None) => Some(Notice::error("Starting with default settings", settings)),
+            (None, Some(history)) => Some(Notice::error("The history could not be opened", history)),
+            (None, None) => None,
+        };
         let app = Self {
             scorer,
             model: ModelState::Loading,
@@ -349,7 +367,7 @@ impl LitmusApp {
         #[cfg(feature = "contribute")]
         self.scorer.set_consent(self.contribute.consent);
         let job = self.scorer.score(text);
-        self.running = Some(Running { job, progress: Progress { fraction: 0.0, words: "Starting".into() } });
+        self.running = Some(Running { job, progress: Progress { fraction: 0.0, words: "Starting".into() }, file: None });
         self.notice = None;
     }
 
@@ -426,7 +444,20 @@ impl LitmusApp {
                 self.download = None;
             }
             Event::Downloading { done, total } => self.download = Some((done, total)),
+            #[cfg(not(feature = "contribute"))]
+            Event::Surprised { hash, result } => {
+                if let Some(shown) = self.shown.as_mut().filter(|shown| shown.scored.hash == hash) {
+                    shown.surprise = match result {
+                        Ok(surprise) => SurpriseState::Read(surprise),
+                        // Stopped by a new reading: asked again if this reading's details are shown again.
+                        Err(error) if error == scoring::CANCELLED => SurpriseState::NotAsked,
+                        Err(error) => SurpriseState::Failed(error),
+                    };
+                }
+            }
             Event::Progress { job, progress } => {
+                #[cfg(not(target_arch = "wasm32"))]
+                crate::views::quick::route_progress(self, job, &progress);
                 if let Some(running) = self.running.as_mut().filter(|r| r.job == job) {
                     running.progress = progress.clone();
                 }
@@ -441,8 +472,17 @@ impl LitmusApp {
                 if self.running.as_ref().is_none_or(|r| r.job != job) {
                     return;
                 }
-                self.running = None;
+                let file = self.running.take().and_then(|r| r.file);
                 match result {
+                    Ok(scored) if let Some(file) = file => {
+                        // The editor and its source change only now: a cancelled or failed file leaves both as they were.
+                        self.input = scored.text.as_str().to_owned();
+                        self.input_source = file.clone();
+                        self.show(scored, file_name(&file), file);
+                    }
+                    Err(error) if error != scoring::CANCELLED && error != scoring::EMPTY && let Some(file) = file => {
+                        self.notice = Some(Notice::error(format!("{} could not be read", file_name(&file)), format!("{error}. {}", FILE_KINDS)));
+                    }
                     Ok(scored) => {
                         let title = if self.input_source == "pasted" { wording::title_of(&scored.text, 60) } else { file_name(&self.input_source) };
                         let source = match &scored.contribution {
@@ -522,24 +562,25 @@ impl LitmusApp {
         }
     }
 
-    /// Load a file's text into the editor and check it (the desktop).
+    /// Read a file and check it (the desktop): both on the scoring thread, so a large PDF never freezes the window;
+    /// the file's text fills the editor when its reading arrives. Before the model is ready the text only fills the
+    /// editor, to be checked once it is.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn open_file(&mut self, path: &std::path::Path) {
+        let source = path.display().to_string();
+        (self.tab, self.editing, self.notice) = (Tab::Check, true, None);
+        if self.meta().is_some() {
+            let job = self.scorer.score_file(path.to_owned());
+            self.running = Some(Running { job, progress: Progress { fraction: 0.0, words: format!("Opening {}", file_name(&source)) }, file: Some(source) });
+            return;
+        }
         let read = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display())).and_then(|bytes| litmus_files::extract::text_of(path, &bytes));
         match read {
             Ok(text) => {
                 self.input = text;
-                self.input_source = path.display().to_string();
-                self.tab = Tab::Check;
-                self.editing = true;
-                self.check();
+                self.input_source = source;
             }
-            Err(error) => {
-                self.notice = Some(Notice::error(
-                    format!("{} could not be read", file_name(&path.display().to_string())),
-                    format!("{error}. Litmus reads text, Markdown, HTML, Word (.docx) and PDF files with a text layer; try another file, or paste the text."),
-                ))
-            }
+            Err(error) => self.notice = Some(Notice::error(format!("{} could not be read", file_name(&source)), format!("{error}. {FILE_KINDS}"))),
         }
     }
 
@@ -630,6 +671,23 @@ impl LitmusApp {
                 ctx.request_repaint_after(std::time::Duration::from_millis(1100));
             }
         }
+    }
+
+    /// Whether the loaded release reads surprise here (never on the contribute site, whose server reads).
+    pub fn surprise_available(&self) -> bool {
+        !cfg!(feature = "contribute") && self.meta().is_some_and(|meta| meta.surprise)
+    }
+
+    /// Read the shown text's surprise the first time its details are on screen (SPEC.md, Surprise); not while a
+    /// reading or a batch runs, which would stop it or wait behind it.
+    pub fn ask_surprise(&mut self) {
+        if !self.surprise_available() || self.busy() {
+            return;
+        }
+        let Some(shown) = self.shown.as_mut().filter(|shown| shown.surprise == SurpriseState::NotAsked) else { return };
+        shown.surprise = SurpriseState::Reading;
+        #[cfg(not(feature = "contribute"))]
+        self.scorer.surprise(shown.scored.text.clone(), shown.scored.hash.clone());
     }
 
     /// Show more or less of a reading, remembered.
@@ -791,6 +849,8 @@ impl LitmusApp {
                 self.apply(next);
             }
             self.keep_window_place(ctx);
+            // In the logic, which also runs while the window is hidden in the tray, so a scene can watch the app there.
+            crate::demo::step(self, ctx);
         }
         // A phone-sized browser window gets touch-sized controls.
         let touch = cfg!(target_arch = "wasm32") && ctx.content_rect().width() < 600.0;
@@ -842,10 +902,11 @@ impl LitmusApp {
         if self.busy() {
             ctx.request_repaint_after(std::time::Duration::from_millis(100));
         }
-        #[cfg(not(target_arch = "wasm32"))]
-        crate::demo::step(self, &ctx);
     }
 }
+
+/// What to do about a file that did not read.
+const FILE_KINDS: &str = "Litmus reads text, Markdown, HTML, Word (.docx) and PDF files with a text layer; try another file, or paste the text.";
 
 /// The last part of a path, for titles.
 pub fn file_name(path: &str) -> String {

@@ -111,7 +111,7 @@ impl Instance {
         let _ = std::thread::Builder::new().name("litmus-inbox".into()).spawn(move || {
             loop {
                 if !waiting(&inbox).is_empty() {
-                    ctx.request_repaint();
+                    ctx.request_repaint_of(eframe::egui::ViewportId::ROOT); // the main window's logic reads the inbox
                 }
                 std::thread::sleep(Duration::from_millis(300));
             }

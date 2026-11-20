@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "litmus-corpus"
-version = "1.0.0"
+version = "1.1.0"
 description = "The Litmus corpus pipeline: public human, model and mixed text to balanced parquet shards"
 requires-python = ">=3.12"
 # Exact pins name the tested stack.

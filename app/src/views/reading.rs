@@ -10,7 +10,7 @@ use eframe::egui::{self, RichText};
 use litmus_engine::{Origin, STRIP_LEVEL};
 use litmus_files::export;
 
-use crate::app::LitmusApp;
+use crate::app::{LitmusApp, SurpriseState};
 use crate::settings::Detail;
 use crate::strip;
 use crate::views::{self, controls, dark};
@@ -82,6 +82,8 @@ pub fn details(app: &mut LitmusApp, ui: &mut egui::Ui) {
         }
     });
     ui.add_space(12.0);
+    // The details are on screen: the shown text's surprise is read now, the first time (SPEC.md, Surprise).
+    app.ask_surprise();
     let Some(shown) = &app.shown else { return };
     let reading = shown.scored.reading.clone();
     let v = &reading.verdict;
@@ -115,6 +117,7 @@ pub fn details(app: &mut LitmusApp, ui: &mut egui::Ui) {
         ui.add_space(4.0);
         ui.label(RichText::new(body).small().weak());
     }
+    surprise(app, ui);
     ui.add_space(8.0);
     ui.label(RichText::new(wording::RECOMMENDATION).small().color(theme::palette(dark(ui)).muted));
     ui.add_space(16.0);
@@ -134,6 +137,43 @@ pub fn details(app: &mut LitmusApp, ui: &mut egui::Ui) {
     ui.add_space(16.0);
     controls::section(ui, "Export every field");
     ui.horizontal_wrapped(|ui| exports(app, ui));
+}
+
+/// The text's surprise (SPEC.md, Surprise), read in a pass of its own the first time these details are shown.
+fn surprise(app: &LitmusApp, ui: &mut egui::Ui) {
+    if !app.surprise_available() {
+        return;
+    }
+    let Some(shown) = &app.shown else { return };
+    let p = theme::palette(dark(ui));
+    ui.add_space(12.0);
+    controls::section(ui, "Surprise");
+    match &shown.surprise {
+        SurpriseState::NotAsked | SurpriseState::Reading => {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(RichText::new("Reading how surprising the text is to the model").color(p.muted));
+            });
+        }
+        SurpriseState::Read(surprise) => {
+            egui::Grid::new("surprise_numbers").num_columns(2).spacing([16.0, 2.0]).show(ui, |ui| {
+                controls::fact(
+                    ui,
+                    "Surprise",
+                    format!("{:.2} nats per token", -surprise.mean_log_probability),
+                    Some("Minus the log probability the model gives each token, seeing the rest of the text, averaged over the text's tokens. Higher is more surprising."),
+                );
+                controls::fact(ui, "Perplexity", format!("{:.1}", surprise.perplexity), Some("e to the surprise: about how many tokens the model finds as likely as each actual one."));
+            });
+            if let Some(percentile) = surprise.percentile {
+                ui.label(RichText::new(wording::surprise_sentence(percentile)).size(14.0));
+            }
+            ui.label(RichText::new(wording::SURPRISE_CAUTION).small().color(p.muted));
+        }
+        SurpriseState::Failed(error) => {
+            ui.label(RichText::new(format!("The surprise could not be read: {}.", error.trim_end_matches('.'))).small().color(p.muted));
+        }
+    }
 }
 
 /// A swatch beside the headline: the strip color at the position, shaped by the call (a disc for one origin, a

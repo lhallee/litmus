@@ -35,7 +35,7 @@ from .results import benchmark_name, in_distribution
 
 DPI = 300
 THEME_NAMES = ("dark", "light")
-FIGURES = ("headline", "raid", "pareto", "strata", "origins")
+FIGURES = ("headline", "raid", "pareto", "speed", "strata", "origins")
 METRIC_LABELS = {"roc_auc": "ROC AUC", "pr_auc": "PR AUC", "balanced_mcc": "Balanced MCC",
                  "tpr_at_fpr_1": "TPR at 1% FPR", "tpr_at_fpr_5": "TPR at 5% FPR"}
 KIND_MARKERS = {"commercial": "^", "open": "o"}
@@ -399,6 +399,97 @@ def pareto_figure(fair: pd.DataFrame, every: pd.DataFrame, costs: pd.DataFrame, 
     return save(figure, path)
 
 
+def band_middle(band: str) -> float:
+    """The geometric middle of a length band written `low-high`, where a band's texts sit on a log scale."""
+    low, high = (float(part) for part in band.split("-"))
+    return float(np.sqrt(low * high))
+
+
+def own_split_lengths(evaluation: Mapping[str, object], metric: str) -> pd.DataFrame:
+    """Litmus's metric on its own held-out passages by token band (`evaluation_test.json` rows), shortest first."""
+    rows = pd.DataFrame(evaluation["rows"])
+    rows = rows[(rows["evaluation"] == "passages") & (rows["stratum_kind"] == "tokens") & (rows["metric"] == metric)
+                & (rows["stratum"] != "all")]
+    if rows.empty:
+        raise ValueError(f"the evaluation has no {metric} rows by token band")
+    rows = rows.assign(middle=[band_middle(band) for band in rows["stratum"]])
+    return rows.sort_values("middle")
+
+
+def speed_figure(fair: pd.DataFrame, costs: pd.DataFrame, lengths: pd.DataFrame, path: Path, *, theme: str = "light",
+                 evaluation: Mapping[str, object] | None = None, metric: str = "pr_auc") -> Path:
+    """The README's figure, for readers who are not specialists. A: single-core throughput, linear, one bar per rerun
+    detector, fastest on top; B: mean PR AUC over the benchmarks no detector trained on, the same rows; C: PR AUC by
+    text length over the pooled benchmarks, Litmus solid and the rest gray, and, when `evaluation` is given, Litmus on
+    its own held-out split dashed, its token bands placed in words by Litmus's measured tokens per word."""
+    colors = style(theme)
+    speeds = {line.detector: throughput_of(costs, line.detector) for line in fair.itertuples()}
+    table = fair[[speeds[name] is not None for name in fair["detector"]]]
+    table = table.assign(speed=[speeds[name] for name in table["detector"]]).sort_values("speed").reset_index(drop=True)
+    rows = np.arange(len(table))  # (d,) slowest at the bottom
+    tints = [detector_look(name, colors)[0] if name == "Litmus" else colors["open"] for name in table["detector"]]
+    names = [name if name == PREDECESSOR else short_name(name) for name in table["detector"]]
+
+    figure = plt.figure(figsize=(10.4, 2.9))
+    outer = figure.add_gridspec(1, 2, width_ratios=[2.3, 1.25], wspace=0.22)
+    shared = outer[0].subgridspec(1, 2, width_ratios=[1.45, 0.85], wspace=0.08)  # A and B share their rows
+    bars = figure.add_subplot(shared[0])
+    dots = figure.add_subplot(shared[1], sharey=bars)
+    curve = figure.add_subplot(outer[1])
+
+    bars.barh(rows, table["speed"], height=0.62, color=tints)
+    for row, speed in zip(rows, table["speed"]):
+        bars.annotate(f"{speed:,.0f}", (speed, row), xytext=(3, 0), textcoords="offset points", va="center", ha="left",
+                      fontsize=FONT_SIZE - 1)
+    bars.set_xlim(0, table["speed"].max() * 1.18)
+    bars.xaxis.set_major_formatter(plt.FuncFormatter(lambda value, _: f"{value:,.0f}"))
+    bars.set_xlabel("Tokens a second, one core")
+    bars.set_yticks(rows, names)
+    bars.tick_params(axis="y", length=0)
+
+    for row, line, tint in zip(rows, table.itertuples(), tints):
+        dots.plot([line.low, line.high], [row, row], color=tint, linewidth=LINE_WIDTH)
+        dots.plot([line.value], [row], marker="o", markersize=5.5, color=tint, linestyle="none")
+    dots.set_xlabel("Mean PR AUC, held-out benchmarks")
+    dots.tick_params(axis="y", length=0, labelleft=False)
+    dots.spines["left"].set_visible(False)
+    dots.set_xlim(min(0.7, float(table["low"].min()) - 0.02), 1.0)
+
+    block = lengths[(lengths["metric"] == metric) & lengths["subset"].isin([label for label in LENGTH_LABELS if "-" in label])]
+    for detector in detector_order(block["detector"].unique()):
+        line = block[block["detector"] == detector].assign(middle=lambda frame: frame["subset"].map(band_middle))
+        line = line.sort_values("middle")
+        litmus = detector == "Litmus"
+        if litmus:
+            curve.fill_between(line["middle"], line["low"], line["high"], color=colors["litmus"], alpha=0.18, linewidth=0)
+        curve.plot(line["middle"], line["value"], color=colors["litmus"] if litmus else colors["open"],
+                   linewidth=LINE_WIDTH * (1.6 if litmus else 0.8), marker="o", markersize=4 if litmus else 2.5,
+                   zorder=3 if litmus else 2)
+    handles = [Line2D([], [], color=colors["litmus"], linewidth=LINE_WIDTH * 1.6, marker="o", markersize=4,
+                      label="Litmus, public"),
+               Line2D([], [], color=colors["open"], linewidth=LINE_WIDTH * 0.8, marker="o", markersize=2.5,
+                      label="Others, public")]
+    if evaluation is not None:
+        engine = costs[costs["detector"] == "Litmus engine"].iloc[0]
+        tokens_per_word = float(engine["tokens_per_second"]) / float(engine["words_per_second"])
+        own = own_split_lengths(evaluation, metric)
+        curve.plot(own["middle"] / tokens_per_word, own["value"], color=colors["litmus"], linewidth=LINE_WIDTH * 1.6,
+                   linestyle="--", marker="o", markersize=4, markerfacecolor="none", zorder=3)
+        handles.append(Line2D([], [], color=colors["litmus"], linewidth=LINE_WIDTH * 1.6, linestyle="--", marker="o",
+                              markersize=4, markerfacecolor="none", label="Litmus, own test"))
+    curve.set_xscale("log")
+    curve.xaxis.set_major_formatter(plt.FuncFormatter(lambda value, _: f"{value:,.0f}"))
+    curve.set_xlabel("Words in the text")
+    curve.set_ylabel("PR AUC")
+    curve.legend(handles=handles, loc="lower right", fontsize=FONT_SIZE - 1.5, handlelength=2.2)
+
+    for axis in (bars, dots, curve):
+        axis.grid(axis="y" if axis is curve else "x", color=colors["rule"], linewidth=0.5)
+        axis.set_axisbelow(True)
+    letter_panels([bars, dots, curve])
+    return save(figure, path)
+
+
 def strata_figure(lengths: pd.DataFrame, metrics: pd.DataFrame, mapping: Mapping[str, frozenset[str]], path: Path, *,
                   theme: str = "light", metric: str = "pr_auc") -> Path:
     """A: the metric by length bin over the pooled benchmarks, a line and band per detector. B: detector by benchmark,
@@ -566,6 +657,8 @@ def draw_site_figures(inputs: Mapping[str, object], site: Path, docs: Path | Non
                         theme=theme),
             pareto_figure(inputs["fair"], inputs["every"], inputs["costs"], inputs["published"], site / f"pareto_{theme}.png",
                           theme=theme),
+            speed_figure(inputs["fair"], inputs["costs"], inputs["lengths"], site / f"speed_{theme}.png", theme=theme,
+                         evaluation=inputs["evaluation"]),
             strata_figure(inputs["lengths"], inputs["metrics"], inputs["mapping"], site / f"strata_{theme}.png", theme=theme),
             origins_figure(inputs["scores"], site / f"origins_{theme}.png", theme=theme, evaluation=inputs["evaluation"]),
         ]

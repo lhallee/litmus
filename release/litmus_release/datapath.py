@@ -116,7 +116,8 @@ def render_table(table: Mapping[str, Any]) -> str:
 def spell(value: Any, spec: str = "") -> str:
     """A value as text in the format `spec`.
 
-    `int` groups thousands; `f1` to `f4` fix the decimals; `pct0` to `pct2` write a fraction as a percentage with the
+    `int` groups thousands; `sig2` rounds to two significant figures and groups thousands, for an approximate count
+    (28,267 as 28,000); `f1` to `f4` fix the decimals; `pct0` to `pct2` write a fraction as a percentage with the
     percent sign; `mb1` writes bytes as megabytes; `ms0` writes seconds as milliseconds; `m2` writes a count in millions; `hours1` writes seconds as hours;
     `list` joins with an Oxford comma; `text` takes a string as it is. A float with no format, a missing value, and a
     format that does not fit the value are errors.
@@ -141,6 +142,8 @@ def spell(value: Any, spec: str = "") -> str:
         raise ValueError(f"the float {value} needs a format such as f3 or pct1")
     if spec == "int":
         return f"{round(value):,}"
+    if spec == "sig2":
+        return f"{round(float(f'{value:.2g}')):,}"
     if spec.startswith("f") and spec[1:].isdigit():
         return f"{value:.{int(spec[1:])}f}"
     if spec.startswith("pct") and spec[3:].isdigit():

@@ -4,7 +4,7 @@
         --experiment-id YYYY-MM-DD_slug --out RUN_DIR [--pilot]
 
 **The step.** Each optimizer step draws `--texts-per-step` training texts (a third per origin, texts uniform within an origin, at
-most `--max-train-tokens` tokens each), packs them into micro-batches of `--micro-tokens` positions, and computes the
+most `--max-train-tokens` tokens each; with `--uniform`, uniform over all texts in epochs), packs them into micro-batches of `--micro-tokens` positions, and computes the
 losses of `distill.py` over all of them at once, the pair losses over the full `b x b` matrix. The step is exact
 through gradient caching (Gao et al. 2021, arXiv 2101.06983): a first pass without gradients gives every text's
 pooled vector; the losses and their gradients with respect to those vectors are computed on the whole matrix; a
@@ -47,7 +47,7 @@ import numpy as np
 import torch
 
 from collections.abc import Callable
-from dataclasses import asdict, replace
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
 from torch import Tensor, nn
@@ -57,11 +57,11 @@ from foundry.metrics import balanced_mcc
 from foundry.metrics.ranking import binary_ranking_metrics
 from foundry.training import clip_grad_norm, set_seed
 from .contract import reference
-from .data import (BANK_RECIPES, ClusterSampler, Step, TeacherFiles, TokenStore, build_step, cluster_stratified_rows, pack,
-                   packed_batch, prefetched, recipe_bank_rows, teacher_targets)
+from .data import (BANK_RECIPES, ClusterSampler, Cutter, EpochSampler, Presenter, Step, TeacherFiles, TextStore, TokenStore,
+                   build_step, cluster_stratified_rows, pack, packed_batch, prefetched, recipe_bank_rows, teacher_targets)
 from .dense import token_loss
 from .distill import LossWeights, Projections, distillation_losses, pair_logits
-from .model import StudentConfig, StudentModel, pool
+from .model import StudentConfig, StudentModel, mask_stream, pool
 
 
 PROJECT = "litmus"
@@ -218,13 +218,30 @@ def release_margin(validation: dict[str, float]) -> dict[str, float]:
 # ---------------------------------------------------------------- the step
 
 
+@dataclass
+class Masking:
+    """A step's masked language modeling (`model.mask_stream`, `model.MaskedLanguageHead`)."""
+
+    mask_id: int
+    text_share: float  # of texts masked
+    weight: float  # of the mean cross-entropy of the chosen positions, beside the pair loss
+    generator: torch.Generator  # on the device; drawn on at every step, so a text drawn again is masked anew
+
+
 def train_step(model: StudentModel, projections: Projections, step: Step, teacher: TeacherFiles, weights: LossWeights,
-               device: torch.device, token_targets: list[Tensor] | None = None, token_weight: float = 0.0) -> dict[str, float]:
+               device: torch.device, token_targets: list[Tensor] | None = None, token_weight: float = 0.0,
+               masking: Masking | None = None) -> dict[str, float]:
     """One exact gradient-cached step over all of a step's texts; returns the losses. With `token_targets` (the
     teacher's state at every real token of each micro-batch, `dense.py`), the per-token loss joins each micro-batch's
-    second pass at `token_weight`, averaged over the micro-batches."""
+    second pass at `token_weight`, averaged over the micro-batches. With `masking`, a share of the texts is masked in
+    both passes (so the pair loss reads them masked too), and the masked language loss, the mean over the step's
+    chosen positions, joins the second pass at `masking.weight`."""
     model.train()
     batches = [batch.to(device, non_blocking=True) for batch in step.micro_batches]
+    if masking is not None:
+        assert token_targets is None and model.mlm is not None, "masking needs the model's masked language head and no per-token loss"
+        masked = [mask_stream(batch, masking.mask_id, model.config.vocab_size, masking.text_share, masking.generator) for batch in batches]
+        batches, targets = [batch for batch, _ in masked], [target for _, target in masked]
     with torch.no_grad(), autocast(device):
         parts = [model.pooled(batch).float() for batch in batches]  # each (n_i, 2d)
     pooled = torch.cat(parts).requires_grad_(True)  # (b, 2d)
@@ -235,6 +252,22 @@ def train_step(model: StudentModel, projections: Projections, step: Step, teache
     losses["total"].backward()
     assert pooled.grad is not None, "the losses reach every pooled vector"
     gradients = pooled.grad.split([batch.texts for batch in batches])
+    if masking is not None:
+        assert model.mlm is not None
+        chosen = max(1, int(sum(int((target >= 0).sum()) for target in targets)))
+        language_total = 0.0
+        for batch, gradient, target in zip(batches, gradients, targets, strict=True):
+            with autocast(device):
+                states = model.encoder(batch)  # (t, d)
+            part = pool(states, batch.segment, batch.texts)  # (n_i, 2d)
+            language = model.mlm.loss(states, target, model.encoder.embed) / chosen  # ()
+            ((part * gradient).sum() + masking.weight * language).backward()
+            language_total += float(language.detach())
+        reported = {name: float(value.detach()) for name, value in losses.items()}
+        reported["mlm"] = language_total
+        reported["total"] += masking.weight * language_total
+
+        return reported
     if token_targets is None:
         for batch, gradient in zip(batches, gradients, strict=True):
             with autocast(device):
@@ -316,7 +349,7 @@ def save_checkpoint(path: Path, model: StudentModel, projections: Projections, o
                     validation: dict[str, float], run: dict[str, Any] | None, arguments: argparse.Namespace) -> None:
     temporary = path.with_suffix(".partial")
     torch.save({"config": asdict(model.config), "quantized": model.quantized, "integer_attention": model.integer_attention,
-                "int8_output": model.head.int8_output, "model": model.state_dict(), "projections": projections.state_dict(),
+                "int8_output": model.head.int8_output, "mlm": model.mlm is not None, "model": model.state_dict(), "projections": projections.state_dict(),
                 "optimizer": optimizer.state_dict(), "step": step, "validation": validation, "run": run,
                 "arguments": {key: str(value) if isinstance(value, Path) else value for key, value in vars(arguments).items()}}, temporary)
     temporary.replace(path)
@@ -325,7 +358,8 @@ def save_checkpoint(path: Path, model: StudentModel, projections: Projections, o
 def load_checkpoint(path: Path, device: torch.device) -> tuple[StudentModel, dict[str, Any]]:
     checkpoint = torch.load(path, map_location=device, weights_only=False)
     model = StudentModel(StudentConfig(**checkpoint["config"]), checkpoint.get("quantized", True),
-                         checkpoint.get("integer_attention", False), checkpoint.get("int8_output", False)).to(device)
+                         checkpoint.get("integer_attention", False), checkpoint.get("int8_output", False),
+                         checkpoint.get("mlm", False)).to(device)
     model.load_state_dict(checkpoint["model"])
 
     return model, checkpoint
@@ -334,12 +368,19 @@ def load_checkpoint(path: Path, device: torch.device) -> tuple[StudentModel, dic
 # ---------------------------------------------------------------- the run
 
 
-def step_maker(sampler: ClusterSampler, store: TokenStore, teacher: TeacherFiles, arguments: argparse.Namespace, block_size: int,
-               generator: np.random.Generator) -> Callable[[], Step]:
-    """Draw and pack the next step's texts; called in order on one thread."""
+def step_maker(sampler: ClusterSampler | EpochSampler, store: TokenStore, teacher: TeacherFiles, arguments: argparse.Namespace,
+               block_size: int, generator: np.random.Generator, presenter: Presenter | None = None) -> Callable[[], Step]:
+    """Draw and pack the next step's texts; called in order on one thread. With a `presenter` (`--texts`), each text
+    is presented anew at every draw; with `--cut-ends` or `--cut-starts`, each text is perhaps cut mid-sentence
+    (`Cutter`); each from its own generator, so the draws stay those of the seed."""
+    cutter = None
+    if arguments.cut_ends or arguments.cut_starts:
+        cutter = Cutter.from_tokenizer(reference.load_tokenizer(), arguments.cut_ends, arguments.cut_starts,
+                                       np.random.default_rng([arguments.seed, 1]))
+
     def make() -> Step:
         rows = sampler.draw(arguments.texts_per_step, generator)  # (b,)
-        return build_step(rows, store, teacher, arguments.micro_tokens, block_size, arguments.pack_multiple)
+        return build_step(rows, store, teacher, arguments.micro_tokens, block_size, arguments.pack_multiple, cutter, presenter)
 
     return make
 
@@ -385,11 +426,7 @@ def train(arguments: argparse.Namespace) -> dict[str, float]:
         torch.cuda.set_per_process_memory_fraction(arguments.memory_fraction)  # the current device; `cuda` has no index to pass
     torch.backends.cuda.matmul.allow_tf32 = True
     generator = np.random.default_rng(arguments.seed)
-    config, weights, taken = searched_settings(arguments, reference.named_config(arguments.config))
-    if arguments.labels_only:
-        weights = labels_only(weights)
-    if arguments.max_train_tokens > config.chunk_tokens:
-        raise ValueError(f"--max-train-tokens {arguments.max_train_tokens} exceeds the chunk of {config.chunk_tokens} tokens, the most read as one text")
+    given_texts = arguments.texts_per_step  # given, it wins over the search's
     store = TokenStore(arguments.data)
     if arguments.teacher_export is None:
         if not arguments.labels_only:
@@ -399,7 +436,34 @@ def train(arguments: argparse.Namespace) -> dict[str, float]:
         teacher = TeacherFiles.load(arguments.teacher_export, np.flatnonzero(store.split_mask("train")), generator)
     if teacher.query_key.shape[0] != len(store):
         raise ValueError(f"the teacher holds {teacher.query_key.shape[0]} rows and the corpus {len(store)}")
-    model = StudentModel(config, integer_attention=arguments.integer_attention, int8_output=arguments.int8_output).to(device)
+    if arguments.uniform:
+        sampler: ClusterSampler | EpochSampler = EpochSampler(store, "train", arguments.max_train_tokens, teacher.present)
+    else:
+        sampler = ClusterSampler(store, "train", arguments.max_train_tokens, teacher.present, arguments.clusters_uniform)
+    if arguments.epochs or arguments.eval_every_epochs:  # counted in steps of the given texts per step, before the schedule reads them
+        if given_texts is None:
+            raise ValueError("--epochs and --eval-every-epochs count steps of --texts-per-step texts; give it")
+        per_epoch = len(sampler.rows if isinstance(sampler, ClusterSampler) else sampler.all_rows) / given_texts
+        if arguments.epochs:
+            arguments.steps = math.ceil(arguments.epochs * per_epoch)
+        if arguments.eval_every_epochs:
+            arguments.eval_every = max(1, round(arguments.eval_every_epochs * per_epoch))
+        print(f"{per_epoch:,.0f} steps an epoch; {arguments.steps:,} steps at most, validation every {arguments.eval_every:,}", file=sys.stderr)
+    config, weights, taken = searched_settings(arguments, reference.named_config(arguments.config))
+    arguments.texts_per_step = given_texts or arguments.texts_per_step or 2048
+    if arguments.labels_only:
+        weights = labels_only(weights)
+    if arguments.max_train_tokens > config.chunk_tokens:
+        raise ValueError(f"--max-train-tokens {arguments.max_train_tokens} exceeds the chunk of {config.chunk_tokens} tokens, the most read as one text")
+    masking = None
+    if arguments.mlm_share > 0:
+        mask_id = reference.load_tokenizer().token_to_id("[MASK]")
+        assert mask_id is not None and mask_id < config.vocab_size, "the tokenizer has a [MASK] token inside the vocabulary"
+        mask_generator = torch.Generator(device=device)
+        mask_generator.manual_seed(int(np.random.default_rng([arguments.seed, 3]).integers(2**62)))
+        masking = Masking(mask_id, arguments.mlm_share, arguments.mlm_weight, mask_generator)
+    model = StudentModel(config, integer_attention=arguments.integer_attention, int8_output=arguments.int8_output,
+                         mlm=masking is not None).to(device)
     if arguments.init is not None:  # a warm start: the weights of an earlier run, a new optimizer and schedule
         model.load_state_dict(load_checkpoint(arguments.init, device)[0].state_dict())
     projections = Projections(2 * config.width, teacher.embedding_width, config.head_out, teacher.query_key.shape[1] // 2).to(device)
@@ -408,7 +472,6 @@ def train(arguments: argparse.Namespace) -> dict[str, float]:
     trainable = nn.ModuleDict({"model": model, "projections": projections})
     optimizer = torch.optim.AdamW(parameter_groups(trainable, arguments.weight_decay), lr=arguments.lr, betas=(0.9, 0.95),
                                   fused=device.type == "cuda")
-    sampler = ClusterSampler(store, "train", arguments.max_train_tokens, teacher.present, arguments.clusters_uniform)
     evaluation = Evaluation(store, teacher, arguments, generator, device)
     total = arguments.pilot_steps if arguments.pilot else arguments.steps
     arguments.out.mkdir(parents=True, exist_ok=True)
@@ -416,60 +479,81 @@ def train(arguments: argparse.Namespace) -> dict[str, float]:
                   "student": asdict(config), "loss_weights": asdict(weights), "settings_taken": taken,
                   "teacher_scale": teacher.scale, "teacher_bias": teacher.bias,
                   "experiment_id": arguments.experiment_id}
+    presenter = None
+    if arguments.texts is not None:
+        if len(TextStore(arguments.texts)) != len(store):
+            raise ValueError(f"the text store {arguments.texts} holds another corpus than {arguments.data}")
+        presenter = Presenter(arguments.texts, arguments.synonyms, arguments.max_train_tokens, arguments.present_workers,
+                              np.random.default_rng([arguments.seed, 2]))
 
+    # The checkpoint is chosen on validation loss, or on validation PR AUC (model-written against human, the reading's
+    # bank shares); with --patience, training stops once that many evaluations in a row fail to improve on it.
+    key = "val/loss" if arguments.select == "loss" else "val/pr_auc"
+    sign = 1.0 if arguments.select == "loss" else -1.0  # lower is better after the sign
     best = math.inf
+    stale = 0
     validation: dict[str, float] = {}
     best_validation: dict[str, float] = {}
     clock: list[tuple[float, int]] = []
-    with Run(arguments.out / "wandb", run_config, project=PROJECT, group=arguments.experiment_id, job_type="train",
-             name=(f"{arguments.experiment_id}_{arguments.config}{'_integer_attention' if arguments.integer_attention else ''}{'_int8_output' if arguments.int8_output else ''}"
-                   f"{'_labels_only' if arguments.labels_only else ''}{'_warm' if arguments.init is not None else ''}"),
-             pilot=arguments.pilot) as run:
-        progress = prefetched(step_maker(sampler, store, teacher, arguments, config.block_size, generator), total, depth=3,
-                              pin=device.type == "cuda")
-        began = time.perf_counter()
-        for index, step in enumerate(progress):
-            scheduled = scheduled_step(index, arguments.steps, time.perf_counter() - began, 60.0 * arguments.minutes)
-            for group in optimizer.param_groups:
-                group["lr"] = learning_rate(scheduled, arguments.steps, arguments.warmup, arguments.lr, arguments.lr_second)
-                decay = arguments.weight_decay if arguments.decay_stays else weight_decay(scheduled, arguments.steps, arguments.weight_decay)
-                group["weight_decay"] = decay if group["decays"] else 0.0
-            losses = train_step(model, projections, step, teacher, weights, device)
-            if not math.isfinite(losses["total"]):
-                raise FloatingPointError(f"step {index}: the loss is {losses['total']}")
-            gradient_norm = clip_grad_norm(trainable, arguments.clip)
-            optimizer.step()
-            optimizer.zero_grad(set_to_none=True)
-            if device.type == "cuda":
-                torch.cuda.synchronize(device)
-            clock.append((time.perf_counter(), step.tokens))
-            if index % LOG_EVERY == 0 or index == total - 1:
-                rate = throughput(clock)
-                run.log({**{f"train/{'loss' if name == 'total' else name}": value for name, value in losses.items()},
-                         "train/lr": optimizer.param_groups[0]["lr"], "train/grad_norm": gradient_norm, "train/tokens_per_second": rate}, step=index)
-                print(f"step {index}: loss {losses['total']:.4f}, {rate:,.0f} tokens/s", file=sys.stderr)
-            last = index == total - 1 or scheduled >= arguments.steps  # the last step, or the time box closed
-            if (index + 1) % arguments.eval_every == 0 or last:
-                started = time.perf_counter()
-                validation = evaluation(model, projections, weights)
-                validation["val/seconds"] = time.perf_counter() - started
-                run.log(validation, step=index)
-                save_checkpoint(arguments.out / "last.pt", model, projections, optimizer, index, validation, run.identity, arguments)
-                if validation["val/loss"] < best:
-                    best = validation["val/loss"]
-                    best_validation = {**validation, "val/step": float(index)}
-                    save_checkpoint(arguments.out / "best.pt", model, projections, optimizer, index, validation, run.identity, arguments)
-                print(json.dumps(validation), file=sys.stderr)
-            if last:
-                progress.close()  # a closed time box leaves steps unbuilt
-                break
-        # The summary is the chosen checkpoint's (best validation loss), with the release rule read off it.
-        summary = {"val/best_loss": best, **{key: value for key, value in best_validation.items() if key != "val/seconds"},
-                   **({} if teacher.missing else release_margin(best_validation))}
-        print(json.dumps({key: value for key, value in summary.items() if key.startswith("release/")}), file=sys.stderr)
-        if arguments.pilot:
-            summary.update(pilot_report(arguments, clock, validation.get("val/seconds", 0.0), device))
-        run.finish(summary=summary)
+    try:
+        with Run(arguments.out / "wandb", run_config, project=PROJECT, group=arguments.experiment_id, job_type="train",
+                 name=(f"{arguments.experiment_id}_{arguments.config}{'_integer_attention' if arguments.integer_attention else ''}{'_int8_output' if arguments.int8_output else ''}"
+                       f"{'_labels_only' if arguments.labels_only else ''}{'_warm' if arguments.init is not None else ''}"),
+                 pilot=arguments.pilot) as run:
+            progress = prefetched(step_maker(sampler, store, teacher, arguments, config.block_size, generator, presenter), total, depth=3,
+                                  pin=device.type == "cuda")
+            began = time.perf_counter()
+            for index, step in enumerate(progress):
+                scheduled = scheduled_step(index, arguments.steps, time.perf_counter() - began, 60.0 * arguments.minutes)
+                for group in optimizer.param_groups:
+                    group["lr"] = learning_rate(scheduled, arguments.steps, arguments.warmup, arguments.lr, arguments.lr_second)
+                    decay = arguments.weight_decay if arguments.decay_stays else weight_decay(scheduled, arguments.steps, arguments.weight_decay)
+                    group["weight_decay"] = decay if group["decays"] else 0.0
+                losses = train_step(model, projections, step, teacher, weights, device, masking=masking)
+                if not math.isfinite(losses["total"]):
+                    raise FloatingPointError(f"step {index}: the loss is {losses['total']}")
+                gradient_norm = clip_grad_norm(trainable, arguments.clip)
+                optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
+                if device.type == "cuda":
+                    torch.cuda.synchronize(device)
+                clock.append((time.perf_counter(), step.tokens))
+                if index % LOG_EVERY == 0 or index == total - 1:
+                    rate = throughput(clock)
+                    run.log({**{f"train/{'loss' if name == 'total' else name}": value for name, value in losses.items()},
+                             "train/lr": optimizer.param_groups[0]["lr"], "train/grad_norm": gradient_norm, "train/tokens_per_second": rate}, step=index)
+                    shown = ", ".join(f"{name} {value:.4f}" for name, value in losses.items() if name in ("total", "pair_label", "mlm"))
+                    print(f"step {index}: {shown}, {rate:,.0f} tokens/s", file=sys.stderr)
+                last = index == total - 1 or scheduled >= arguments.steps  # the last step, or the time box closed
+                if (index + 1) % arguments.eval_every == 0 or last:
+                    started = time.perf_counter()
+                    validation = evaluation(model, projections, weights)
+                    validation["val/seconds"] = time.perf_counter() - started
+                    run.log(validation, step=index)
+                    save_checkpoint(arguments.out / "last.pt", model, projections, optimizer, index, validation, run.identity, arguments)
+                    if sign * validation[key] < best:
+                        best, stale = sign * validation[key], 0
+                        best_validation = {**validation, "val/step": float(index)}
+                        save_checkpoint(arguments.out / "best.pt", model, projections, optimizer, index, validation, run.identity, arguments)
+                    else:
+                        stale += 1
+                    print(json.dumps({**validation, "stale": stale}), file=sys.stderr)
+                    if arguments.patience and stale >= arguments.patience:
+                        print(f"stopped: {stale} evaluations in a row without a better {key}", file=sys.stderr)
+                        last = True
+                if last:
+                    progress.close()  # a closed time box leaves steps unbuilt
+                    break
+            # The summary is the chosen checkpoint's, with the release rule read off it.
+            summary = {f"val/best_{arguments.select}": sign * best, **{name: value for name, value in best_validation.items() if name != "val/seconds"},
+                       **({} if teacher.missing else release_margin(best_validation))}
+            print(json.dumps({name: value for name, value in summary.items() if name.startswith("release/")}), file=sys.stderr)
+            if arguments.pilot:
+                summary.update(pilot_report(arguments, clock, validation.get("val/seconds", 0.0), device))
+            run.finish(summary=summary)
+    finally:
+        if presenter is not None:
+            presenter.close()
 
     return summary
 
@@ -513,7 +597,10 @@ def parser() -> argparse.ArgumentParser:
     parser.add_argument("--steps", type=int, default=2000)
     parser.add_argument("--minutes", type=float, default=0.0,
                         help="a time box: the schedules follow the clock when it runs ahead of the steps, and the run ends when it closes")
-    parser.add_argument("--texts-per-step", type=int, default=2048)
+    parser.add_argument("--epochs", type=float, default=0.0,
+                        help="the most epochs of the training texts to run, in steps of --texts-per-step, in place of --steps")
+    parser.add_argument("--texts-per-step", type=int, default=None,
+                        help="given, it wins over the search's; default the search's when --settings gives it, else 2048")
     parser.add_argument("--micro-tokens", type=int, default=65536, help="positions per micro-batch, a multiple of the block size")
     parser.add_argument("--pack-multiple", type=int, default=8192, help="streams pad to a multiple of this, so shapes repeat")
     parser.add_argument("--max-train-tokens", type=int, default=8192, help="at most the config's chunk_tokens")
@@ -523,6 +610,10 @@ def parser() -> argparse.ArgumentParser:
     parser.add_argument("--weight-decay", type=float, default=0.1)
     parser.add_argument("--clip", type=float, default=1.0)
     parser.add_argument("--eval-every", type=int, default=250)
+    parser.add_argument("--eval-every-epochs", type=float, default=0.0, help="validation every this share of an epoch, in place of --eval-every")
+    parser.add_argument("--select", choices=["loss", "pr_auc"], default="loss",
+                        help="the checkpoint kept as best.pt: lowest validation loss, or highest validation PR AUC")
+    parser.add_argument("--patience", type=int, default=0, help="stop once this many evaluations in a row fail to improve --select; 0 never")
     parser.add_argument("--val-texts", type=int, default=4096)
     parser.add_argument("--eval-per-origin", type=int, default=3000)
     parser.add_argument("--bank-split", default="bank")
@@ -546,6 +637,19 @@ def parser() -> argparse.ArgumentParser:
     parser.add_argument("--int8-output", action="store_true",
                         help="train with the head's query and key quantized to int8 (model.StudentHead), so the loss sees the unit vectors of "
                              "the int8 codes a SPEC.md format 3 release stores and compares; export releases such a checkpoint as int8 by default")
+    parser.add_argument("--cut-ends", type=float, default=0.0,
+                        help="the chance a training text is cut at a word start in its last quarter (data.Cutter); the same for every origin")
+    parser.add_argument("--cut-starts", type=float, default=0.0,
+                        help="the chance a training text loses its tokens before a word start in its first quarter")
+    parser.add_argument("--texts", type=Path, default=None,
+                        help="the text store (`data --texts`): each training text presented anew at every draw (data.Presenter); "
+                             "validation, test, calibration and the bank read `--data` as stored")
+    parser.add_argument("--synonyms", type=Path, default=None, help="the synonym table of the presentation's swaps; none swapped without it")
+    parser.add_argument("--present-workers", type=int, default=16, help="processes presenting and tokenizing training texts")
+    parser.add_argument("--uniform", action="store_true",
+                        help="draw training texts uniformly over all of them, in epochs (data.EpochSampler), whatever their origin")
+    parser.add_argument("--mlm-share", type=float, default=0.0, help="the share of each step's texts masked for the masked language loss; 0 none")
+    parser.add_argument("--mlm-weight", type=float, default=0.1, help="the masked language loss's weight beside the pair loss")
     parser.add_argument("--compile", action="store_true")
     parser.add_argument("--memory-fraction", type=float, default=1.0, help="of the GPU, so several sizes share one")
     parser.add_argument("--device", default="cuda")

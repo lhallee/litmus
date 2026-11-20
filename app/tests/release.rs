@@ -126,6 +126,51 @@ fn the_scorer_thread_scores_caches_cancels_and_batches() {
         })
         .collect();
     assert_eq!(results, [(0, true), (1, true), (2, false)], "the blank file is an error row, the others read");
+
+    // A file opened in the Check screen is read and scored on the scoring thread; its reading carries its text.
+    let job = scorer.score_file(folder.join("b.html"));
+    let events = wait(&mut scorer, |e| matches!(e, Event::Scored { .. }));
+    let Some(Event::Scored { job: answered, result: Ok(page) }) = events.last() else { panic!("the page reads") };
+    assert_eq!((*answered, page.text.as_str()), (job, "A short page about bread."));
+    assert!(events.iter().any(|e| matches!(e, Event::Progress { job: j, progress } if *j == job && progress.words == "Opening the file")));
+    for (name, expected) in [("c.md", litmus_app::scoring::EMPTY), ("missing.docx", "missing.docx")] {
+        scorer.score_file(folder.join(name));
+        let events = wait(&mut scorer, |e| matches!(e, Event::Scored { .. }));
+        let Some(Event::Scored { result: Err(error), .. }) = events.last() else { panic!("{name} does not read") };
+        assert!(error.contains(expected), "{name}: {error}");
+    }
     std::fs::remove_dir_all(&folder).unwrap();
     std::fs::remove_dir_all(&cache).unwrap();
+}
+
+/// Quick check reads on a thread of its own: its reading arrives while the main window's long reading still runs, and
+/// a popup that closes stops its own reading without touching the main window's.
+#[test]
+fn quick_check_never_waits_for_the_main_window() {
+    let mut scorer = Scorer::new(&egui::Context::default());
+    scorer.set_cache(false);
+    scorer.load(Some(release().display().to_string()));
+    let events = wait(&mut scorer, |e| matches!(e, Event::Loaded(_)));
+    assert!(matches!(events.last(), Some(Event::Loaded(Ok(_)))), "the model loads");
+    // Long enough that the main reading still runs at the end, even with a small model on a fast machine; it is
+    // cancelled there.
+    let very_long = Arc::new((0..64).map(|_| long_text()).collect::<Vec<_>>().join("\n\n"));
+    let main = scorer.score(very_long.clone());
+    let quick = scorer.score_quiet(Arc::new(litmus_app::sample::TEXT.to_owned()));
+    let events = wait(&mut scorer, |e| matches!(e, Event::Scored { .. }));
+    let Some(Event::Scored { job, result: Ok(_) }) = events.last() else { panic!("the quick text scores") };
+    assert_eq!(*job, quick, "the quick reading arrives first, while the long one runs");
+
+    let long_quick = scorer.score_quiet(very_long);
+    wait(&mut scorer, |e| matches!(e, Event::Progress { job, .. } if *job == long_quick));
+    scorer.cancel_quiet(main); // not quick check's job: nothing happens
+    scorer.cancel_quiet(long_quick);
+    let events = wait(&mut scorer, |e| matches!(e, Event::Scored { job, .. } if *job == long_quick));
+    let Some(Event::Scored { result: Err(error), .. }) = events.last() else { panic!("a cancelled quick reading is an error") };
+    assert_eq!(error, litmus_app::scoring::CANCELLED);
+    assert!(!events.iter().any(|e| matches!(e, Event::Scored { job, .. } if *job == main)), "the main window's reading still runs");
+    scorer.cancel();
+    let events = wait(&mut scorer, |e| matches!(e, Event::Scored { job, .. } if *job == main));
+    let Some(Event::Scored { result: Err(error), .. }) = events.last() else { panic!("the main window's cancel stops its reading") };
+    assert_eq!(error, litmus_app::scoring::CANCELLED);
 }

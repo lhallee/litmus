@@ -141,3 +141,36 @@ def test_pilot_run_exports_a_release_the_reference_reads(tmp_path: Path) -> None
     assert {("passages", "pr_auc"), ("passages", "mcc"), ("passages", "coverage"), ("long_documents", "coverage"), ("long_documents", "pr_auc"), ("spliced_sliding", "cell_accuracy"),
             ("spliced_sections", "boundary_error_median"), ("window_context", "pooled_gap_mean")} <= metrics
     assert (out / "evaluation.csv").exists() and (out / "evaluation.json").exists()
+
+
+def test_masked_language_head_ships_with_its_surprise_table(tmp_path: Path) -> None:
+    """A checkpoint trained with the masked language objective releases its head and the surprise table, and the
+    reference reads the surprise the model computes (SPEC.md, Surprise); the calibration texts' values stay outside
+    the release folder. As long a run as the pilot's above: a shorter one can rank the origins backward, which the
+    calibration's fit refuses."""
+    store, corpus, teacher = synthetic_corpus(tmp_path)
+    arguments = parser().parse_args([
+        "--config", "tiny", "--data", str(store), "--teacher-export", str(teacher), "--experiment-id", "2026-11-17_student_test",
+        "--out", str(tmp_path / "run"), "--device", "cpu", "--pilot", "--pilot-steps", "150", "--steps", "150", "--lr", "4e-3",
+        "--lr-second", "3e-3", "--warmup", "3", "--texts-per-step", "60", "--micro-tokens", "256", "--pack-multiple", "256",
+        "--eval-every", "75", "--val-texts", "60", "--eval-per-origin", "30", "--bank-per-origin", "30", "--max-train-tokens", "96",
+        "--mlm-share", "0.5",
+    ])
+    train(arguments)
+
+    release = tmp_path / "release"
+    exported = export_release(tmp_path / "run" / "best.pt", store, corpus, release, bank_per_origin=40, check_texts=8,
+                              micro_tokens=256, device=torch.device("cpu"))
+    assert exported["parity"]["surprise"] <= 2e-2 and exported["parity"]["median_surprise"] <= 2e-3
+    table = json.loads((release / "config.json").read_text(encoding="utf-8"))["surprise"]
+    assert table["split"] == "calibration" and sum(table["texts"]) == exported["calibration_rows"]
+    assert all(len(table["quantiles"][origin]) == reference.SURPRISE_QUANTILES for origin in reference.ORIGINS)
+
+    loaded = reference.ReferenceModel.load(release)
+    reading = loaded.surprise(np.random.default_rng(2).integers(1000, 2000, 250))  # (n,) three chunks of the tiny config
+    assert reading["n_tokens"] == 250 and reading["mean_log_probability"] < 0.0
+    assert reading["perplexity"] == pytest.approx(float(np.exp(-reading["mean_log_probability"])))
+    assert all(0.0 <= share <= 1.0 for share in reading["percentile"])
+    assert not list(release.glob("*.npz"))
+    values = np.load(tmp_path / "release_calibration_surprise.npz")
+    assert len(values["surprise"]) == exported["calibration_rows"] and (values["surprise"] < 0.0).all()

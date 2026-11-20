@@ -40,6 +40,7 @@ def test_a_format_follows_the_last_as_and_never_a_selector_bar() -> None:
 
 def test_spell_formats() -> None:
     assert spell(4096, "int") == "4,096"
+    assert spell(28_267, "sig2") == "28,000" and spell(5_540, "sig2") == "5,500" and spell(28_920.4, "sig2") == "29,000"
     assert spell(4096) == "4,096"
     assert spell(0.93456, "f3") == "0.935"
     assert spell(0.0512, "pct1") == "5.1%"

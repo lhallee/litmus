@@ -9,14 +9,22 @@
 //! - `LITMUS_DEMO_CELL`: the heat-map cell to select (default 2).
 //! - `LITMUS_DETAIL`: `simple`, `detailed` or `full` for this run (not saved).
 //! - `LITMUS_DEMO_ZOOM`: a zoom factor, as a display scaled to 150% shows the app (`1.5`).
+//! - `LITMUS_DEMO_WINDOW`: `shown` keeps the main window up in the `quick` scene, as when the hotkey is pressed with
+//!   the app open behind another window (default `hidden`, the tray). While the `quick` scene waits for its reading
+//!   the demo asks for no frames of its own, so the popup must show the reading as it does in use.
+//! - `LITMUS_DEMO_QUICK`: the `quick` scene's script (`demo/quick.rs`): `reading` (the default), `loading`, `batch`,
+//!   `replace`, `escape`, `expire`, `full` or `tray`. Every script ends the app through the tray's Quit.
 //! - `LITMUS_DEMO_TEXT`: a UTF-8 text file the `check`, `explain` and `edit` scenes check in place of the sample, so
-//!   that a release's reading of a chosen text can be photographed and compared with the command line's.
+//!   that a release's reading of a chosen text can be photographed and compared with the command line's; the `open`
+//!   scene opens it as Open file, a drop or Explorer's entry does (any kind the app reads), and says what it showed.
 //!
 //! The scenes of states: `short` (a few words), `scoring` (a long text, photographed while it is read), `error` (a
-//! file that cannot be read), `nomodel` (`LITMUS_MODEL` pointing at no release), and `edit` (the editor reopened
-//! over a reading).
+//! file that cannot be read), `nomodel` (`LITMUS_MODEL` pointing at no release), `edit` (the editor reopened over a
+//! reading), and `open` (a file opened in the Check screen).
 //!
 //! A scene that fails (no model, an error, 120 seconds without a result) writes `<screenshot>.error.txt` instead.
+
+mod quick;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -45,6 +53,7 @@ enum Scene {
     Error,
     NoModel,
     Edit,
+    Open,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -71,6 +80,14 @@ pub struct Demo {
     settling: Option<Instant>,
     pub detail: Option<crate::settings::Detail>,
     pub zoom: Option<f32>,
+    /// The quick scene's script.
+    quick: Option<quick::Run>,
+    /// The window the shot is of.
+    target: egui::ViewportId,
+    /// When the open scene opened its file, its last pass, and its slowest pass since.
+    opened: Option<Instant>,
+    last_pass: Option<Instant>,
+    slowest: std::time::Duration,
 }
 
 impl Demo {
@@ -89,7 +106,8 @@ impl Demo {
             "error" => Scene::Error,
             "nomodel" => Scene::NoModel,
             "edit" => Scene::Edit,
-            other => panic!("LITMUS_DEMO={other}: use check, explain, long, batch, history, empty, quick, settings, short, scoring, error, nomodel or edit"),
+            "open" => Scene::Open,
+            other => panic!("LITMUS_DEMO={other}: use check, explain, long, batch, history, empty, quick, settings, short, scoring, error, nomodel, edit or open"),
         };
         let theme = std::env::var("LITMUS_THEME").ok().map(|t| match t.as_str() {
             "dark" => ThemeChoice::Dark,
@@ -115,6 +133,18 @@ impl Demo {
                 other => panic!("LITMUS_DETAIL={other}: use simple, detailed or full"),
             }),
             zoom: std::env::var("LITMUS_DEMO_ZOOM").ok().map(|z| z.parse().expect("LITMUS_DEMO_ZOOM is a number")),
+            quick: (scene == Scene::Quick).then(|| {
+                let shown = match std::env::var("LITMUS_DEMO_WINDOW").as_deref() {
+                    Ok("shown") => true,
+                    Ok("hidden") | Err(_) => false,
+                    Ok(other) => panic!("LITMUS_DEMO_WINDOW={other}: use shown or hidden"),
+                };
+                quick::Run::new(shown, std::env::var_os("LITMUS_DEMO_FOLDER").map(PathBuf::from))
+            }),
+            target: egui::ViewportId::ROOT,
+            opened: None,
+            last_pass: None,
+            slowest: std::time::Duration::ZERO,
         })
     }
 }
@@ -143,10 +173,14 @@ fn long_text() -> String {
     (1..=36).map(|n| format!("{n}. {}", crate::sample::TEXT)).collect::<Vec<_>>().join("\n\n")
 }
 
+/// A text long enough to photograph while it is read: the long text twelve times over.
+fn scoring_text() -> String {
+    (0..12).map(|_| long_text()).collect::<Vec<_>>().join("\n\n")
+}
+
 /// Advance the scene by one frame.
 pub fn step(app: &mut LitmusApp, ctx: &egui::Context) {
     let Some(mut demo) = app.demo.take() else { return };
-    ctx.request_repaint();
     if let Some(detail) = demo.detail.take() {
         app.settings.detail = detail;
     }
@@ -157,6 +191,7 @@ pub fn step(app: &mut LitmusApp, ctx: &egui::Context) {
     ctx.all_styles_mut(|style| style.interaction.tooltip_delay = 3600.0);
     if demo.started.elapsed().as_secs() > 120 && demo.stage != Stage::Done {
         let popup = app.quick.running.as_ref().and_then(|r| r.popup.as_ref()).map(|p| match &p.state {
+            crate::quick::PopupState::Waiting { .. } => "waiting for the model".to_owned(),
             crate::quick::PopupState::Scoring { job, .. } => format!("scoring job {job}"),
             crate::quick::PopupState::Shown { .. } => "shown".to_owned(),
             crate::quick::PopupState::Failed(error) => format!("failed: {error}"),
@@ -164,7 +199,31 @@ pub fn step(app: &mut LitmusApp, ctx: &egui::Context) {
         let message = format!("the scene did not finish within 120 seconds (stage {:?}, popup {popup:?}, model loaded {})", demo.stage, app.meta().is_some());
         fail(&mut demo, ctx, &message);
     }
+    // The longest pass while a scene waits for its reading: the window must stay responsive meanwhile (outside the
+    // quick scene the demo asks for a frame every pass, so a pass is a frame).
+    if demo.stage == Stage::WaitResult && demo.quick.is_none() {
+        let now = Instant::now();
+        if let Some(last) = demo.last_pass.replace(now) {
+            demo.slowest = demo.slowest.max(now - last);
+        }
+    }
+    // The quick scene runs its script until it passes; the stages below then photograph and close.
+    let mut force_frames = true;
+    if let Some(run) = demo.quick.as_mut()
+        && matches!(demo.stage, Stage::WaitModel | Stage::WaitResult)
+    {
+        match quick::step(run, app, ctx) {
+            quick::Next::Wait => force_frames = false,
+            quick::Next::Poll => {}
+            quick::Next::Shoot(target) => {
+                demo.target = target;
+                demo.stage = Stage::Settle(12);
+            }
+            quick::Next::Fail(error) => fail(&mut demo, ctx, &error),
+        }
+    }
     match demo.stage {
+        Stage::WaitModel | Stage::WaitResult if demo.quick.is_some() => {}
         Stage::WaitModel => match &app.model {
             ModelState::Loading => {}
             ModelState::Failed(_) if demo.scene == Scene::NoModel => demo.stage = Stage::Settle(12),
@@ -181,15 +240,20 @@ pub fn step(app: &mut LitmusApp, ctx: &egui::Context) {
                         app.check();
                     }
                     Scene::Scoring => {
-                        app.input = (0..12).map(|_| long_text()).collect::<Vec<_>>().join("
-
-");
+                        app.input = scoring_text();
                         app.input_source = "pasted".into();
                         app.check();
                     }
                     Scene::Error => match &demo.folder {
                         Some(folder) => app.open_file(&folder.join("missing.docx")),
                         None => fail(&mut demo, ctx, "the error scene needs LITMUS_DEMO_FOLDER"),
+                    },
+                    Scene::Open => match demo.text.clone() {
+                        Some(path) => {
+                            demo.opened = Some(Instant::now());
+                            app.open_file(&path);
+                        }
+                        None => fail(&mut demo, ctx, "the open scene needs LITMUS_DEMO_TEXT"),
                     },
                     Scene::Check | Scene::Explain | Scene::Edit => match scene_text(demo.text.as_deref()) {
                         Ok(text) => {
@@ -214,27 +278,38 @@ pub fn step(app: &mut LitmusApp, ctx: &egui::Context) {
                     Scene::History => app.tab = Tab::History,
                     Scene::Empty => {}
                     Scene::Settings => app.settings_open = true,
-                    Scene::Quick => {
-                        if let Err(error) = crate::views::quick::demo_start(app, ctx, "The bakery on the corner opens at six.") {
-                            fail(&mut demo, ctx, &format!("quick check did not start: {error}"));
-                        }
-                    }
+                    Scene::Quick => unreachable!("the quick scene runs its script"),
                 }
                 if demo.stage != Stage::Done {
                     demo.stage = Stage::WaitResult;
                 }
             }
         },
-        Stage::WaitResult if demo.scene == Scene::Quick => {
-            if crate::views::quick::demo_shown(app) {
-                demo.stage = Stage::Settle(12);
-            }
-        }
         Stage::WaitResult if demo.scene == Scene::Scoring => {
             if app.running.as_ref().is_some_and(|r| r.progress.fraction > 0.2) {
                 demo.stage = Stage::Settle(1);
             } else if !app.busy() {
                 fail(&mut demo, ctx, "the scoring scene finished before it could be photographed");
+            }
+        }
+        Stage::WaitResult if demo.scene == Scene::Open => {
+            // What a person sees after opening the file: its reading, or the error with what to do.
+            if !app.busy() {
+                let ms = demo.opened.map_or(0, |at| at.elapsed().as_millis());
+                eprintln!("litmus demo: the slowest frame while it was read took {} ms", demo.slowest.as_millis());
+                match (&app.notice, &app.shown) {
+                    (Some(crate::app::Notice::Error { title, detail }), _) => eprintln!("litmus demo: opened in {ms} ms: error \"{title}\": {detail}"),
+                    (Some(crate::app::Notice::Info(text)), _) => eprintln!("litmus demo: opened in {ms} ms: note \"{text}\""),
+                    (None, Some(shown)) => eprintln!(
+                        "litmus demo: opened in {ms} ms: reading \"{}\" of \"{}\", {} tokens, the editor holding {} characters",
+                        crate::wording::verdict_headline(&shown.scored.reading.verdict),
+                        shown.title,
+                        shown.scored.reading.n_tokens,
+                        app.input.chars().count()
+                    ),
+                    (None, None) => eprintln!("litmus demo: opened in {ms} ms: nothing shown, no notice"),
+                }
+                demo.stage = Stage::Settle(12);
             }
         }
         Stage::WaitResult if demo.scene == Scene::Error => {
@@ -246,6 +321,7 @@ pub fn step(app: &mut LitmusApp, ctx: &egui::Context) {
         }
         Stage::WaitResult => {
             if !app.busy() {
+                eprintln!("litmus demo: the slowest frame while it was read took {} ms", demo.slowest.as_millis());
                 if let Some(crate::app::Notice::Error { title, detail }) = &app.notice {
                     let error = format!("{title}: {detail}");
                     fail(&mut demo, ctx, &error);
@@ -275,7 +351,7 @@ pub fn step(app: &mut LitmusApp, ctx: &egui::Context) {
                                 }
                             }
                         }
-                        Scene::History | Scene::Empty | Scene::Quick | Scene::Settings | Scene::Short | Scene::Scoring | Scene::Error | Scene::NoModel => {}
+                        Scene::History | Scene::Empty | Scene::Quick | Scene::Settings | Scene::Short | Scene::Scoring | Scene::Error | Scene::NoModel | Scene::Open => {}
                     }
                     if demo.stage != Stage::Done {
                         // A window fades in: give it time to finish.
@@ -293,8 +369,7 @@ pub fn step(app: &mut LitmusApp, ctx: &egui::Context) {
                     *slot.lock().expect("the screenshot slot") = Some(image);
                     waker.request_repaint();
                 });
-                let target = if demo.scene == Scene::Quick { crate::views::quick::popup_id() } else { egui::ViewportId::ROOT };
-                ctx.send_viewport_cmd_to(target, egui::ViewportCommand::Screenshot(callback));
+                ctx.send_viewport_cmd_to(demo.target, egui::ViewportCommand::Screenshot(callback));
                 demo.stage = Stage::Shooting;
             }
             None => demo.stage = Stage::Done,
@@ -309,14 +384,22 @@ pub fn step(app: &mut LitmusApp, ctx: &egui::Context) {
                     Ok(()) => {
                         eprintln!("litmus demo: wrote {}", shot.display());
                         demo.stage = Stage::Done;
-                        app.quick.quitting = true;
-                        ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Close);
+                        if app.quick.running.is_some() {
+                            // The quick scene ends as a person ends the app from the tray.
+                            crate::views::quick::demo_tray(app, ctx, crate::quick::TrayAction::Quit);
+                        } else {
+                            ctx.send_viewport_cmd_to(egui::ViewportId::ROOT, egui::ViewportCommand::Close);
+                        }
                     }
                     Err(error) => fail(&mut demo, ctx, &format!("{}: {error}", shot.display())),
                 }
             }
         }
         Stage::Done => {}
+    }
+    // Every other stage advances by frames; the quick scene's waits get only the frames the app asks for itself.
+    if force_frames {
+        ctx.request_repaint();
     }
     app.demo = Some(demo);
 }

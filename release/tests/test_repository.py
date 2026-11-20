@@ -17,7 +17,7 @@ from tests.conftest import RESULTS
 REPOSITORY = Path(__file__).resolve().parents[2]
 # The data documents a slot may name: the driver's own, and the files of the record folder the documents read (release/RELEASING.md).
 DOCUMENTS = {"plan", "release", "target", "config", "model", "record", "results", "results_md", "counts", "links", "bench", "browser", "build", "linux_build",
-             "evaluation_test", "evaluation_test_full", "evaluation_validation", "teacher_metrics", "teacher_uncertainty"}
+             "evaluation_test", "evaluation_test_full", "evaluation_validation", "teacher_metrics", "teacher_uncertainty", "lengths"}
 
 
 def all_slots() -> list[tuple[str, str]]:
@@ -81,7 +81,7 @@ def test_the_command_line_parses_every_command() -> None:
 
 def fabricate(keys: list[str]) -> dict:
     """Data documents shaped as the keys read them, with made-up leaves: it proves each key's grammar and format, not a real schema."""
-    leaves = {"int": 1234, "f0": 30.0, "f1": 1.5, "f2": 1.25, "f3": 0.5, "pct0": 0.25, "pct1": 0.25, "mb1": 5_000_000, "m2": 1_790_000, "ms0": 0.1, "": "text"}
+    leaves = {"int": 1234, "f0": 30.0, "f1": 1.5, "f2": 1.25, "f3": 0.5, "pct0": 0.25, "pct1": 0.25, "mb1": 5_000_000, "m2": 1_790_000, "ms0": 0.1, "sig2": 28_267, "": "text"}
     documents: dict[str, dict] = {}
     for key in keys:
         name, spec = split_key(key)
@@ -140,7 +140,7 @@ def test_every_slot_of_the_repository_renders_from_data_shaped_as_its_key_reads_
     merged["results"] = results
     merged["counts"] = comparison_counts(results)
     merged["results_md"] = {"benchmarks": "table", "flag_rates": "table", "throughput": "table"}
-    for name in ("record", "bench", "browser", "evaluation_test", "teacher_metrics", "teacher_uncertainty"):
+    for name in ("record", "bench", "browser", "evaluation_test", "teacher_metrics", "teacher_uncertainty", "lengths"):
         merged[name] = made.get(name, {})
     merged["bench"] = {**merged["bench"], "machine": {"name": "n", "processor": "p", "system": "s", "backend": "avx2"}}
     renderer = Values.with_templates(merged, REPOSITORY / "release" / "templates.toml")

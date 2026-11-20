@@ -39,14 +39,37 @@ def holds(documents: Mapping[str, Any], path: str) -> bool:
     return value is not None and value != "" and value != []
 
 
-def comparison_counts(results: Mapping[str, Any]) -> dict[str, int]:
-    """How many public two-class benchmarks the comparison scored, and how many detectors beside Litmus read them."""
+def machine_name(machine: str) -> str:
+    """A cost row's machine without its operating system: `Arm Neoverse-V2 / Linux` is `Arm Neoverse-V2`."""
+    return machine.rsplit(" / ", 1)[0]
+
+
+def comparison_counts(results: Mapping[str, Any]) -> dict[str, int | float | str]:
+    """How many public two-class benchmarks the comparison scored and how many detectors beside Litmus read them, and the
+    standings a sentence would otherwise state by hand, so a new release cannot leave one stale: how many of those
+    detectors were measured faster than Litmus's engine on the comparison's core and the fastest of their speeds, and how
+    many have a higher mean PR AUC over the benchmarks none of them trained on, and how many such benchmarks there are.
+    The processors the speeds were measured on are named too, and `speed_machines_differ` holds a value only when
+    Litmus's was not the others' (the baselines are timed once, on the machine of their time)."""
     own = results["model"]["name"]
     rows = [row for row in results["rows"] if row["task"] == "ai_vs_human"]
     benchmarks = [entry["id"] for entry in results["benchmarks"] if entry["kind"] == "two_class" and entry["id"] not in OWN_SPLITS
                   and any(row["benchmark"] == entry["id"] for row in rows)]
     detectors = {row["detector"] for row in rows if row["benchmark"] in benchmarks and row["detector"] != own}
-    return {"benchmarks": len(benchmarks), "detectors": len(detectors)}
+    speeds = {cost["detector"]: cost["tokens_per_second"] for cost in results["costs"] if cost["measured"]}
+    own_speed = speeds[f"{own} engine"]
+    other_speeds = [speeds[name] for name in detectors if name in speeds]
+    assert other_speeds, "no compared detector has a measured speed"
+    machines = {cost["detector"]: machine_name(cost["machine"]) for cost in results["costs"] if cost["measured"]}
+    own_machine = machines[f"{own} engine"]
+    other_machines = sorted({machines[name] for name in detectors if name in machines})
+    unseen = {entry["detector"]: entry["pr_auc"] for entry in results["comparison"]["mean_pr_auc_unseen"]}
+    return {"benchmarks": len(benchmarks), "detectors": len(detectors),
+            "faster_than_litmus": sum(speed > own_speed for speed in other_speeds), "fastest_other_tokens_per_second": max(other_speeds),
+            "more_accurate_unseen": sum(value > unseen[own] for name, value in unseen.items() if name != own),
+            "unseen_benchmarks": len(results["comparison"]["unseen_benchmarks"]),
+            "speed_machine": own_machine, "other_speed_machines": " and ".join(other_machines),
+            "speed_machines_differ": "" if other_machines == [own_machine] else "yes"}
 
 
 BANDS = ("all", "1-128", "129-512", "513-2048", "2049-8192")

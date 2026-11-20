@@ -2113,7 +2113,7 @@ checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 
 [[package]]
 name = "litmus-app"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "eframe",
  "global-hotkey",
@@ -2133,7 +2133,7 @@ dependencies = [
 
 [[package]]
 name = "litmus-engine"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -2143,7 +2143,7 @@ dependencies = [
 
 [[package]]
 name = "litmus-files"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "litmus-engine",
  "miniz_oxide 0.8.9",

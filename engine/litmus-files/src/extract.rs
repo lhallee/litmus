@@ -21,10 +21,22 @@ fn extension(path: &Path) -> String {
 /// The text of a file's bytes, by the path's extension (plain text when unknown).
 pub fn text_of(path: &Path, bytes: &[u8]) -> Result<String, String> {
     match extension(path).as_str() {
-        "html" | "htm" => Ok(html_text(&String::from_utf8_lossy(bytes))),
+        "html" | "htm" => Ok(html_text(&decode(bytes))),
         "docx" => docx_text(bytes),
         "pdf" => pdf_text(path),
-        _ => Ok(String::from_utf8_lossy(bytes).into_owned()),
+        _ => Ok(decode(bytes)),
+    }
+}
+
+/// A text file's characters: UTF-16 when it starts with a UTF-16 byte-order mark (Windows Notepad's "Unicode"),
+/// else UTF-8, a UTF-8 byte-order mark dropped; bytes that are not valid become U+FFFD.
+pub fn decode(bytes: &[u8]) -> String {
+    let units = |rest: &[u8], word: fn([u8; 2]) -> u16| rest.chunks(2).map(|pair| word([pair[0], *pair.get(1).unwrap_or(&0)])).collect::<Vec<u16>>();
+    match bytes {
+        [0xFF, 0xFE, rest @ ..] => String::from_utf16_lossy(&units(rest, u16::from_le_bytes)),
+        [0xFE, 0xFF, rest @ ..] => String::from_utf16_lossy(&units(rest, u16::from_be_bytes)),
+        [0xEF, 0xBB, 0xBF, rest @ ..] => String::from_utf8_lossy(rest).into_owned(),
+        _ => String::from_utf8_lossy(bytes).into_owned(),
     }
 }
 
@@ -273,6 +285,22 @@ mod tests {
         let html = "<html><head><style>p{}</style><script>var x = '<p>';</script></head><body><h1>Title</h1>\
                     <p>One &amp; two&nbsp;three\n   words.</p><!-- gone --><ul><li>a</li><li>b &#x263A;</li></ul></body></html>";
         assert_eq!(html_text(html), "Title\n\nOne & two\u{a0}three words.\na\nb \u{263a}");
+    }
+
+    #[test]
+    fn text_files_decode_by_their_byte_order_mark() {
+        let text = "Caf\u{e9} \u{2014} the bakery opens at six. \u{1F35E}";
+        let le: Vec<u8> = [0xFF, 0xFE].into_iter().chain(text.encode_utf16().flat_map(u16::to_le_bytes)).collect();
+        let be: Vec<u8> = [0xFE, 0xFF].into_iter().chain(text.encode_utf16().flat_map(u16::to_be_bytes)).collect();
+        let bom: Vec<u8> = [0xEF, 0xBB, 0xBF].into_iter().chain(text.bytes()).collect();
+        for (name, bytes) in [("UTF-16LE", &le), ("UTF-16BE", &be), ("UTF-8 with a mark", &bom)] {
+            assert_eq!(text_of(Path::new("notes.txt"), bytes).unwrap(), text, "{name}");
+        }
+        assert_eq!(text_of(Path::new("notes.txt"), text.as_bytes()).unwrap(), text, "plain UTF-8");
+        let page: Vec<u8> = [0xFF, 0xFE].into_iter().chain("<p>One &amp; two</p>".encode_utf16().flat_map(u16::to_le_bytes)).collect();
+        assert_eq!(text_of(Path::new("page.htm"), &page).unwrap(), "One & two", "an HTML file saved as UTF-16");
+        assert_eq!(decode(&[0xFF, 0xFE, 0x41]), "\u{41}", "an odd trailing byte reads as a unit of its own");
+        assert_eq!(decode(&[0x41, 0xFF, 0x42]), "A\u{FFFD}B", "invalid UTF-8 is replaced, never an error");
     }
 
     #[test]

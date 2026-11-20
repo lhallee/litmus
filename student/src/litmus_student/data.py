@@ -34,14 +34,20 @@ from collections import deque
 from collections.abc import Callable, Iterator
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
+from multiprocessing import get_context
 from pathlib import Path
+from typing import Any
 from tqdm import tqdm
 
 from .contract import reference
 from .model import PackedBatch
+from .presentation import load_synonyms, presented
 
 
 TOKENS_FILE = "tokens.npy"
+TEXTS_FILE = "texts.bin"  # a text store's UTF-8 texts back to back
+TEXT_STARTS_FILE = "text_starts.npy"
+TEXT_LENGTHS_FILE = "text_lengths.npy"
 OFFSETS_FILE = "offsets.npy"
 ROWS_FILE = "rows.npz"
 META_FILE = "meta.json"
@@ -78,11 +84,15 @@ def corpus_lengths(corpus: Path) -> tuple[pa.Table, np.ndarray, np.ndarray]:
     return columns, ids, length
 
 
-def write_rows(corpus: Path, out: Path, split_path: Path | None) -> None:
+def write_rows(corpus: Path, out: Path, split_path: Path | None, reading: str = "standard") -> None:
     """Write `rows.npz` and `meta.json` beside the tokens. Each row's split and cluster come from the teacher's
     `split.parquet` (`id`, `split`, `cluster`; a row with no cluster, as a benchmark row, gets -1), or, with no
-    `split_path`, from the corpus's own `split` and `cluster` columns."""
-    columns, ids, length = corpus_lengths(corpus)
+    `split_path`, from the corpus's own `split` and `cluster` columns. Lengths are the tokens' own, which in the
+    standard reading must equal the corpus's `tokens`."""
+    columns, ids, corpus_length = corpus_lengths(corpus)
+    length = np.diff(np.load(out / OFFSETS_FILE))  # (n,)
+    if reading == "standard" and not np.array_equal(length, corpus_length):
+        raise ValueError("the tokens disagree with the corpus's `tokens`; the corpus was tokenized differently")
     n = len(ids)
     if split_path is None:
         assigned = pa.concat_tables([pq.read_table(path, columns=SPLIT_COLUMNS) for path in parquet_files(corpus)])
@@ -103,11 +113,80 @@ def write_rows(corpus: Path, out: Path, split_path: Path | None) -> None:
     long_eval = np.zeros(n, dtype=bool)  # (n,)
     long_eval[ids] = columns["long_eval"].to_numpy(zero_copy_only=False)
     np.savez(out / ROWS_FILE, label=label, split=split, cluster=cluster, length=length, long_eval=long_eval)
-    meta = {"rows": n, "tokens": int(length.sum()), "splits": split_names, "corpus": str(corpus),
+    meta = {"rows": n, "tokens": int(length.sum()), "splits": split_names, "corpus": str(corpus), "reading": reading,
             "split": None if split_path is None else str(split_path),
             "tokenizer": {"repository": reference.TOKENIZER_REPOSITORY, "revision": reference.TOKENIZER_REVISION,
                           "sha256": reference.TOKENIZER_SHA256}}
     (out / META_FILE).write_text(json.dumps(meta, indent=1) + "\n", encoding="utf-8")
+
+
+WORKER_TOKENIZER: Any = None  # a worker process's own tokenizer (`read_and_tokenize`)
+
+
+def start_worker(tokenizer_path: Path | None) -> None:
+    global WORKER_TOKENIZER
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"  # many processes, one thread each
+    WORKER_TOKENIZER = reference.load_tokenizer(tokenizer_path)
+
+
+def read_and_tokenize(job: tuple[np.ndarray, list[str], str]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """A batch's texts in a reading, tokenized: its ids (r,), token counts (r,), and tokens back to back (t,) uint16."""
+    ids, texts, reading = job
+    read = [reference.read_as(text, reading) for text in texts]
+    encodings = WORKER_TOKENIZER.encode_batch(read, add_special_tokens=False)
+    lengths = np.asarray([len(encoding.ids) for encoding in encodings], dtype=np.int64)  # (r,)
+    tokens = np.fromiter((index for encoding in encodings for index in encoding.ids), dtype=np.uint16, count=int(lengths.sum()))  # (t,)
+    return ids, lengths, tokens
+
+
+def tokenize_reading(corpus: Path, out: Path, tokenizer_path: Path | None, batch_rows: int, reading: str, workers: int) -> None:
+    """Write the tokens of `corpus` read in `reading` (`reference.READINGS`, not the standard one, which the corpus's
+    texts already are): each batch read and tokenized in a worker process, at most two batches a worker in flight, then
+    every row's tokens placed by its id. Lengths come from the tokens, not the corpus's `tokens` column."""
+    _, _, corpus_length = corpus_lengths(corpus)
+    n = len(corpus_length)
+    length = np.full(n, -1, dtype=np.int64)  # (n,)
+    parts: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
+    progress = tqdm(total=n, desc=f"read {reading} and tokenize", unit="text", mininterval=30, file=sys.stderr)
+
+    def collect(part: tuple[np.ndarray, np.ndarray, np.ndarray]) -> None:
+        length[part[0]] = part[1]
+        parts.append(part)
+        progress.update(len(part[0]))
+
+    pending: list = []
+
+    def collect_one() -> None:
+        """Collect whichever batch finishes first, so one slow batch never keeps the other workers waiting."""
+        while not (done := [job for job in pending if job.ready()]):
+            pending[0].wait(0.05)
+        pending.remove(done[0])
+        collect(done[0].get())
+
+    # spawned, not forked: the parent's Arrow and tokenizer threads could hold a lock a forked child never sees released
+    with get_context("spawn").Pool(workers, initializer=start_worker, initargs=(tokenizer_path,)) as pool:
+        for path in parquet_files(corpus):
+            for batch in pq.ParquetFile(path).iter_batches(batch_size=batch_rows, columns=["id", "text"]):
+                pending.append(pool.apply_async(read_and_tokenize, ((batch.column("id").to_numpy(), batch.column("text").to_pylist(), reading),)))
+                if len(pending) >= 2 * workers:
+                    collect_one()
+        while pending:
+            collect_one()
+    progress.close()
+    if (length < 1).any():
+        raise ValueError(f"{int((length < 1).sum())} rows have no tokens in the {reading} reading, or were not read")
+    offsets = np.zeros(n + 1, dtype=np.int64)  # (n + 1,)
+    np.cumsum(length, out=offsets[1:])
+    out.mkdir(parents=True, exist_ok=True)
+    tokens = np.lib.format.open_memmap(out / (TOKENS_FILE + ".partial"), mode="w+", dtype=np.uint16, shape=(int(offsets[-1]),))  # (N,)
+    for ids, lengths, values in parts:
+        starts = np.cumsum(lengths) - lengths  # (r,) each row's first token in `values`
+        # every token's place in the store: its row's offset plus its place inside the row
+        tokens[np.repeat(offsets[ids], lengths) + np.arange(len(values)) - np.repeat(starts, lengths)] = values
+    tokens.flush()
+    del tokens
+    np.save(out / OFFSETS_FILE, offsets)
+    os.replace(out / (TOKENS_FILE + ".partial"), out / TOKENS_FILE)
 
 
 def tokenize_corpus(corpus: Path, out: Path, tokenizer_path: Path | None, batch_rows: int) -> None:
@@ -160,6 +239,7 @@ class TokenStore:
             raise ValueError(f"{directory} predates `long_eval`; tokenize the corpus again")
         self.long_eval = rows["long_eval"].astype(bool)  # (n,)
         self.splits: list[str] = self.meta["splits"]
+        self.reading: str = self.meta.get("reading", "standard")  # how each text was read before tokenizing
 
     def __len__(self) -> int:
         return len(self.length)
@@ -191,6 +271,103 @@ def write_store(directory: Path, texts: list[np.ndarray], label: np.ndarray, spl
     (directory / META_FILE).write_text(json.dumps(meta, indent=1) + "\n", encoding="utf-8")
 
 
+# ---------------------------------------------------------------- texts, presented at every draw
+
+
+def write_texts(corpus: Path, out: Path, batch_rows: int = 65536) -> None:
+    """Every corpus text's UTF-8 bytes back to back (`texts.bin`), with each id's start and length in bytes
+    (`text_starts.npy`, `text_lengths.npy`), copied from Arrow's own buffers, so the presenter reads any text at once."""
+    _, ids, _ = corpus_lengths(corpus)
+    n = len(ids)
+    starts = np.full(n, -1, dtype=np.int64)  # (n,)
+    lengths = np.zeros(n, dtype=np.int64)  # (n,)
+    out.mkdir(parents=True, exist_ok=True)
+    written = 0
+    with open(out / (TEXTS_FILE + ".partial"), "wb") as handle:
+        for path in parquet_files(corpus):
+            for batch in pq.ParquetFile(path).iter_batches(batch_size=batch_rows, columns=["id", "text"]):
+                text = batch.column("text")
+                if text.null_count:
+                    raise ValueError(f"{path}: {text.null_count} texts are null")
+                width = np.int64 if pa.types.is_large_string(text.type) else np.int32
+                buffers = text.buffers()
+                offsets = np.frombuffer(buffers[1], dtype=width)[text.offset : text.offset + len(text) + 1].astype(np.int64)  # (r + 1,)
+                handle.write(memoryview(buffers[2])[offsets[0] : offsets[-1]])
+                rows = batch.column("id").to_numpy()  # (r,)
+                starts[rows] = written + offsets[:-1] - offsets[0]
+                lengths[rows] = np.diff(offsets)
+                written += int(offsets[-1] - offsets[0])
+    if (starts < 0).any():
+        raise ValueError(f"{int((starts < 0).sum())} corpus ids have no text")
+    np.save(out / TEXT_STARTS_FILE, starts)
+    np.save(out / TEXT_LENGTHS_FILE, lengths)
+    os.replace(out / (TEXTS_FILE + ".partial"), out / TEXTS_FILE)
+
+
+class TextStore:
+    """The corpus's texts by id (`write_texts`), memory-mapped."""
+
+    def __init__(self, directory: Path) -> None:
+        self.data = np.memmap(directory / TEXTS_FILE, dtype=np.uint8, mode="r")  # (B,)
+        self.starts = np.load(directory / TEXT_STARTS_FILE)  # (n,)
+        self.lengths = np.load(directory / TEXT_LENGTHS_FILE)  # (n,)
+
+    def __len__(self) -> int:
+        return len(self.starts)
+
+    def text(self, row: int) -> str:
+        start = int(self.starts[row])
+        return bytes(self.data[start : start + int(self.lengths[row])]).decode("utf-8")
+
+
+PRESENTER: dict[str, Any] = {}  # a presenter process's text store, tokenizer and synonym table
+
+
+def start_presenter(texts: Path, synonyms: Path | None, tokenizer_path: Path | None) -> None:
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"  # many processes, one thread each
+    PRESENTER.update(store=TextStore(texts), tokenizer=reference.load_tokenizer(tokenizer_path),
+                     synonyms=None if synonyms is None else load_synonyms(synonyms))
+
+
+def present_and_tokenize(job: tuple[np.ndarray, np.ndarray, int]) -> tuple[np.ndarray, np.ndarray]:
+    """Rows' texts each presented from its own seed (`presentation.presented`) and tokenized, at most `max_tokens`
+    tokens each: token counts (r,) and tokens back to back (t,) uint16."""
+    rows, seeds, max_tokens = job
+    read = [presented(PRESENTER["store"].text(int(row)), np.random.default_rng(int(seed)), PRESENTER["synonyms"])
+            for row, seed in zip(rows, seeds, strict=True)]
+    encodings = PRESENTER["tokenizer"].encode_batch(read, add_special_tokens=False)
+    lengths = np.asarray([min(len(encoding.ids), max_tokens) for encoding in encodings], dtype=np.int64)  # (r,)
+    assert lengths.min(initial=1) > 0, "a presented text keeps a token"
+    tokens = np.fromiter((index for encoding in encodings for index in encoding.ids[:max_tokens]), dtype=np.uint16, count=int(lengths.sum()))  # (t,)
+    return lengths, tokens
+
+
+class Presenter:
+    """Training texts presented anew at every draw (`presentation.presented`, Logan, 2026-11-19: "random each epoch so
+    can get different versions of each document"), in worker processes: each drawn text gets a fresh seed from
+    `generator`, so a seed gives the same run and no two draws of a text share a presentation by design. Validation,
+    test, calibration and the reference bank never pass through it: they read the token store as stored."""
+
+    def __init__(self, texts: Path, synonyms: Path | None, max_tokens: int, workers: int, generator: np.random.Generator,
+                 tokenizer_path: Path | None = None) -> None:
+        self.max_tokens, self.workers, self.generator = max_tokens, workers, generator
+        # spawned, not forked: the parent's Arrow, tokenizer and CUDA threads could hold a lock a forked child never sees released
+        self.pool = get_context("spawn").Pool(workers, initializer=start_presenter, initargs=(texts, synonyms, tokenizer_path))
+
+    def ids(self, rows: np.ndarray) -> list[np.ndarray]:
+        """Each row's presented tokens, in order: (b,) to b arrays (l_i,) int64."""
+        seeds = self.generator.integers(0, 2**63 - 1, size=len(rows))  # (b,)
+        parts = [part for part in np.array_split(np.arange(len(rows)), 4 * self.workers) if len(part)]
+        out: list[np.ndarray] = []
+        for lengths, tokens in self.pool.map(present_and_tokenize, [(rows[part], seeds[part], self.max_tokens) for part in parts]):
+            out.extend(np.split(tokens.astype(np.int64), np.cumsum(lengths)[:-1]))
+        return out
+
+    def close(self) -> None:
+        self.pool.terminate()
+        self.pool.join()
+
+
 # ---------------------------------------------------------------- sampling
 
 
@@ -219,6 +396,11 @@ class ClusterSampler:
             boundaries = np.flatnonzero(np.diff(store.cluster[rows])) + 1  # (c_o - 1,)
             self.members.append(np.split(rows, boundaries))
 
+    @property
+    def rows(self) -> np.ndarray:
+        """Every eligible row: (n_e,)."""
+        return np.concatenate([np.concatenate(clusters) for clusters in self.members])  # (n_e,)
+
     def draw(self, texts: int, generator: np.random.Generator) -> np.ndarray:
         """`texts` row indices, an equal share of each origin (the remainder to the first): (b,)."""
         rows = []
@@ -236,6 +418,30 @@ class ClusterSampler:
             rows.extend(int(clusters[owner][pick - (ends[owner] - sizes[owner])]) for owner, pick in zip(owners, picks, strict=True))
 
         return np.asarray(rows, dtype=np.int64)  # (b,)
+
+
+class EpochSampler:
+    """Draws texts uniformly over all of a split's eligible texts (`ClusterSampler`'s), whatever their origin, in
+    epochs: each epoch a fresh random order of every text, so each is drawn once an epoch (Logan, 2026-11-19: "uniform
+    over all texts"; "random each epoch")."""
+
+    def __init__(self, store: TokenStore, split: str, max_tokens: int, present: np.ndarray) -> None:
+        self.all_rows = np.sort(ClusterSampler(store, split, max_tokens, present).rows)  # (n_e,)
+        self.order = np.zeros(0, dtype=np.int64)
+        self.position = 0
+        self.epoch = -1
+
+    def draw(self, texts: int, generator: np.random.Generator) -> np.ndarray:
+        """The next `texts` rows of the epoch's order, a new order begun when it runs out: (b,)."""
+        drawn = []
+        while texts > 0:
+            if self.position == len(self.order):
+                self.order, self.position, self.epoch = generator.permutation(self.all_rows), 0, self.epoch + 1
+            take = min(texts, len(self.order) - self.position)
+            drawn.append(self.order[self.position : self.position + take])
+            self.position += take
+            texts -= take
+        return np.concatenate(drawn)  # (b,)
 
 
 def cluster_stratified_rows(store: TokenStore, split: str, per_origin: int, generator: np.random.Generator,
@@ -263,8 +469,9 @@ def cluster_stratified_rows(store: TokenStore, split: str, per_origin: int, gene
 
 
 # Bank recipes: the split each origin's bank texts are drawn from, human, ai and mixed in that order. `mixed_out` takes
-# human and AI texts from the training rows and mixed texts from `bank_draw`, texts no training step saw.
-BANK_RECIPES = {"mixed_out": ("train", "train", "bank_draw")}
+# human and AI texts from the training rows and mixed texts from `bank_draw`, texts no training step saw. `reference`
+# takes all three from the withheld `bank` set, clusters no other set holds (Litmus 1.1).
+BANK_RECIPES = {"mixed_out": ("train", "train", "bank_draw"), "reference": ("bank", "bank", "bank")}
 
 
 def uniform_order(count: int, seed: int, origin: int) -> np.ndarray:
@@ -469,16 +676,64 @@ class Step:
     tokens: int  # real tokens
 
 
-def build_step(rows: np.ndarray, store: TokenStore, teacher: TeacherFiles, budget: int, block_size: int, multiple: int) -> Step:
-    """Pack drawn rows into micro-batches and gather their targets."""
+@dataclass
+class Cutter:
+    """Training texts cut mid-sentence, as a text cut off by a length limit or a selection reads, at the same rate for
+    every origin so that how a text ends says nothing of who wrote it: Litmus 1.0.0, trained on passages cut only at
+    sentence starts, called a third of mixed texts human once their last sentence was cut off
+    (experiments/tooling/quill/2026-11-19_confounders). Each text of at least `MIN_TOKENS` loses, with probability
+    `end`, its tokens from a word start in its last quarter (at most `SPAN` tokens back), and with probability `start`,
+    its tokens before a word start in its first quarter. A word start is a token that begins with a space or a line
+    break in the byte-level vocabulary."""
+
+    word_start: np.ndarray  # (V,) bool
+    end: float
+    start: float
+    generator: np.random.Generator
+    MIN_TOKENS = 16
+    SPAN = 64
+
+    @classmethod
+    def from_tokenizer(cls, tokenizer: Any, end: float, start: float, generator: np.random.Generator) -> Cutter:
+        vocabulary = tokenizer.get_vocab()
+        word_start = np.zeros(max(vocabulary.values()) + 1, dtype=bool)  # (V,)
+        for token, index in vocabulary.items():
+            word_start[index] = token.startswith(("Ġ", "Ċ", "ĉ"))  # a byte-level space, line feed or tab first
+        return cls(word_start, end, start, generator)
+
+    def cut(self, ids: np.ndarray) -> np.ndarray:
+        """A text's ids, perhaps cut at either end: (l,) to (l',)."""
+        n = len(ids)
+        if n < self.MIN_TOKENS:
+            return ids
+        reach = min(self.SPAN, n // 4)
+        begin, stop = 0, n
+        if self.generator.random() < self.end:
+            places = np.flatnonzero(self.word_start[ids[n - reach:n]]) + n - reach  # word starts in the last quarter
+            if len(places):
+                stop = int(self.generator.choice(places))
+        if self.generator.random() < self.start:
+            places = np.flatnonzero(self.word_start[ids[1:reach + 1]]) + 1  # word starts in the first quarter
+            if len(places):
+                begin = int(self.generator.choice(places))
+        return ids[begin:stop]
+
+
+def build_step(rows: np.ndarray, store: TokenStore, teacher: TeacherFiles, budget: int, block_size: int, multiple: int,
+               cutter: Cutter | None = None, presenter: Presenter | None = None) -> Step:
+    """Pack drawn rows into micro-batches and gather their targets; with a `presenter`, each text presented anew,
+    and with a `cutter`, each text perhaps cut first."""
     # rows: (b,)
-    texts = [store.ids(int(row)) for row in rows]
-    plans = pack(store.length[rows], budget, block_size)
+    texts = presenter.ids(rows) if presenter is not None else [store.ids(int(row)) for row in rows]
+    if cutter is not None:
+        texts = [cutter.cut(ids) for ids in texts]
+    length = np.asarray([len(ids) for ids in texts], dtype=np.int64)  # (b,)
+    plans = pack(length, budget, block_size)
     micro_batches = [packed_batch(plan, texts, block_size, multiple) for plan in plans]
     ordered = np.asarray([rows[placement.row] for plan in plans for placement in plan], dtype=np.int64)  # (b,)
     labels, embeddings, query_key = teacher_targets(ordered, store, teacher)  # (b,), (b, 2D), (b, 2w_T)
 
-    return Step(ordered, micro_batches, labels, embeddings, query_key, int(store.length[rows].sum()))
+    return Step(ordered, micro_batches, labels, embeddings, query_key, int(length.sum()))
 
 
 def teacher_targets(rows: np.ndarray, store: TokenStore, teacher: TeacherFiles) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -520,11 +775,23 @@ def main() -> None:
     parser.add_argument("--split", type=Path, default=None,
                         help="the teacher's split.parquet (id, split, cluster); default: the corpus's own split and cluster columns")
     parser.add_argument("--tokens-only", action="store_true", help="write the tokens and stop; run again with --split for the rows")
+    parser.add_argument("--reading", choices=reference.READINGS, default="standard",
+                        help="read each text this way before tokenizing (reference.READINGS; the corpus's texts are already standard)")
+    parser.add_argument("--texts", action="store_true",
+                        help="write the text store the training presenter reads (write_texts) to --out, and stop")
+    parser.add_argument("--workers", type=int, default=32, help="processes reading and tokenizing, for a reading other than the standard")
     arguments = parser.parse_args()
+    if arguments.texts:
+        write_texts(arguments.corpus, arguments.out)
+        return
+    reading = arguments.reading
     if not (arguments.out / TOKENS_FILE).exists():
-        tokenize_corpus(arguments.corpus, arguments.out, arguments.tokenizer, arguments.batch_rows)
+        if reading == "standard":
+            tokenize_corpus(arguments.corpus, arguments.out, arguments.tokenizer, arguments.batch_rows)
+        else:
+            tokenize_reading(arguments.corpus, arguments.out, arguments.tokenizer, arguments.batch_rows, reading, arguments.workers)
     if not arguments.tokens_only:
-        write_rows(arguments.corpus, arguments.out, arguments.split)
+        write_rows(arguments.corpus, arguments.out, arguments.split, reading)
 
 
 if __name__ == "__main__":

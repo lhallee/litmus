@@ -85,13 +85,13 @@ decision is the reader's.
   ($`X`$, $`W`$), and dimensions are lowercase ($`n`$ tokens, $`d`$ width). One row is one token or one text, and a
   weight matrix is stored as (outputs by inputs), as the release file stores it, so a product is $`Y = X W^{\top}`$.
 - **Symbol tables** in each part give every symbol's meaning, whether it is **fixed** (learned once, then shipped) or
-  **computed** (new for every text), its shape, and its shape in `s192_l4`, the smallest model and the one released.
+  **computed** (new for every text), its shape, and its shape in `s192_l4`, the smallest model (1.0.0's release; 1.1 is `s512_l6`).
 - **Worked numbers** are made up to show the arithmetic, and say so. They were computed with this repository's own
   functions, so they match what the code does.
 - **Diagrams** color computed values teal and fixed weights ochre, in every figure that shows both.
 - **Deeper layers** sit in collapsed sections marked *More detail*; the main text reads without them.
 - **Sources.** Every number comes from this repository's documents and code, the runs of the experiments in part 6,
-  or the cited papers. The account describes the release <!--litmus:t:release_identity-->`v1.0.0` (model lhallee/litmus-second-build at commit 7b2f4470bd3037ced4001d2ea7b2d6c3662c98a2)<!--/litmus-->.
+  or the cited papers. The account describes the release <!--litmus:t:release_identity-->`v1.1.0` (model lhallee/litmus-third-build at commit d1b3e3a9f8342a298c1bb61605f479f175cf9a06)<!--/litmus-->.
 - **Contract.** Where this account and the code differ, the code is right: [`student/SPEC.md`](../student/SPEC.md)
   and [`student/reference.py`](../student/reference.py) define the model's arithmetic, and
   [`teacher/CALIBRATION.md`](../teacher/CALIBRATION.md) the calibration table.

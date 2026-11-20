@@ -585,6 +585,27 @@ fn run_set(set: &str) {
         for piece in [1, 7, block - 1, block, block + 1] {
             assert_eq!(engine.score_ids(&ids, piece).unwrap(), reading, "{label}: pieces of {piece}");
         }
+        // The surprise reading (SPEC.md, Surprise): the mean log probability within 2e-3 (scaled for a short text),
+        // percentiles within 1e-2, and the text path equal to the id path.
+        assert_eq!(engine.info().surprise, record.get("surprise").is_some(), "{label}: a surprise reading with the head");
+        if let Some(want) = record.get("surprise") {
+            let got = engine.surprise_ids(&ids).unwrap();
+            assert_eq!(engine.surprise(text).unwrap(), got, "{label}: surprise(text) against surprise_ids");
+            assert_eq!(got.n_tokens, ids.len(), "{label}: surprise tokens");
+            let scale = if ids.len() < SHORT_TEXT { (SHORT_TEXT as f64 / ids.len() as f64).sqrt() } else { 1.0 };
+            let deviation = (got.mean_log_probability - want["mean_log_probability"].as_f64().unwrap()).abs();
+            worst.see("surprise mean log probability", deviation / scale);
+            if deviation > 2e-3 * scale {
+                failures.push(format!("{label}: surprise mean log probability {} against {}", got.mean_log_probability, want["mean_log_probability"]));
+            }
+            let percentile = got.percentile.expect("a release with the head carries its surprise table");
+            for (a, b) in percentile.iter().zip(floats(&want["percentile"])) {
+                worst.see("surprise percentile", (a - b).abs());
+                if (a - b).abs() > 1e-2 {
+                    failures.push(format!("{label}: surprise percentile {a} against {b}"));
+                }
+            }
+        }
         // The `down` product's path changes no bit: the dense path alone, the column path alone and the measured
         // choice, on every backend, give the same reading, pooled vectors and token states.
         for backend in Backend::available() {

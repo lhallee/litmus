@@ -46,4 +46,4 @@ the reading.
   unlike them gets `unlike reference` or a wide set, and the right reading of either is "no call".
 - Short texts are less reliable: a sentence or two carries little evidence, so the set and the interval stay wide.
 - This release is an English detector: the model is trained almost entirely on English (<!--litmus:record.corpus.english_share as pct1-->98.8%<!--/litmus--> of its training text) and tested mainly on English text; other languages are not supported yet.
-- Accuracy: for the release model, <!--litmus:t:accuracy_summary-->on held-out test texts it wrongly called 5.9% of human texts not human at the 5% level, and it caught 62.1% of AI texts when 5% of human texts are wrongly flagged (35.1% at 1%)<!--/litmus-->.
+- Accuracy: for the release model, <!--litmus:t:accuracy_summary-->on held-out test texts it wrongly called 7.4% of human texts not human at the 5% level, and it caught 67.2% of AI texts when 5% of human texts are wrongly flagged (53.0% at 1%)<!--/litmus-->.

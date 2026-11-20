@@ -200,51 +200,51 @@ the engine reproduces, and [`teacher/CALIBRATION.md`](../teacher/CALIBRATION.md)
 The checkpoint is chosen on validation, and test is read once. The metrics are for AI against human with mixed text
 left out: PR AUC, ROC AUC, balanced MCC (the Matthews correlation coefficient on class-balanced samples at its best
 threshold), and the true positive rate (TPR) at a 1% and a 5% false positive rate (FPR). The AI-or-mixed and mixed
-tasks, 95% intervals, and every breakdown are in <!--litmus:t:data_files-->the release's [`results.json`](https://github.com/lhallee/litmus/releases/tag/v1.0.0)<!--/litmus-->.
+tasks, 95% intervals, and every breakdown are in <!--litmus:t:data_files-->the release's [`results.json`](https://github.com/lhallee/litmus/releases/tag/v1.1.0)<!--/litmus-->.
 
 <!--litmus:t:overview_table-->
 | Split | Reader | Task | PR AUC | ROC AUC | Balanced MCC | TPR at 1% FPR | TPR at 5% FPR |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Test | Litmus, as released | AI against human | 0.914 | 0.917 | 0.667 | 0.351 | 0.621 |
-| Test | Litmus, as released | AI or mixed against human | 0.950 | 0.913 | 0.657 | 0.331 | 0.603 |
-| Test | Litmus, as released | Mixed against human | 0.905 | 0.909 | 0.644 | 0.310 | 0.586 |
+| Test | Litmus, as released | AI against human | 0.937 | 0.934 | 0.697 | 0.530 | 0.671 |
+| Test | Litmus, as released | AI or mixed against human | 0.945 | 0.900 | 0.621 | 0.385 | 0.557 |
+| Test | Litmus, as released | Mixed against human | 0.861 | 0.866 | 0.559 | 0.240 | 0.442 |
 <!--/litmus-->
 
-Released size: <!--litmus:t:released_size-->`s192_l4` (width 192, 4 layers, 1.79M ternary weights)<!--/litmus-->.
+Released size: <!--litmus:t:released_size-->`s512_l6` (width 512, 6 layers, 18.94M ternary weights)<!--/litmus-->.
 
 <!--litmus:t:uncertainty_table-->
 | Uncertainty on test | Value |
 | --- | --- |
-| Human texts called not human at the 5% level | 5.9% |
-| Texts whose 10% set holds their true origin | 89.5% |
-| Mean size of the 10% set | 1.64 |
-| Heat-map boundaries placed within one cell of the truth, on spliced documents | 55.9% |
+| Human texts called not human at the 5% level | 7.4% |
+| Texts whose 10% set holds their true origin | 90.1% |
+| Mean size of the 10% set | 1.87 |
+| Heat-map boundaries placed within one cell of the truth, on spliced documents | 58.9% |
 <!--/litmus-->
 
 ### Public benchmarks
 
-Every detector reads the same seeded sample of each benchmark's labeled test split (<!--litmus:results.texts_per_benchmark as int-->3,000<!--/litmus-->), and the open detectors are run again on the same machine rather than quoted. Each cell is ROC AUC for AI
+Every detector reads the same seeded sample of each benchmark's labeled test split (<!--litmus:results.texts_per_benchmark as int-->3,000<!--/litmus-->), and the open detectors are run again on those texts rather than quoted. Each cell is ROC AUC for AI
 against human, with mixed text left out; PR AUC, balanced MCC, TPR at 1% and 5% FPR, and 95% bootstrap intervals
-drawn the same way for every detector are in <!--litmus:t:data_files-->the release's [`results.json`](https://github.com/lhallee/litmus/releases/tag/v1.0.0)<!--/litmus-->. The corpus builder holds each of
+drawn the same way for every detector are in <!--litmus:t:data_files-->the release's [`results.json`](https://github.com/lhallee/litmus/releases/tag/v1.1.0)<!--/litmus-->. The corpus builder holds each of
 these splits out of every set Litmus trains, chooses, or calibrates on.
 
 <!--litmus:table.benchmark_matrix as roc_auc-->
 | Benchmark | Litmus | Binoculars | Desklib v1.01 | Fast-DetectGPT | ModernBERT RAID+MAGE (Drayson) | ai-vs-human-checker | e5-small-lora |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| RAID, extra | 0.807 | 0.761 | 0.883 † | 0.600 | 0.885 † | 0.700 † | 0.773 † |
-| MAGE, test | 0.796 † | 0.624 | 0.929 | 0.569 | 0.986 † | 0.853 † | 0.761 |
-| MAGE, unseen domain and model | 0.957 | 0.969 | 0.988 | 0.638 | 0.929 † | 0.973 † | 0.951 |
-| MAGE, paraphrased | 0.909 | 0.662 | 0.873 | 0.420 | 0.719 † | 0.891 † | 0.833 |
+| RAID, extra | 0.886 | 0.761 | 0.883 † | 0.600 | 0.885 † | 0.700 † | 0.773 † |
+| MAGE, test | 0.829 † | 0.624 | 0.929 | 0.569 | 0.986 † | 0.853 † | 0.761 |
+| MAGE, unseen domain and model | 0.967 | 0.969 | 0.988 | 0.638 | 0.929 † | 0.973 † | 0.951 |
+| MAGE, paraphrased | 0.898 | 0.662 | 0.873 | 0.420 | 0.719 † | 0.891 † | 0.833 |
 | SemEval-2024 Task 8 A, monolingual | 0.994 † | 0.896 | 0.999 | 0.336 | 0.950 | 0.996 † | 0.918 |
-| SemEval-2024 Task 8 A, multilingual | 0.916 † | 0.887 | 0.964 | 0.489 | 0.842 | 0.926 † | 0.758 |
-| Beemo | 0.795 | 0.788 | 0.797 | 0.549 | 0.678 | 0.780 | 0.690 |
-| MixSet | 0.547 | 0.499 | 0.660 | 0.420 | 0.636 | 0.463 | 0.607 |
-| CoDET-M4 | 0.713 | 0.886 | 0.772 | 0.535 | 0.429 | 0.598 | 0.614 |
-| DroidCollection | 0.719 † | 0.831 | 0.665 | 0.609 | 0.446 | 0.604 | 0.519 |
-| autextification_en | 0.740 | 0.909 | 0.951 | 0.861 | 0.875 | 0.815 | 0.757 |
-| autextification_es | 0.580 | 0.892 | 0.887 | 0.831 | 0.538 | 0.519 | 0.620 |
-| editlens | 0.987 | 0.952 | 0.988 | 0.685 | 0.946 | 0.993 | 0.846 |
-| hc3 | 0.994 | 0.993 | 0.999 | 0.767 | 0.988 | 0.999 | 0.934 |
+| SemEval-2024 Task 8 A, multilingual | 0.981 † | 0.887 | 0.964 | 0.489 | 0.842 | 0.926 † | 0.758 |
+| Beemo | 0.829 | 0.788 | 0.797 | 0.549 | 0.678 | 0.780 | 0.690 |
+| MixSet | 0.285 | 0.499 | 0.660 | 0.420 | 0.636 | 0.463 | 0.607 |
+| CoDET-M4 | 0.722 | 0.886 | 0.772 | 0.535 | 0.429 | 0.598 | 0.614 |
+| DroidCollection | 0.818 † | 0.831 | 0.665 | 0.609 | 0.446 | 0.604 | 0.519 |
+| autextification_en | 0.817 | 0.909 | 0.951 | 0.861 | 0.875 | 0.815 | 0.757 |
+| autextification_es | 0.554 | 0.892 | 0.887 | 0.831 | 0.538 | 0.519 | 0.620 |
+| editlens | 0.996 | 0.952 | 0.988 | 0.685 | 0.946 | 0.993 | 0.846 |
+| hc3 | 0.993 | 0.993 | 0.999 | 0.767 | 0.988 | 0.999 | 0.934 |
 <!--/litmus-->
 
 `ai-vs-human-checker` is Litmus's predecessor ([lhallee/ai-vs-human-checker](https://huggingface.co/lhallee/ai-vs-human-checker)).
@@ -265,14 +265,14 @@ comparison across protocols cannot claim.
 | Fast-DetectGPT | APT-Eval polished | 3,000 | 0.010 (0.006 to 0.014) | 0.062 (0.053 to 0.073) | none documented |
 | ModernBERT RAID+MAGE (Drayson) | APT-Eval polished | 3,000 | 0.002 (0.000 to 0.004) | 0.006 (0.004 to 0.009) | 0.388 (0.371 to 0.406) |
 | ai-vs-human-checker (predecessor) | APT-Eval polished | 3,000 | 0.089 (0.076 to 0.104) | 0.192 (0.177 to 0.208) | 0.298 (0.283 to 0.314) |
-| **Litmus** | APT-Eval polished | 3,000 | 0.000 (0.000 to 0.000) | 0.061 (0.041 to 0.080) | 0.436 (0.418 to 0.453) |
+| **Litmus** | APT-Eval polished | 3,000 | 0.099 (0.079 to 0.111) | 0.160 (0.147 to 0.173) | 0.568 (0.550 to 0.585) |
 | Binoculars | APT-Eval originals | 300 | 0.000 (0.000 to 0.000) | 0.007 (0.000 to 0.017) | 0.007 (0.000 to 0.017) |
 | Desklib v1.01 | APT-Eval originals | 300 | 0.007 (0.000 to 0.017) | 0.020 (0.007 to 0.037) | 0.140 (0.097 to 0.183) |
 | e5-small-lora | APT-Eval originals | 300 | 0.000 (0.000 to 0.000) | 0.003 (0.000 to 0.010) | 0.597 (0.540 to 0.650) |
 | Fast-DetectGPT | APT-Eval originals | 300 | 0.013 (0.003 to 0.027) | 0.090 (0.053 to 0.123) | none documented |
 | ModernBERT RAID+MAGE (Drayson) | APT-Eval originals | 300 | 0.000 (0.000 to 0.000) | 0.000 (0.000 to 0.000) | 0.157 (0.117 to 0.200) |
 | ai-vs-human-checker (predecessor) | APT-Eval originals | 300 | 0.000 (0.000 to 0.000) | 0.003 (0.000 to 0.010) | 0.040 (0.020 to 0.063) |
-| **Litmus** | APT-Eval originals | 300 | 0.000 (0.000 to 0.000) | 0.010 (0.000 to 0.020) | 0.097 (0.067 to 0.133) |
+| **Litmus** | APT-Eval originals | 300 | 0.003 (0.000 to 0.010) | 0.003 (0.000 to 0.010) | 0.107 (0.073 to 0.140) |
 <!--/litmus-->
 
 ### Ternary weights and integer attention
@@ -302,10 +302,10 @@ scored 3,400 to 4,000 tokens per second. Every size's numbers, and where the tim
 
 | Released model | Value |
 | --- | --- |
-| Tokens per second on one core, 8,192-token text | <!--litmus:bench.rows[tokens=8192].text_tokens_per_second as int-->28,022<!--/litmus--> |
-| Peak memory of the process | <!--litmus:bench.rows[tokens=8192].process_peak_bytes as mb1-->37.9 MB<!--/litmus--> |
-| Release files | <!--litmus:model.files_bytes as mb1-->10.8 MB<!--/litmus--> |
-| Single-core cost, ms per 1,000 words (the other detectors' are in the benchmark tables) | <!--litmus:results.costs[detector=Litmus engine].seconds_per_1k_words as ms0-->53<!--/litmus--> |
+| Tokens per second on one core, 8,192-token text | <!--litmus:bench.rows[tokens=8192].text_tokens_per_second as int-->5,014<!--/litmus--> |
+| Peak memory of the process | <!--litmus:bench.rows[tokens=8192].process_peak_bytes as mb1-->65.1 MB<!--/litmus--> |
+| Release files | <!--litmus:model.files_bytes as mb1-->18.5 MB<!--/litmus--> |
+| Single-core cost, ms per 1,000 words (the other detectors' are in the benchmark tables) | <!--litmus:results.costs[detector=Litmus engine].seconds_per_1k_words as ms0-->349<!--/litmus--> |
 
 ## Repository map
 

@@ -446,6 +446,27 @@ A document's reading in `reference.py` (JSON) has:
 
 Positions are the document's. For a text of one chunk, `verdict` repeats the chunk's values.
 
+### Surprise
+
+A release trained with the masked language objective (`train.py --mlm-share`) carries its masked language head, and
+reads a text's **surprise** on request, in a pass of its own beside the reading: each token's log probability under
+the head with nothing masked, every chunk read as a text of its own, averaged over the text. This mean is the
+unmasked pseudo log likelihood (PPLL), in nats; higher is less surprising.
+
+For a chunk's final token states `H` (`(c, d)`, after `final_norm`) and its ids:
+
+1. `G = rms_norm(BitLinear(H; mlm.proj_norm, mlm.proj), mlm.norm)`, `(c, e)`: the BitLinear of section 3 from
+   width `d` to the embedding width `e`.
+2. The output rows are the embedding's own int8 rows, `R_v = embed.weight[v] * embed.scale[v]` in float32, and the
+   logits `l_v = mlm.scale * (G R_v) + mlm.bias[v]` in float32, `(c, V)`.
+3. Each position's log probability is `l_{id} - log sum_v exp(l_v)`, the log-sum-exp in float64.
+
+The reading is `n_tokens`, `mean_log_probability` (the mean of step 3 over every token of every chunk), `perplexity`
+(`exp(-mean_log_probability)`), and `percentile`: for each origin (human, AI, mixed), the share of that origin's
+calibration texts whose mean is at or below the text's, interpolated linearly between the 101 quantiles of
+`config.json`'s `surprise` table and 0 or 1 beyond its ends. A model's surprise at a text is evidence about the text
+and the model together, not a verdict: it rises on any text unlike the training data, as well as on human writing.
+
 ## 5. Streaming
 
 A document of any length is read in bounded memory, with the same answer as reading each chunk at once. The chunk
@@ -501,6 +522,11 @@ Names, with `i` the layer:
 | `bank.meta.<field>` | U16 | `(N,)` | Each bank text's code into `config.json`'s `bank.fields.<field>` |
 | `explain.conformal.<origin>.scores`, `.offsets` | F32, I64 | `(n_o,)`, `(g_o + 1,)` | Calibration shares of that origin, ascending within each group of `conformal.<origin>` |
 | `explain.closeness.scores`, `.offsets` | F32, I64 | `(n,)`, `(g + 1,)` | Calibration closeness, ascending within each group of `closeness` |
+| `mlm.proj_norm` | F32 | `(d,)` | Optional, with every `mlm.*` tensor: the [Surprise](#surprise) head |
+| `mlm.proj.weight`, `mlm.proj.scale` | U8, F32 | `(e, d/4)`, `(1,)` | Packed ternary, `d` to `e` |
+| `mlm.norm` | F32 | `(e,)` | |
+| `mlm.scale` | F32 | `(1,)` | The logits' scale |
+| `mlm.bias` | F32 | `(V,)` | One bias per token |
 
 **Packed ternary.** Row-major `(d_out, d_in)`; the code of a weight is `t + 1` (0 for -1, 1 for 0, 2 for +1; the
 I2_S code of bitnet.cpp, Wang et al. 2024, arXiv 2410.16144, section 2, table 1), and weight `(r, c)` sits in byte
@@ -514,8 +540,11 @@ one that names its output), `license` (`"PolyForm-Noncommercial-1.0.0"`), `token
 `block_size`, `rope_base`, `norm_eps`, `act_eps`, `weight_eps`, in formats 2 and 3 `attention`, `"float"` or
 `"integer"`, and in format 3 only `output`, `"int8"`; format 1 has no `attention` and is float attention, formats 1 and
 2 have no `output` and are float output), `head` (`hidden`, `out_width`, `clamp`), `reading` (`chunk_tokens`, `window_width`,
-`window_stride`; 8,192, 512 and 128 in a release), `bank` (`origins`, `counts`,
+`window_stride`; 8,192, 512 and 128 in a release), `text_reading` (only in a release trained on a reading of its
+texts other than the standard one, which it names; no release has one yet), `bank` (`origins`, `counts`,
 `split`, and `fields`: each metadata field's names, which `bank.meta.<field>` codes index), `calibration` (below),
+`surprise` (with the `mlm.*` tensors only: `split`, `texts` per origin, and `quantiles`, each origin's 101 calibration
+quantiles of the mean token log probability, 0% to 100%; [Surprise](#surprise)),
 `provenance` (checkpoint, step, training run, validation numbers, data, seed) and `weights` (`file`,
 `"model.safetensors"`, and the `sha256` of that file as written; an engine ignores it and
 `tools/verify_model.py` checks it). JSON numbers are float64 written
@@ -603,6 +632,7 @@ texts (`tests/test_parity.py`): token states up to 0.064 apart, pooled vectors `
 | Cells | position and spread `abs <= 2e-3`; band and `unlike_reference` as the windows' strips |
 | Verdict | merged p-values within 1e-12, and sets and calls equal, while every chunk's grid p-values are (they are twice means of grid values); probability, interval, three-way and disagreement `abs <= 2e-3`; `mixed_document`, `model_chunks` and `human_chunks` follow the chunks' grid p-values |
 | Nearest entries (`explain.nearest`) | cosine `abs <= 1e-3`, probability `abs <= 2e-3` (one pair's probability, the steepest function of a cosine in the reading); entries whose cosines are within 1e-3 may swap places |
+| Surprise: mean log probability | `abs <= 2e-3` (a text under 512 tokens: times `sqrt(512 / n)`); percentiles `abs <= 1e-2` |
 | Streaming against whole chunks, in one implementation | `abs <= 1e-6` on every value above (the reference: equal to 1e-9) |
 
 **Short texts.** A flip moves a short text further than the table allows, because few tokens average it out. The

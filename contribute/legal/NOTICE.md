@@ -1,8 +1,8 @@
 ---
-version: 2026-11-18-draft-2
-status: draft
+version: 2026-11-19
+status: approved
 consent_label: I agree to the [Terms of Use](TERMS_OF_USE.md) and the [Privacy Notice](PRIVACY_NOTICE.md), and I am 18 or older.
-note: Draft, not in force. Written by a non-lawyer for Logan and a lawyer to review. Shown directly above the consent box and the Check button, in the page's body type, with every link visible without scrolling, underlined and in a contrasting color. The box starts unticked, its label is consent_label, and Check sends nothing until the box is ticked.
+note: Approved by Logan Hallee on 2026-11-19. Shown directly above the consent box and the Check button, in the page's body type, with every link visible without scrolling, underlined and in a contrasting color. The box starts unticked, its label is consent_label, and Check sends nothing until the box is ticked.
 ---
 The text you check here is sent to our server, stored privately with the model's reading of it and any label you give, and used to improve Litmus. We never publish it or release it in any dataset.
 

@@ -1,11 +1,11 @@
 ---
-version: 2026-11-18-draft-2
-status: draft
-note: Draft, not in force. Written by a non-lawyer for Logan and a lawyer to review.
+version: 2026-11-19
+status: approved
+note: Approved by Logan Hallee on 2026-11-19.
 ---
 # Litmus contribute site: Privacy Notice
 
-Version 2026-11-18-draft-2. This notice is part of the [Terms of Use](TERMS_OF_USE.md).
+Version 2026-11-19. This notice is part of the [Terms of Use](TERMS_OF_USE.md).
 
 **Who is responsible.** Logan Hallee, an individual ("we", "us"), operates the Litmus contribute site (the "Service") and decides what is stored and why. Contact: open an issue at https://github.com/lhallee/litmus/issues. Issues are public, so anyone can read them: please do not put private details in one, or a text you want removed (use the removal form for that).
 

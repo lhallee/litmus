@@ -83,7 +83,7 @@ streams through the encoder; the chunk's running float64 sums are recorded at ev
 the chunk is read. Memory does not grow with the text: a 131,072-token text is 16 chunks of the same work, and
 throughput is flat from 1,024 to 131,072 tokens. With random weights, `s192_l4` reads 21,926 tokens a second at 8,192
 tokens and 21,995 at 131,072, in a process of 56 MB ([`engine/README.md`](../../engine/README.md), Measurements).
-The release: <!--litmus:t:release_speed-->28,022 tokens a second on one core and a process peak of 37.9 MB (`litmus bench` on AMD Ryzen 7 3800X 8-Core Processor, Windows 10)<!--/litmus-->.
+The release: <!--litmus:t:release_speed-->5,014 tokens a second on one core and a process peak of 65.1 MB (`litmus bench` on AMD Ryzen 7 3800X 8-Core Processor, Windows 10)<!--/litmus-->.
 
 ## The browser build
 
@@ -115,7 +115,7 @@ by up to about $`2 \times 10^{-3}`$, so the engine's tests allow twice the table
 The engine's tests check this on fixed random releases (`reference.py fixtures`) of the smallest production size and a
 tiny one, in both attention modes and with float16 and int8 output, every chunk, window, cell, and verdict, and streaming in pieces of any size against
 reading at once. The export checks each trained release against the reference on fixture texts before it is written
-(`litmus_student.export`). For the release: <!--litmus:record.export.parity-->on the export's fixture texts the worst pooled difference from the model is 0.0035 (bound 0.01) and the median 2.9e-7, the worst int8 query and key code differs by one step (bound 2) and the median by none, and a streamed text scores exactly as a whole one<!--/litmus-->.
+(`litmus_student.export`). For the release: <!--litmus:record.export.parity-->on 64 validation texts the worst pooled difference from the model is 0.0026 (bound 0.01) and the median 2.6e-4, the worst int8 query and key code differs by one step (bound 2), a streamed text scores exactly as a whole one, and the surprise's mean log probability differs by 0.0094 at worst (bound 0.02) and 2.3e-4 at the median (bound 2e-3)<!--/litmus-->.
 
 ## Reproducible builds
 

@@ -542,6 +542,7 @@ def parser() -> argparse.ArgumentParser:
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--pilot", action="store_true", help="no W&B run")
+    parser.set_defaults(cut_ends=0.0, cut_starts=0.0)  # train.step_maker's options, none of which the proof of concept uses
 
     return parser
 

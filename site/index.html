@@ -53,7 +53,6 @@
         <a href="assets/media/litmus_wide_site.mp4">Watch the film (MP4)</a>
       </video>
     </figure>
-    <p class="small soft">Litmus in a short film. It plays without sound; the controls turn the sound on.</p>
   </div>
 
   <section class="section" aria-labelledby="why">
@@ -80,7 +79,7 @@
         <div class="card">
           <div class="icon ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div>
           <h3>Fast on any computer</h3>
-          <p>On one processor core the program reads about <span data-value="results.release.app_tokens_per_second" data-format="int">28,267</span> tokens a second. It needs no graphics card.</p>
+          <p>On one processor core the program reads about <span data-value="results.release.app_tokens_per_second" data-format="int">4,971</span> tokens a second. It needs no graphics card.</p>
         </div>
       </div>
     </div>
@@ -156,6 +155,10 @@
         <div class="stat"><span class="value tbd">Results are being finalized.</span><span class="label">Litmus on its held-out test split</span></div>
       </div>
       <p data-when-results hidden class="small soft" style="margin-top:0.8rem">Litmus on its own held-out test split, AI against human, with 95% bootstrap intervals.</p>
+      <div class="figure figure-slot needs-js" data-figure="speed" data-alt="Three panels. A: tokens read a second on one processor core, one bar per detector. B: mean PR AUC on the public benchmarks no detector trained on, the same rows. C: PR AUC by the number of words in the text, one line per detector, with Litmus's own test split dashed." style="margin-top:1.5rem">
+        <div class="pending-box">The speed figure is being finalized.</div>
+      </div>
+      <p class="small soft figure-caption" hidden>Speed on one processor core (A), accuracy on the public benchmarks that no detector trained on (B), and accuracy by text length (C). The longer the text, the surer the reading.</p>
       <p style="margin-top:1.2rem"><a class="btn" href="benchmarks.html">See every result</a></p>
     </div>
   </section>

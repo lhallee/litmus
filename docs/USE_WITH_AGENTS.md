@@ -9,7 +9,7 @@ gives the setup for each client, what each piece does with the machine, and what
 A reading is evidence, never proof. It is probabilistic and comes with the origins it cannot rule out. Short texts are
 less reliable, and so is code. This release is an English detector: it is trained almost entirely on English (<!--litmus:record.corpus.english_share as pct1-->98.8%<!--/litmus--> of its training text) and tested mainly on English text, so other
 languages are not supported yet. We recommend not presenting a reading as an accusation against a person. The accuracy
-of the release model is as follows: <!--litmus:t:accuracy_summary-->on held-out test texts it wrongly called 5.9% of human texts not human at the 5% level, and it caught 62.1% of AI texts when 5% of human texts are wrongly flagged (35.1% at 1%)<!--/litmus-->.
+of the release model is as follows: <!--litmus:t:accuracy_summary-->on held-out test texts it wrongly called 7.4% of human texts not human at the 5% level, and it caught 67.2% of AI texts when 5% of human texts are wrongly flagged (53.0% at 1%)<!--/litmus-->.
 
 ## What there is
 

@@ -65,6 +65,9 @@ pub enum Event {
     BatchDone { job: u64, cancelled: bool },
     /// Bytes of the model fetched so far and in all (the browser's worker).
     Downloading { done: u64, total: u64 },
+    /// The surprise reading of the text whose input hash is `hash` (SPEC.md, Surprise), read only on request.
+    #[cfg(not(feature = "contribute"))]
+    Surprised { hash: String, result: Result<litmus_engine::Surprise, String> },
     #[cfg(feature = "contribute")]
     Terms(Result<crate::contribute::Terms, String>),
     #[cfg(feature = "contribute")]
@@ -89,8 +92,7 @@ pub use server::Scorer;
 mod native {
     use std::path::{Path, PathBuf};
     use std::sync::atomic::{AtomicBool, Ordering};
-    use std::sync::mpsc;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex, mpsc};
     use std::time::{Duration, Instant};
 
     use eframe::egui;
@@ -98,34 +100,63 @@ mod native {
     use litmus_files::cache::{self, Cache};
     use litmus_files::extract;
 
-    use super::{Event, Progress, Scored, CANCELLED};
+    use super::{CANCELLED, Event, Progress, Scored};
     use crate::model::{self, ModelMeta};
 
     enum Job {
         Load(Option<PathBuf>),
         Score { job: u64, text: Arc<String>, cancel: Arc<AtomicBool> },
+        File { job: u64, path: PathBuf, cancel: Arc<AtomicBool> },
         Batch { job: u64, files: Vec<PathBuf>, cancel: Arc<AtomicBool> },
-        UseCache(bool),
+        Surprise { hash: String, text: Arc<String>, cancel: Arc<AtomicBool> },
         ClearCache,
     }
 
+    /// What both scoring threads read: the loaded engine (`Send` and `Sync`, so one copy serves both) and its cache.
+    /// The main thread's loads write it; each reading takes what is there when it starts.
+    struct Loaded {
+        engine: Option<Arc<Engine>>,
+        cache: Option<Arc<Cache>>,
+        use_cache: bool,
+    }
+
+    type Shared = Arc<Mutex<Loaded>>;
+
+    /// Scoring off the UI thread, on two threads: the main window's readings and batches on one, quick check's on
+    /// another, so that a quick check never waits behind a batch or a long reading. Both share the one engine.
     pub struct Scorer {
         jobs: mpsc::Sender<Job>,
+        quick: mpsc::Sender<Job>,
         events: mpsc::Receiver<Event>,
+        loaded: Shared,
         cancel: Arc<AtomicBool>,
+        /// Quick check's newest job and its cancel.
+        quick_cancel: (u64, Arc<AtomicBool>),
+        /// The running surprise reading's cancel: a new reading or another surprise stops it, so it never delays them.
+        surprise_cancel: Arc<AtomicBool>,
         next: u64,
     }
 
     impl Scorer {
         pub fn new(ctx: &egui::Context) -> Self {
             let (jobs, job_rx) = mpsc::channel();
+            let (quick, quick_rx) = mpsc::channel();
             let (event_tx, events) = mpsc::channel();
-            let ctx = ctx.clone();
-            std::thread::Builder::new()
-                .name("litmus-scorer".into())
-                .spawn(move || Worker { events: event_tx, ctx, engine: None, cache: None, use_cache: true }.run(job_rx))
-                .expect("the scoring thread starts");
-            Self { jobs, events, cancel: Arc::new(AtomicBool::new(false)), next: 1 }
+            let loaded: Shared = Arc::new(Mutex::new(Loaded { engine: None, cache: None, use_cache: true }));
+            let main = Worker { events: event_tx.clone(), ctx: ctx.clone(), loaded: loaded.clone() };
+            std::thread::Builder::new().name("litmus-scorer".into()).spawn(move || main.run(job_rx)).expect("the scoring thread starts");
+            let quick_worker = Worker { events: event_tx, ctx: ctx.clone(), loaded: loaded.clone() };
+            std::thread::Builder::new().name("litmus-quick".into()).spawn(move || quick_worker.run(quick_rx)).expect("quick check's scoring thread starts");
+            Self {
+                jobs,
+                quick,
+                events,
+                loaded,
+                cancel: Arc::new(AtomicBool::new(false)),
+                quick_cancel: (0, Arc::new(AtomicBool::new(false))),
+                surprise_cancel: Arc::new(AtomicBool::new(false)),
+                next: 1,
+            }
         }
 
         fn send(&self, job: Job) {
@@ -137,9 +168,19 @@ mod native {
             self.send(Job::Load(chosen.map(PathBuf::from)));
         }
 
+        /// A new cancel for the main window's next job; a surprise reading still running stops first.
         fn fresh_cancel(&mut self) -> Arc<AtomicBool> {
+            self.surprise_cancel.store(true, Ordering::Relaxed);
             self.cancel = Arc::new(AtomicBool::new(false));
             self.cancel.clone()
+        }
+
+        /// Read a text's surprise (SPEC.md, Surprise) on the main scoring thread; it ends with `Event::Surprised`
+        /// for `hash`, `CANCELLED` when a new reading or another surprise stopped it.
+        pub fn surprise(&mut self, text: Arc<String>, hash: String) {
+            self.surprise_cancel.store(true, Ordering::Relaxed);
+            self.surprise_cancel = Arc::new(AtomicBool::new(false));
+            self.send(Job::Surprise { hash, text, cancel: self.surprise_cancel.clone() });
         }
 
         pub fn score(&mut self, text: Arc<String>) -> u64 {
@@ -150,11 +191,31 @@ mod native {
             job
         }
 
-        /// Score a text the main window's cancel does not reach (quick check's).
+        /// Score quick check's text on its own thread, at once even while the main window reads; the main window's
+        /// cancel does not reach it, `cancel_quiet` does.
         pub fn score_quiet(&mut self, text: Arc<String>) -> u64 {
             let job = self.next;
             self.next += 1;
-            self.send(Job::Score { job, text, cancel: Arc::new(AtomicBool::new(false)) });
+            self.quick_cancel = (job, Arc::new(AtomicBool::new(false)));
+            self.quick.send(Job::Score { job, text, cancel: self.quick_cancel.1.clone() }).expect("quick check's scoring thread is alive");
+            job
+        }
+
+        /// Stop quick check's reading `job` if it is the newest (its popup closed or a new one replaced it); it ends
+        /// with `CANCELLED`.
+        pub fn cancel_quiet(&mut self, job: u64) {
+            if self.quick_cancel.0 == job {
+                self.quick_cancel.1.store(true, Ordering::Relaxed);
+            }
+        }
+
+        /// Read a file's text and score it, both on the scoring thread: a large PDF takes seconds to read, and the
+        /// window must not freeze meanwhile. The reading's `text` is the file's.
+        pub fn score_file(&mut self, path: PathBuf) -> u64 {
+            let job = self.next;
+            self.next += 1;
+            let cancel = self.fresh_cancel();
+            self.send(Job::File { job, path, cancel });
             job
         }
 
@@ -171,7 +232,7 @@ mod native {
         }
 
         pub fn set_cache(&mut self, on: bool) {
-            self.send(Job::UseCache(on));
+            self.loaded.lock().expect("the loaded model").use_cache = on;
         }
 
         pub fn clear_cache(&mut self) {
@@ -186,18 +247,18 @@ mod native {
     struct Worker {
         events: mpsc::Sender<Event>,
         ctx: egui::Context,
-        engine: Option<Arc<Engine>>,
-        cache: Option<Cache>,
-        use_cache: bool,
+        loaded: Shared,
     }
 
     impl Worker {
+        /// The main window's logic drains the events, so it is the one woken; a plain `request_repaint` from this
+        /// thread reaches whichever window is mid-pass, quick check's popup included.
         fn emit(&self, event: Event) {
             let _ = self.events.send(event);
-            self.ctx.request_repaint();
+            self.ctx.request_repaint_of(egui::ViewportId::ROOT);
         }
 
-        fn run(mut self, jobs: mpsc::Receiver<Job>) {
+        fn run(self, jobs: mpsc::Receiver<Job>) {
             for job in jobs {
                 match job {
                     Job::Load(folder) => {
@@ -207,6 +268,11 @@ mod native {
                     Job::Score { job, text, cancel } => {
                         let hash = cache::sha256(text.as_bytes());
                         let result = self.read(job, text, hash, &cancel, "");
+                        self.emit(Event::Scored { job, result });
+                    }
+                    Job::File { job, path, cancel } => {
+                        self.emit(Event::Progress { job, progress: Progress { fraction: 0.0, words: "Opening the file".into() } });
+                        let result = self.read_file(job, &path, &cancel, "");
                         self.emit(Event::Scored { job, result });
                     }
                     Job::Batch { job, files, cancel } => {
@@ -221,9 +287,13 @@ mod native {
                         }
                         self.emit(Event::BatchDone { job, cancelled: cancel.load(Ordering::Relaxed) });
                     }
-                    Job::UseCache(on) => self.use_cache = on,
+                    Job::Surprise { hash, text, cancel } => {
+                        let result = self.surprise(&text, &cancel);
+                        self.emit(Event::Surprised { hash, result });
+                    }
                     Job::ClearCache => {
-                        if let Some(cache) = &self.cache {
+                        let cache = self.loaded.lock().expect("the loaded model").cache.clone();
+                        if let Some(cache) = cache {
                             let _ = cache.clear();
                         }
                     }
@@ -231,16 +301,32 @@ mod native {
             }
         }
 
-        fn load(&mut self, chosen: Option<&Path>) -> Result<ModelMeta, String> {
-            self.engine = None;
+        fn load(&self, chosen: Option<&Path>) -> Result<ModelMeta, String> {
+            {
+                let mut loaded = self.loaded.lock().expect("the loaded model");
+                (loaded.engine, loaded.cache) = (None, None);
+            }
             let files = model::native::find(chosen)?;
             let engine = Engine::load(&files.model, &files.config, &files.tokenizer).map_err(|e| e.to_string())?;
             let config: serde_json::Value = serde_json::from_slice(&files.config).map_err(|e| format!("config.json: {e}"))?;
             let version = cache::release_version(&config["provenance"], &files.model, &files.config);
             let meta = ModelMeta::from_config(&config, version, files.source.clone())?;
-            self.cache = cache::folder().map(|folder| Cache::open(&folder, &[&files.model, &files.config, &files.tokenizer]));
-            self.engine = Some(Arc::new(engine));
+            let cache = cache::folder().map(|folder| Arc::new(Cache::open(&folder, &[&files.model, &files.config, &files.tokenizer])));
+            let mut loaded = self.loaded.lock().expect("the loaded model");
+            (loaded.engine, loaded.cache) = (Some(Arc::new(engine)), cache);
             Ok(meta)
+        }
+
+        /// A text's surprise reading from the loaded engine (never cached: it is read only on request).
+        fn surprise(&self, text: &str, cancel: &AtomicBool) -> Result<litmus_engine::Surprise, String> {
+            let engine = self.loaded.lock().expect("the loaded model").engine.clone().ok_or("No model is loaded.")?;
+            let outcome = engine.surprise_with(text, &mut |_| if cancel.load(Ordering::Relaxed) { Flow::Cancel } else { Flow::Continue });
+            match outcome {
+                Ok(surprise) => Ok(surprise),
+                Err(Error::Cancelled) => Err(CANCELLED.into()),
+                Err(Error::Empty) => Err(super::EMPTY.into()),
+                Err(error) => Err(error.to_string()),
+            }
         }
 
         fn read_file(&self, job: u64, path: &Path, cancel: &AtomicBool, label: &str) -> Result<Scored, String> {
@@ -252,9 +338,12 @@ mod native {
 
         /// A reading from the cache, else from the engine with progress and cancel.
         fn read(&self, job: u64, text: Arc<String>, hash: String, cancel: &AtomicBool, label: &str) -> Result<Scored, String> {
-            let engine = self.engine.as_ref().ok_or("No model is loaded.")?;
-            let cache = self.cache.as_ref().filter(|_| self.use_cache);
-            if let Some(reading) = cache.and_then(|cache| cache.get(&hash)) {
+            let (engine, cache) = {
+                let loaded = self.loaded.lock().expect("the loaded model");
+                (loaded.engine.clone(), loaded.cache.clone().filter(|_| loaded.use_cache))
+            };
+            let engine = engine.ok_or("No model is loaded.")?;
+            if let Some(reading) = cache.as_ref().and_then(|cache| cache.get(&hash)) {
                 return Ok(Scored { reading: Arc::new(reading), text, hash, seconds: None, contribution: None });
             }
             let started = Instant::now();
@@ -311,6 +400,7 @@ mod worker {
         Progress { job: u64, progress: Progress },
         Reading { job: u64, json: String, ms: f64 },
         ScoreFailed { job: u64, message: String },
+        Surprise { job: u64, json: String },
     }
 
     fn field(object: &JsValue, name: &str) -> JsValue {
@@ -344,6 +434,7 @@ mod worker {
                 Message::Progress { job, progress: Progress::of(&p) }
             }
             "reading" => Message::Reading { job, json: string(data, "json"), ms: number(data, "ms") },
+            "surprise" => Message::Surprise { job, json: string(data, "json") },
             _ => return None,
         })
     }
@@ -361,6 +452,8 @@ mod worker {
         _on_message: Option<Closure<dyn FnMut(web_sys::MessageEvent)>>,
         _on_error: Option<Closure<dyn FnMut(web_sys::ErrorEvent)>>,
         pending: Option<Pending>,
+        /// The surprise reading the worker is reading: its job and the input hash it answers for.
+        surprise: Option<(u64, String)>,
         /// Readings of this session by the hash of their text: an unchanged text is not scored twice.
         cache: HashMap<String, Arc<DocumentReading>>,
         ready: bool,
@@ -377,6 +470,7 @@ mod worker {
                 _on_message: None,
                 _on_error: None,
                 pending: None,
+                surprise: None,
                 cache: HashMap::new(),
                 ready: false,
                 out: Vec::new(),
@@ -451,10 +545,34 @@ mod worker {
             job
         }
 
-        /// Stop the running reading: the worker is terminated and a fresh one loads the release again.
+        /// Read a text's surprise (SPEC.md, Surprise) in the worker, after any reading already sent to it; it ends
+        /// with `Event::Surprised` for `hash`.
+        pub fn surprise(&mut self, text: Arc<String>, hash: String) {
+            let job = self.next;
+            self.next += 1;
+            let Some(worker) = &self.worker else {
+                self.out.push(Event::Surprised { hash, result: Err("The model is not loaded.".into()) });
+                return;
+            };
+            let request = js_sys::Object::new();
+            let _ = js_sys::Reflect::set(&request, &"type".into(), &"surprise".into());
+            let _ = js_sys::Reflect::set(&request, &"job".into(), &JsValue::from_f64(job as f64));
+            let _ = js_sys::Reflect::set(&request, &"text".into(), &JsValue::from_str(&text));
+            if let Err(error) = worker.post_message(&request) {
+                self.out.push(Event::Surprised { hash, result: Err(format!("The page could not reach its worker: {error:?}")) });
+                return;
+            }
+            self.surprise = Some((job, hash));
+        }
+
+        /// Stop the running reading: the worker is terminated and a fresh one loads the release again, so a surprise
+        /// reading it held ends too.
         pub fn cancel(&mut self) {
             if let Some(pending) = self.pending.take() {
                 self.out.push(Event::Scored { job: pending.job, result: Err(CANCELLED.into()) });
+                if let Some((_, hash)) = self.surprise.take() {
+                    self.out.push(Event::Surprised { hash, result: Err(CANCELLED.into()) });
+                }
                 self.load(None);
             }
         }
@@ -474,6 +592,9 @@ mod worker {
                         if let Some(pending) = self.pending.take() {
                             self.out.push(Event::Scored { job: pending.job, result: Err(error.clone()) });
                         }
+                        if let Some((_, hash)) = self.surprise.take() {
+                            self.out.push(Event::Surprised { hash, result: Err(error.clone()) });
+                        }
                         if !self.ready {
                             self.out.push(Event::Loaded(Err(error)));
                         }
@@ -484,7 +605,14 @@ mod worker {
                         if self.pending.as_ref().is_some_and(|p| p.job == job) {
                             self.pending = None;
                             self.out.push(Event::Scored { job, result: Err(message) });
+                        } else if let Some((_, hash)) = self.surprise.take_if(|(surprise, _)| *surprise == job) {
+                            self.out.push(Event::Surprised { hash, result: Err(message) });
                         }
+                    }
+                    Message::Surprise { job, json } => {
+                        let Some((_, hash)) = self.surprise.take_if(|(surprise, _)| *surprise == job) else { continue };
+                        let result = serde_json::from_str::<litmus_engine::Surprise>(&json).map_err(|e| format!("the surprise reading could not be read: {e}"));
+                        self.out.push(Event::Surprised { hash, result });
                     }
                     Message::Reading { job, json, ms } => {
                         let Some(pending) = self.pending.take_if(|p| p.job == job) else { continue };

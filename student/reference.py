@@ -65,8 +65,10 @@ CONTROL_PATTERN = re.compile(
     r"\u2060-\u2064\u2066-\u206f\ufeff\ufff9-\ufffb]"
 )
 SPACE_SEPARATORS = r" \u00a0\u1680\u2000-\u200a\u202f\u205f\u3000"  # Unicode category Zs, in a character class
-TRAILING_PATTERN = re.compile(rf"[\t{SPACE_SEPARATORS}]+(\n|\Z)")
-TEXT_END_PATTERN = re.compile(r"[\t\n\f\r ]+\Z")  # RE2's \s
+# A run of blanks is tried only from its start, so a line holding a long run (code output padded with spaces) reads in
+# linear time; tried from inside the run as well, the same matches cost the square of the run's length.
+TRAILING_PATTERN = re.compile(rf"(?<![\t{SPACE_SEPARATORS}])[\t{SPACE_SEPARATORS}]+(\n|\Z)")
+TEXT_END_PATTERN = re.compile(r"(?<![\t\n\f\r ])[\t\n\f\r ]+\Z")  # RE2's \s
 LEADING_BLANK_PATTERN = re.compile(rf"\A(?:[\t{SPACE_SEPARATORS}]*\n)+")
 BLANK_RUN_PATTERN = re.compile(r"\n{4,}")
 SAFETENSORS_DTYPES: dict[str, np.dtype] = {
@@ -262,6 +264,288 @@ def standard_reading(text: str) -> str:
     return BLANK_RUN_PATTERN.sub("\n\n\n", text)
 
 
+# ---------------------------------------------------------------- canonical reading
+#
+# The standard reading with every trace of how a text was displayed or collected taken out, so that a model trained and
+# read through it cannot use them: HTML entities decoded; typographic quotes, ellipses and unusual spaces as typed on a
+# keyboard; in prose, dashes as a spaced hyphen and runs of spaces as one; hard-wrapped prose paragraphs joined onto
+# one line; and Markdown rendered as a reader copies it from a rendered page. Code (inside fences or code spans, or a
+# line with code's signs) is left as written. Litmus 1.0.0 read every one of these as evidence of origin, by up to 69
+# points of the share it called not human (experiments/tooling/quill/2026-11-19_confounders).
+#
+# Nothing here depends on a Unicode version or on a regex engine's classes, so that another implementation (the
+# engine's) gives the same bytes: every pattern reads `\s` and `\d` in ASCII alone, as its case folding (`re.ASCII`); a
+# word character is an ASCII letter, digit or underscore, or any non-ASCII character (`WORD`, written `\w` inside a
+# class); a letter is an ASCII letter or any non-ASCII character; and within a line, once its typography is typed, the
+# only white space is space, tab and a line break a `<br>` left (the standard reading deleted the other controls,
+# `TYPED` made every other space separator a space, and `SEPARATORS` broke lines at U+2028 and U+2029).
+
+CANONICAL_READING = "canonical-1"
+READINGS = ("standard", "canonical-1")
+CANONICAL_PASSES = 8  # every text of a 300,000-text pilot reached its fixed point within this many
+WORD = "0-9A-Za-z_\x80-\U0010ffff"  # the word characters, as the inside of a character class
+BLANK = " \t\n"  # the white space a line can hold
+
+
+def compiled(source: str, flags: int = 0) -> re.Pattern[str]:
+    r"""A pattern of the canonical reading: `re.ASCII`, and every `\w` (written only inside a class) the `WORD` set."""
+    return re.compile(source.replace(r"\w", WORD), re.ASCII | flags)
+
+
+FENCE_LINE = compiled(r"^[ \t]*(```|~~~)")
+RULE_LINE = compiled(r"^[ \t]{0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$")
+SETEXT_LINE = compiled(r"^[ \t]{0,3}=+[ \t]*$")
+QUOTE_MARKS = compiled(r"^([ \t]{0,3}>[ \t]?)+")
+ORDERED_MARK = compiled(r"^[ \t]*(\d{1,3}[.)][ \t]+)(?=\S)")
+# Each run of blanks has one way to match, so a line of long runs is read in linear time.
+TABLE_SEPARATOR_LINE = compiled(r"^[ \t]*(?:\|[ \t]*)?:?-{2,}:?[ \t]*(?:\|[ \t]*:?-{2,}:?[ \t]*)+(?:\|[ \t]*)?$")
+TABLE_ROW_LINE = compiled(r"^[ \t]*\|.*\|[ \t]*$")
+# Inline marks. A span's contents never run past the next mark that could open another (a bracket, a pair of stars),
+# so no line, however written, takes more than linear time: an unclosed opener stops its search where the next begins.
+COMMENT_LINE = compiled(r"^[ \t]*[#*]")  # a comment in code (`# note`, ` * @param`), or a Markdown heading or bullet
+QUOTE_PREFIX = compiled(r"(?:[ \t]{0,3}>[ \t]?)+")  # the block marks as `without_marks` finds them, at a position
+HEADING_OPEN = compiled(r"[ \t]{0,3}#{1,6}[ \t]+")
+BULLET_PREFIX = compiled(r"[ \t]*[-*+•][ \t]+(?=\S)")
+CHECKBOX_PREFIX = compiled(r"\[[ xX]\][ \t]+")
+CODE_SPAN = compiled(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)")  # a run of backticks closed by the next run of its length
+IMAGE = compiled(r"!\[([^\[\]\n]*)\]\([^)\[\]\s]*(?:[ \t]+\"[^\"\[\]\n]*\")?\)")
+LINK = compiled(r"\[([^\[\]\n]+)\]\([^)\[\]\s]*(?:[ \t]+\"[^\"\[\]\n]*\")?\)")
+AUTOLINK = compiled(r"<((?:https?|mailto):[^<>\s]+)>")
+BOLD = compiled(r"\*\*(?=\S)((?:[^*\n]|\*(?!\*))+?)(?<=\S)\*\*|__(?=\S)((?:[^_\n]|_(?!_))+?)(?<=\S)__")
+ITALIC_STAR = compiled(r"(?<![*\w])\*(?=[^\s*])([^*\n]+?)(?<=[^\s*])\*(?![*\w])")
+ITALIC_UNDERSCORE = compiled(r"(?<![_\w])_(?=[^\s_])([^_\n]+?)(?<=[^\s_])_(?![_\w])")
+STRIKE = compiled(r"~~(?=\S)((?:[^~\n]|~(?!~))+?)(?<=\S)~~")
+BREAK_TAG = compiled(r"<br\s*/?>", re.IGNORECASE)
+ESCAPE = compiled(r"\\([\\`*_{}\[\]()#+\-.!|>~])")
+HELD = "\x00{}\x00"  # a code span's place while the rest of its line is changed; the standard reading removed every \x00
+HELD_PATTERN = compiled("\x00(\\d+)\x00")
+ENTITY = compiled(r"&(?:(amp|lt|gt|quot|apos|nbsp)|#(\d{1,7})|#[xX]([0-9a-fA-F]{1,6}));")
+SEPARATORS = str.maketrans({"\u2028": "\n", "\u2029": "\n\n"})  # line and paragraph separators as line breaks
+NAMED_ENTITIES = {"amp": "&", "lt": "<", "gt": ">", "quot": '"', "apos": "'", "nbsp": " "}
+TYPED = str.maketrans({"“": '"', "”": '"', "„": '"', "‟": '"', "″": '"', "‘": "'", "’": "'",
+                       "‚": "'", "‛": "'", "′": "'", "…": "...", " ": " ", " ": " ", " ": " ",
+                       " ": " ", " ": " ", " ": " ", " ": " ", " ": " ", " ": " ", " ": " ",
+                       " ": " ", " ": " ", " ": " ", " ": " ", " ": " ", "　": " "})
+DASH = compiled(r"(?<![ \t])[ \t]*[—―–][ \t]*")  # em dash, horizontal bar, en dash; a blank run is tried from its start
+# A dash typed as hyphens, in prose only: two hyphens, or one or two set apart by spaces, between characters that are
+# neither a hyphen nor a backtick, so a run of hyphens (`-----Original Message-----`) and a flag in a code span stay.
+TYPED_DASH = compiled(r"(?<=[^\s\-`])--(?=[^\s\-`])|(?<=[^\s\-`]) --? (?=[^\s\-`])")
+SPACE_RUN = compiled(r"(?<=\S)[ \t]{2,}(?=\S)")
+# Signs of code that prose seldom carries: braces, a closing semicolon, an assignment or comparison operator, empty
+# parentheses, and a line opening as code does (a comment, a preprocessor line, an HTML tag, or a keyword in code's own
+# shape: `def name(`, `from x import`). A word alone never counts, since wrapped prose starts lines with "from" or "let".
+CODE_SIGN = compiled(r"[{}]|;\s*$|\s=\s|[=!<>:+\-*/]=|\(\)|^\s*(?:#include(?![\w])|//|/\*|\*/|def [\w]+\(|class [\w]+[(:]|"
+                     r"import [\w.]+(?: as [\w]+)?\s*$|from [\w.]+ import |elif .*:\s*$|lambda [\w]*:|function\s*[\w]*\(|"
+                     r"<(?!https?:|mailto:)[A-Za-z/!])")
+
+
+def entity(match: re.Match[str]) -> str:
+    """One HTML entity decoded: the six named here, or a numeric one naming a printable character (else left as is)."""
+    if match.group(1):
+        return NAMED_ENTITIES[match.group(1)]
+    code = int(match.group(2)) if match.group(2) else int(match.group(3), 16)
+    printable = code in (9, 10) or (32 <= code < 0x110000 and not 0x7F <= code <= 0x9F and not 0xD800 <= code <= 0xDFFF)
+    return chr(code) if printable else match.group(0)
+
+
+def is_code(line: str) -> bool:
+    """A line of code: indented, or with a sign of code once its Markdown quote marks are set aside. Code is found
+    line by line, never by fences, so a text reads the same whether its code came fenced (raw Markdown) or not
+    (copied from a rendered page)."""
+    return line.startswith(("    ", "\t")) or CODE_SIGN.search(QUOTE_MARKS.sub("", line)) is not None
+
+
+def without_marks(line: str) -> str:
+    """A line without its leading quote, heading, bullet and checkbox marks, however many are stacked (`# # #`,
+    `+ + +`, `> - [ ]`), so one pass removes them all; once a heading mark has gone, so do its trailing blanks and
+    every closing run of `#` set off by a blank (`# Title ##`). Linear in the line, however many marks it stacks."""
+    start, stop, heading = 0, len(line), False
+    while True:
+        before = start
+        for mark in (QUOTE_PREFIX, HEADING_OPEN, BULLET_PREFIX):
+            found = mark.match(line, start, stop)
+            if found:
+                start = found.end()
+                heading = heading or mark is HEADING_OPEN
+                if mark is BULLET_PREFIX and (checkbox := CHECKBOX_PREFIX.match(line, start, stop)):
+                    start = checkbox.end()
+        if start == before:
+            break
+    while heading:
+        while stop > start and line[stop - 1] in " \t":
+            stop -= 1
+        hashes = stop
+        while hashes > start and line[hashes - 1] == "#":
+            hashes -= 1
+        heading = start < hashes < stop and line[hashes - 1] in " \t"  # a closing run, set off by a blank
+        stop = hashes if heading else stop
+    return line[start:stop]
+
+
+def unmarked(line: str) -> str:
+    """A line without its leading Markdown block marks (quotes, headings, bullets and a number), for telling prose."""
+    line = without_marks(line)
+    ordered = ORDERED_MARK.match(line)
+    return line[ordered.end():] if ordered else line
+
+
+def is_prose(line: str) -> bool:
+    """A line of running text: not code, not a table row or tab-separated cells, and at least 60% letters among its
+    visible characters (an ASCII letter or any non-ASCII character)."""
+    if is_code(line) or "\t" in line or TABLE_ROW_LINE.match(line) or RULE_LINE.match(line):
+        return False
+    visible = [character for character in line if character not in BLANK]
+    letters = sum(character.isascii() and character.isalpha() or not character.isascii() for character in visible)
+    return bool(visible) and letters >= 0.6 * len(visible)
+
+
+def decoded(text: str) -> str:
+    """HTML entities decoded until none is left to decode (an entity written as `&amp;lt;` comes out `<`)."""
+    for _ in range(4):
+        out = ENTITY.sub(entity, text)
+        if out == text:
+            return out
+        text = out
+    return text
+
+
+def typed(line: str) -> str:
+    """Typography as typed and dashes as a spaced hyphen; in prose (told without its block mark), a dash typed as
+    hyphens as a spaced hyphen too, and runs of spaces as one."""
+    line = DASH.sub(" - ", line.translate(TYPED))
+    if is_prose(unmarked(line)):
+        line = SPACE_RUN.sub(" ", TYPED_DASH.sub(" - ", line))
+    return line
+
+
+def code_lines(lines: list[str]) -> list[bool]:
+    """Which lines are code: those with code's signs (`is_code`), and every run of lines opening as a comment does in
+    code (`#`, `*`) next to a line of code, so a comment beside code keeps its mark (`# load the data`, ` * @param x`)
+    where a Markdown heading or bullet loses it. Linear: each run is looked at once."""
+    code = [is_code(line) for line in lines]
+    index = 0
+    while index < len(lines):
+        if code[index] or not COMMENT_LINE.match(lines[index]):
+            index += 1
+            continue
+        end = index
+        while end < len(lines) and not code[end] and COMMENT_LINE.match(lines[end]):
+            end += 1
+        if (index > 0 and code[index - 1]) or (end < len(lines) and code[end]):
+            code[index:end] = [True] * (end - index)
+        index = end
+    return code
+
+
+def joined(lines: list[str], code: list[bool]) -> list[str]:
+    """Each prose paragraph (a run of non-blank lines, every one prose and none code, three words or more) on one
+    line."""
+    out: list[str] = []
+    block: list[str] = []
+    prose = True
+
+    def flush() -> None:
+        # str.split() splits on more than BLANK, but a line holds no other white space.
+        if len(block) > 1 and prose and all(is_prose(line) for line in block) and sum(len(line.split()) for line in block) >= 3:
+            out.append(" ".join(line.strip(BLANK) for line in block))
+        else:
+            out.extend(block)
+        block.clear()
+
+    for line, is_code_line in zip(lines, code, strict=True):
+        if line.strip(BLANK):
+            prose = prose and not is_code_line if block else not is_code_line
+            block.append(line)
+        else:
+            flush()
+            out.append(line)
+    flush()
+    return out
+
+
+def inline_rendered(line: str) -> str:
+    """A line's inline Markdown reduced to its text, code spans to their contents."""
+    spans: list[str] = []
+
+    def hold(match: re.Match[str]) -> str:
+        spans.append(match.group(2))
+        return HELD.format(len(spans) - 1)
+
+    line = CODE_SPAN.sub(hold, line)
+    line = AUTOLINK.sub(r"\1", LINK.sub(r"\1", IMAGE.sub(r"\1", line)))
+    line = BOLD.sub(r"\1\2", BOLD.sub(r"\1\2", line))  # nested or adjacent bold (the group that did not match is empty)
+    line = STRIKE.sub(r"\1", ITALIC_UNDERSCORE.sub(r"\1", ITALIC_STAR.sub(r"\1", line)))
+    line = ESCAPE.sub(r"\1", BREAK_TAG.sub("\n", line))
+    return HELD_PATTERN.sub(lambda match: spans[int(match.group(1))], line)
+
+
+def rendered(lines: list[str]) -> tuple[list[str], list[bool]]:
+    """Markdown rendered as a reader copies it: fence lines, rules and table separators dropped, table rows as
+    tab-separated cells, and on every other line but code (`code_lines`), heading, quote and bullet marks removed,
+    ordered numbers kept, and inline marks reduced. Code lines stay as written. Returns the lines and which are code."""
+    out: list[str] = []
+    code_out: list[bool] = []
+    code = code_lines(lines)
+    for index, line in enumerate(lines):
+        if FENCE_LINE.match(line) or RULE_LINE.match(line) or (SETEXT_LINE.match(line) and index and lines[index - 1].strip(BLANK)):
+            continue
+        if TABLE_SEPARATOR_LINE.match(line):
+            continue
+        code_out.append(code[index])
+        if TABLE_ROW_LINE.match(line):
+            out.append("\t".join(inline_rendered(cell.strip(BLANK)) for cell in line.strip(BLANK).strip("|").split("|")))
+            continue
+        if code[index]:
+            out.append(line)
+            continue
+        line = without_marks(line)
+        if ORDERED_MARK.match(line):
+            line = line.lstrip(" \t")
+        out.append(inline_rendered(line))
+    return out, code_out
+
+
+def canonical_pass(text: str) -> str:
+    """One pass over a text in the standard reading: entities decoded (`decoded`), each line's typography (`typed`),
+    Markdown rendered (`rendered`), and prose paragraphs joined (`joined`), then the standard reading again. A pass
+    that would leave no letter or digit (a lone rule, say) changes nothing, so no text is emptied."""
+    lines = [typed(line) for line in decoded(text).translate(SEPARATORS).split("\n")]
+    out = standard_reading("\n".join(joined(*rendered(lines))))
+    return out if any(not character.isascii() or character.isalnum() for character in out) else text
+
+
+def canonical_reading(text: str) -> str:
+    """The canonical reading (`CANONICAL_READING`): the standard reading, then `canonical_pass` until a pass changes
+    nothing, at most `CANONICAL_PASSES` times. One pass can uncover what the next one reads (an escaped mark becomes a
+    mark, a code span's contents become prose, a bullet inside a bullet becomes the first), so the reading is the
+    passes' fixed point, and reading its output again changes nothing."""
+    out = standard_reading(text)
+    for _ in range(CANONICAL_PASSES):
+        again = canonical_pass(out)
+        if again == out:
+            break
+        out = again
+    return out
+
+
+def release_reading(release: Path) -> str:
+    """The reading a release reads its texts in: its config's `text_reading`, or the standard one if it names none.
+    (`reading` is the chunk and window sizes, SPEC.md, section 6.)"""
+    reading = json.loads((release / "config.json").read_text(encoding="utf-8")).get("text_reading", "standard")
+    if reading not in READINGS:
+        raise ValueError(f"{release}: reading {reading!r} is unknown here; known: {', '.join(READINGS)}")
+    return reading
+
+
+def read_as(text: str, reading: str) -> str:
+    """A text in one of the `READINGS`."""
+    if reading == "standard":
+        return standard_reading(text)
+    if reading == CANONICAL_READING:
+        return canonical_reading(text)
+    raise ValueError(f"unknown reading {reading!r}; known: {', '.join(READINGS)}")
+
+
 def load_tokenizer(path: Path | None = None) -> Any:
     """ModernBERT-large's tokenizer, from a local `tokenizer.json` (checked by sha256) or the pinned Hub revision."""
     from tokenizers import Tokenizer
@@ -275,9 +559,10 @@ def load_tokenizer(path: Path | None = None) -> Any:
     return Tokenizer.from_file(str(path))
 
 
-def token_ids(tokenizer: Any, text: str) -> np.ndarray:
-    """The standard reading of a text, tokenized with no special tokens added: (n,) int64."""
-    return np.asarray(tokenizer.encode(standard_reading(text), add_special_tokens=False).ids, dtype=np.int64)  # (n,)
+def token_ids(tokenizer: Any, text: str, reading: str = "standard") -> np.ndarray:
+    """A text in its reading (`READINGS`; a release's `reading`, standard if it names none), tokenized with no special
+    tokens added: (n,) int64."""
+    return np.asarray(tokenizer.encode(read_as(text, reading), add_special_tokens=False).ids, dtype=np.int64)  # (n,)
 
 
 # ---------------------------------------------------------------- arithmetic
@@ -299,6 +584,80 @@ def quantize_activations(X: np.ndarray, eps: float) -> tuple[np.ndarray, np.ndar
     X_q = np.clip(np.rint(X * s[:, None]), -128, 127)  # (n, k), integer values in float32
 
     return X_q.astype(np.float64), s  # (n, k), (n,)
+
+
+SURPRISE_QUANTILES = 101  # a table's quantiles per origin: 0%, 1%, ..., 100% of its calibration texts' values
+POSITIONS_AT_ONCE = 512  # positions whose logits over the vocabulary are held at once: (512, V)
+
+
+class Surprise(TypedDict):
+    n_tokens: int
+    mean_log_probability: float  # mean over tokens of log p(token | the text), nats; higher is less surprising
+    perplexity: float  # exp(-mean_log_probability)
+    percentile: list[float] | None  # human, ai, mixed: the share of that origin's calibration texts at or below it
+
+
+@dataclass
+class LanguageHead:
+    """The masked language head (SPEC.md, Surprise): a BitLinear from width d to the embedding width e, an RMS norm,
+    and the token embedding's own rows as the output, with a scale and a bias per token."""
+
+    proj_norm: np.ndarray  # (d,)
+    proj: Ternary  # T: (e, d)
+    norm: np.ndarray  # (e,)
+    scale: np.float32
+    bias: np.ndarray  # (V,) float32
+
+    @classmethod
+    def from_tensors(cls, tensors: dict[str, np.ndarray]) -> LanguageHead:
+        return cls(tensors["mlm.proj_norm"], Ternary.from_packed(tensors["mlm.proj.weight"], tensors["mlm.proj.scale"]),
+                   tensors["mlm.norm"], F32(tensors["mlm.scale"][0]), tensors["mlm.bias"].astype(F32))
+
+    def log_probabilities(self, H: np.ndarray, ids: np.ndarray, rows: np.ndarray, config: StudentConfig) -> np.ndarray:
+        """Each position's log probability of its own token: (c, d) final states, (c,) ids, (V, e) embedding rows
+        to (c,) float64. Logits are float32, `scale * (g . row) + bias`; the log-sum-exp is float64."""
+        # H: (c, d); ids: (c,); rows: (V, e)
+        G = rms_norm(bitlinear(H, self.proj_norm, self.proj, config), self.norm, config.norm_eps)  # (c, e)
+        out = np.empty(len(ids))  # (c,)
+        for start in range(0, len(ids), POSITIONS_AT_ONCE):
+            L = (self.scale * (G[start : start + POSITIONS_AT_ONCE] @ rows.T) + self.bias).astype(np.float64)  # (q, V)
+            top = L.max(axis=1)  # (q,)
+            total = np.log(np.exp(L - top[:, None]).sum(axis=1)) + top  # (q,)
+            out[start : start + len(L)] = L[np.arange(len(L)), ids[start : start + POSITIONS_AT_ONCE]] - total
+
+        return out  # (c,)
+
+
+def surprise_percentile(quantiles: list[float], value: float) -> float:
+    """The share of an origin's calibration texts at or below `value`, from its quantiles: linear between the
+    quantiles, 0 below the first, 1 above the last."""
+    q = np.asarray(quantiles, dtype=np.float64)  # (Q,)
+    assert len(q) == SURPRISE_QUANTILES and (np.diff(q) >= 0).all(), "a surprise table's quantiles rise"
+    if value <= q[0]:
+        return 0.0
+    if value >= q[-1]:
+        return 1.0
+    upper = int(np.searchsorted(q, value, side="right"))  # q[upper - 1] <= value < q[upper]
+    low, high = q[upper - 1], q[upper]
+    share = (upper - 1 + (value - low) / (high - low)) / (SURPRISE_QUANTILES - 1)
+
+    return float(share)
+
+
+def surprise_reading(mean: float, n_tokens: int, table: dict[str, Any] | None) -> Surprise:
+    percentile = None if table is None else [surprise_percentile(table["quantiles"][origin], mean) for origin in ORIGINS]
+
+    return {"n_tokens": n_tokens, "mean_log_probability": mean, "perplexity": float(math.exp(-mean)), "percentile": percentile}
+
+
+def surprise_table(values: np.ndarray, labels: np.ndarray, split: str) -> dict[str, Any]:
+    """The release's surprise table: each origin's calibration texts' mean token log probabilities at the quantiles
+    0%, 1%, ..., 100%."""
+    # values, labels: (n,)
+    levels = np.linspace(0.0, 1.0, SURPRISE_QUANTILES)  # (Q,)
+
+    return {"split": split, "texts": [int((labels == origin).sum()) for origin in range(3)],
+            "quantiles": {name: np.quantile(values[labels == origin], levels).tolist() for origin, name in enumerate(ORIGINS)}}
 
 
 @dataclass
@@ -873,7 +1232,8 @@ class ReferenceModel:
     """A loaded release: the encoder, the head, the bank and the calibration table."""
 
     def __init__(self, config: StudentConfig, tensors: dict[str, np.ndarray], calibration: dict[str, Any] | None,
-                 bank_fields: dict[str, list[str]] | None = None, attention: str = "float", output: str = "float") -> None:
+                 bank_fields: dict[str, list[str]] | None = None, attention: str = "float", output: str = "float",
+                 surprise_table: dict[str, Any] | None = None) -> None:
         # tensors: (...) each, by name (SPEC.md, section 6)
         if attention not in ATTENTION_MODES:
             raise ValueError(f"attention {attention!r} is not one of {ATTENTION_MODES}")
@@ -913,6 +1273,8 @@ class ReferenceModel:
         self.cosine, self.sine = rope_tables(config.block_size, config.head_width, config.rope_base)  # (W, d_h/2) each
         self.calibration = Calibration(calibration) if calibration is not None else None
         self.explanation = Explanation(self.calibration, tensors, bank_fields or {}) if self.calibration is not None else None
+        self.language = LanguageHead.from_tensors(tensors) if "mlm.proj.weight" in tensors else None  # optional (SPEC.md, Surprise)
+        self.surprise_table = surprise_table
 
     @staticmethod
     def _layer(tensors: dict[str, np.ndarray], index: int) -> LayerWeights:
@@ -934,7 +1296,7 @@ class ReferenceModel:
         attention, output = release_attention(config, str(directory)), release_output(config, str(directory))
 
         return cls(StudentConfig.from_release(config), read_safetensors(directory / "model.safetensors"), config.get("calibration"),
-                   config["bank"].get("fields"), attention, output)
+                   config["bank"].get("fields"), attention, output, config.get("surprise"))
 
     # ------------------------------------------------------------ encoder
 
@@ -1185,6 +1547,30 @@ class ReferenceModel:
 
         return reading, {"chunks": vectors}
 
+    # ------------------------------------------------------------ surprise
+
+    def token_log_probabilities(self, ids: np.ndarray) -> np.ndarray:
+        """Each token's log probability under the masked language head with nothing masked, every chunk read as a
+        text of its own (SPEC.md, Surprise): (n,) ids to (n,) float64."""
+        # ids: (n,)
+        if self.language is None:
+            raise ValueError("this release has no masked language head")
+        rows = self.embed_weight.astype(F32) * self.embed_scale[:, None]  # (V, e)
+        out = []
+        for start, end in chunk_bounds(len(ids), self.config.chunk_tokens):
+            H, _ = self.encode(ids[start:end])  # (c, d)
+            out.append(self.language.log_probabilities(H, ids[start:end], rows, self.config))
+
+        return np.concatenate(out)  # (n,)
+
+    def surprise(self, ids: np.ndarray) -> Surprise:
+        """The text's surprise reading: its mean token log probability (the unmasked pseudo log likelihood), the
+        perplexity it gives, and where it falls among each origin's calibration texts when the release has the table."""
+        # ids: (n,)
+        mean = float(self.token_log_probabilities(ids).mean())
+
+        return surprise_reading(mean, len(ids), self.surprise_table)
+
 
 def window_context_gap(model: ReferenceModel, ids: np.ndarray, states_of: Any) -> list[dict[str, float]]:
     """Each window of a single-chunk text read two ways: pooled from the chunk's states (as the heat map reads it, its
@@ -1355,6 +1741,12 @@ def random_tensors(config: StudentConfig, bank_per_origin: int, seed: int, outpu
     tensors["bank.tokens"] = generator.integers(1, 5000, 3 * bank_per_origin).astype(np.int32)  # (m,)
     for field, names in RANDOM_BANK_FIELDS.items():
         tensors[f"bank.meta.{field}"] = generator.integers(0, len(names), 3 * bank_per_origin).astype(np.uint16)  # (m,)
+    # The masked language head, drawn last so every tensor above is what it was before the head existed.
+    tensors["mlm.proj_norm"] = gain(d)
+    ternary("mlm.proj", e, d)
+    tensors["mlm.norm"] = gain(e)
+    tensors["mlm.scale"] = np.asarray([1.0 / math.sqrt(e)], dtype=F32)  # (1,)
+    tensors["mlm.bias"] = (0.5 * generator.standard_normal(config.vocab_size)).astype(F32)  # (V,)
 
     return tensors  # name to array (SPEC.md, section 6)
 
@@ -1494,6 +1886,18 @@ def synthetic_calibration(model: ReferenceModel, max_tokens: int, seed: int) -> 
     return fitted_calibration(np.clip(mean, 1e-6, 1.0), spread, closeness, tokens, labels)  # the table, and (...) each by name
 
 
+def synthetic_surprise_table(model: ReferenceModel, seed: int) -> dict[str, Any]:
+    """A surprise table for a random model: its mean token log probabilities of a few random sequences, resampled
+    with noise and given random origins, each origin's shifted apart, so fixture percentiles vary. Tests arithmetic only."""
+    generator = np.random.default_rng(seed)
+    observed = np.asarray([model.token_log_probabilities(generator.integers(0, model.config.vocab_size, n)).mean()
+                           for n in (3, 17, 64, 200)])  # (4,)
+    labels = generator.integers(0, 3, 600)  # (r,)
+    values = generator.choice(observed, 600) + generator.normal(0.0, 0.3, 600) + 0.4 * labels  # (r,)
+
+    return surprise_table(values, labels, "random")
+
+
 def init_release(config: StudentConfig, directory: Path, seed: int, bank_per_origin: int, calibration_tokens: int,
                  attention: str = "float", output: str = "float") -> ReferenceModel:
     """Write a random release with a synthetic calibration table, and return it loaded."""
@@ -1502,6 +1906,7 @@ def init_release(config: StudentConfig, directory: Path, seed: int, bank_per_ori
     uncalibrated = ReferenceModel(config, tensors, None, attention=attention, output=output)
     calibration, explained = synthetic_calibration(uncalibrated, calibration_tokens, seed + 1)
     config_json = release_config(config, [bank_per_origin] * 3, "random", RANDOM_BANK_FIELDS, calibration, provenance, attention, output)
+    config_json["surprise"] = synthetic_surprise_table(uncalibrated, seed + 2)
     write_release(directory, {**tensors, **explained}, config_json)
 
     return ReferenceModel.load(directory)
@@ -1544,13 +1949,18 @@ def fixture_record(model: ReferenceModel, tokenizer: Any, text: str, keep: int) 
             record |= {"window_query": values["window_query"].tolist(), "window_key": values["window_key"].tolist()}
         chunks.append(record)
 
-    return {
+    record = {
         "text": text, "standard_reading": standard_reading(text), "ids": ids.tolist(),
         "layer_states": [vectors[f"layer_{index}"].tolist() for index in range(model.config.depth + 1)],
         "token_states": vectors["token_states"].tolist(),
         "chunks": chunks,
         "reading": reading,
     }
+    if model.language is not None:  # the surprise reading (SPEC.md, Surprise)
+        record["log_probabilities"] = model.token_log_probabilities(ids).tolist()
+        record["surprise"] = model.surprise(ids)
+
+    return record
 
 
 def combination_cases(model: ReferenceModel, seed: int) -> list[dict[str, Any]]:
@@ -1640,7 +2050,7 @@ def main() -> None:
         write_fixtures(arguments.out, load_tokenizer(arguments.tokenizer))
     else:
         model = ReferenceModel.load(arguments.release)
-        ids = token_ids(load_tokenizer(arguments.tokenizer), arguments.text.read_text(encoding="utf-8"))  # (n,)
+        ids = token_ids(load_tokenizer(arguments.tokenizer), arguments.text.read_text(encoding="utf-8"), release_reading(arguments.release))  # (n,)
         reading, _ = model.read_streaming(ids, arguments.feed) if arguments.feed else model.read_whole(ids)
         print(json.dumps(reading, indent=1))
 

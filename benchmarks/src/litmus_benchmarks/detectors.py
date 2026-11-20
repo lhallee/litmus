@@ -262,12 +262,14 @@ class LitmusScorer:
         from litmus_student.evaluate import Reader
 
         self.reference = reference
-        self.reader = Reader(Path(os.environ["LITMUS_CHECKPOINT"]), Path(os.environ["LITMUS_RELEASE"]), torch.device(device))
+        release = Path(os.environ["LITMUS_RELEASE"])
+        self.reader = Reader(Path(os.environ["LITMUS_CHECKPOINT"]), release, torch.device(device))
         self.tokenizer = reference.load_tokenizer()
+        self.reading = reference.release_reading(release)  # the reading the release was trained in
 
     def __call__(self, texts: list[str]) -> np.ndarray:
         scores = np.full(len(texts), 0.5)  # (b,)
-        ids = [self.reference.token_ids(self.tokenizer, text) for text in texts]  # (n_i,) each
+        ids = [self.reference.token_ids(self.tokenizer, text, self.reading) for text in texts]  # (n_i,) each
         kept = [index for index, each in enumerate(ids) if len(each)]
         if kept:  # every text's chunks in packed forwards, then read against the whole bank together
             scores[kept] = [verdict["probability"] for verdict in self.reader.read_many([ids[index] for index in kept])]
@@ -275,7 +277,7 @@ class LitmusScorer:
         return scores  # (b,)
 
     def tokens(self, text: str) -> int:
-        return len(self.reference.token_ids(self.tokenizer, text))
+        return len(self.reference.token_ids(self.tokenizer, text, self.reading))
 
 
 class EngineScorer:
@@ -355,13 +357,21 @@ def peak_rss_mb() -> float:
     return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * scale / 2**20
 
 
-def processor_name() -> str:
-    """The CPU's model name (Linux `/proc/cpuinfo`), else what `platform` knows."""
-    cpuinfo = Path("/proc/cpuinfo")
+# An Arm core names itself in /proc/cpuinfo only by implementer and part number; lscpu's names of the server cores.
+ARM_PARTS = {"0xd0c": "Neoverse-N1", "0xd40": "Neoverse-V1", "0xd49": "Neoverse-N2", "0xd4f": "Neoverse-V2"}
+
+
+def processor_name(cpuinfo: Path = Path("/proc/cpuinfo")) -> str:
+    """The CPU's model name (Linux `/proc/cpuinfo`, by part number for an Arm core), else what `platform` knows."""
     if cpuinfo.exists():
-        for line in cpuinfo.read_text().splitlines():
+        lines = cpuinfo.read_text().splitlines()
+        for line in lines:
             if line.startswith("model name"):
                 return line.split(":", 1)[1].strip()
+        fields = {key.strip(): value.strip() for key, value in (line.split(":", 1) for line in lines if ":" in line)}
+        if fields.get("CPU implementer") == "0x41":
+            part = fields.get("CPU part", "")
+            return f"Arm {ARM_PARTS.get(part, f'CPU part {part}')}"
     return platform.processor() or platform.machine()
 
 

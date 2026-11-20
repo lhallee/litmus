@@ -33,7 +33,7 @@ and the engine matches it. The PyTorch model that is trained is `student/src/lit
 ## Symbols
 
 Real sizes are those of the smallest configuration, `s192_l4` ([`student/configs.json`](../../student/configs.json)).
-The released configuration is <!--litmus:model.config_name-->s192_l4<!--/litmus-->.
+The released configuration is <!--litmus:model.config_name-->s512_l6<!--/litmus-->.
 
 | Symbol | What it is | Kind | Shape | `s192_l4` |
 | --- | --- | --- | --- | --- |
@@ -57,7 +57,7 @@ The released configuration is <!--litmus:model.config_name-->s192_l4<!--/litmus-
 | $`W_1, W_2`$ | The head's two layers (float16) | fixed | $`d_{\mathrm{hid}} \times 2d`$, $`2w \times d_{\mathrm{hid}}`$ | 512 × 384, 256 × 512 in `configs.json`; release <!--litmus:t:head_widths-->hidden width 256, output width 64<!--/litmus--> |
 | $`q, k`$ | The text's unit query and unit key | computed | $`w`$ each | 128 each in `configs.json`; release <!--litmus:config.head.out_width-->64<!--/litmus--> |
 | $`a_s, b_s`$ | The pair logit's scale and bias | fixed | scalars | |
-| $`N_o`$ | Bank texts of origin $`o`$ | count | | <!--litmus:t:bank_counts-->2,048 human, 2,048 AI, and 2,048 mixed<!--/litmus--> |
+| $`N_o`$ | Bank texts of origin $`o`$ | count | | <!--litmus:t:bank_counts-->8,192 human, 8,192 AI, and 8,192 mixed<!--/litmus--> |
 
 ## From text to token ids
 
@@ -366,7 +366,7 @@ r_o = \frac{m_o}{m_{\mathrm{human}} + m_{\mathrm{AI}} + m_{\mathrm{mixed}}}, \qq
 
 and the **closeness**: the mean of the 16 highest cosines between the text's $`[q; k]`$ and any bank row. These five
 kinds of numbers (mean, spread, share, score, closeness) and the token count are everything calibration reads
-([5. Calibration](calibration.md)). The bank of the release holds <!--litmus:t:bank_counts-->2,048 human, 2,048 AI, and 2,048 mixed<!--/litmus--> texts, drawn <!--litmus:record.model.bank_variant-->from training rows for human and AI text and from 4,096 reserved mixed rows that never trained, 2,048 an origin (the `mixed_out` recipe)<!--/litmus-->.
+([5. Calibration](calibration.md)). The bank of the release holds <!--litmus:t:bank_counts-->8,192 human, 8,192 AI, and 8,192 mixed<!--/litmus--> texts, drawn <!--litmus:record.model.bank_variant-->the withheld reference set, 8,192 texts an origin from clusters no other set holds and that never trained (the `reference` recipe), embedded again at every validation reading and by the export<!--/litmus-->.
 
 *Worked example (made up).* A bank of two texts per origin and one text
 whose pair logits against them are 2.0 and 1.0 (human), −3.0 and −1.5 (AI), −0.5 and 0.5 (mixed):
@@ -449,9 +449,10 @@ on releases with random weights ([`engine/README.md`](../../engine/README.md), M
 | `s192_l6` | 192 | 6 | 2.68M | 8.0 MB | 15,231 |
 | `s256_l6` | 256 | 6 | 4.75M | 8.7 MB | 10,034 |
 | `s384_l8` | 384 | 8 | 14.20M | 11.3 MB | 4,214 |
+| `s512_l6` (1.1, trained weights) | 512 | 6 | 18.94M | 12.8 MB | <!--litmus:bench.rows[tokens=8192].text_tokens_per_second as int-->5,014<!--/litmus--> |
 | `s512_l12` | 512 | 12 | 37.81M | 17.6 MB | <!--litmus:record.sizes.s512_l12_tokens_per_second as int-->1,870<!--/litmus--> |
 
-The release is <!--litmus:t:released_config-->`s192_l4`, with release files of 10.8 MB including its bank, reading 28,022 tokens a second on one core<!--/litmus-->.
+The release is <!--litmus:t:released_config-->`s512_l6`, with release files of 18.5 MB including its bank, reading 5,014 tokens a second on one core<!--/litmus-->.
 
 ## Where in the code
 

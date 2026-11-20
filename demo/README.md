@@ -21,13 +21,15 @@ recaptures the browser checker, prepares the footage, and renders the ad, the te
 (`litmus_ad.mp4`, `litmus_teaser.mp4`, `litmus_wide.mp4`, and the wide cut's web encodes, see Embedding) with a still at each
 beat of review (`<dir>/out/stills/ad`, `teaser`, `wide`). The desktop footage and the app's memory (`--clips`, holding `app.mp4`,
 `app.json`, `quick.mp4`, `quick.json`, `memory.json`) come from the Linux build of the app on a virtual display, recorded
-on any machine with Docker by
+with Docker on an x86_64 machine, over SSH or on this one:
 
 ```text
 capture/run_linux.sh <ssh key> <user@host> <litmus-app, the Linux build with the release built in> <a long text file> <clips folder>
+capture/run_linux.sh local <stage folder> <litmus-app> <a long text file> <clips folder>
 ```
 
-(it uses the machine's `~/litmus_run/demo/` only, one container at a time, 6 cores, 12 GB, no GPU). The Windows build is
+(over SSH it uses the machine's `~/litmus_run/demo/` only; either way one container at a time, 6 cores, 12 GB, no GPU,
+from `capture/Dockerfile`, Ubuntu 24.04 pinned by digest). The Windows build is
 never driven: nothing in this folder sends keystrokes or mouse input to a real desktop or records one. The speed
 measurement needs Windows (it pins with `start /affinity` and reads Windows' process counters) and PowerShell.
 
@@ -208,9 +210,11 @@ README and the github.io site. `node render.mjs wide` (and `make.mjs`) also writ
 | --- | --- | --- |
 | `litmus_wide_site.mp4` | 1920 by 1080, H.264 high profile, CRF 21 capped at 6 Mbit/s, AAC 128 kbit/s, index at the front | 12.0 MB |
 | `litmus_wide_readme.mp4` | 1280 by 720, CRF 19 capped at 3 Mbit/s, AAC 96 kbit/s, the best quality that stays under 9.5 MB (the encoder steps CRF up until it does) | 8.1 MB |
-| `litmus_wide_poster.png` | 1920 by 1080, the last frame, the whole end card with the address `lhallee.github.io/litmus`: the poster of the site's video and the README's linked image | 0.46 MB |
+| `litmus_wide_poster.png` | 1920 by 1080, the last frame, the whole end card with the address `lhallee.github.io/litmus`: the poster of the site's video | 0.46 MB |
+| `litmus_wide_preview.webp` | The whole cut as a silent animated WebP, 800 pixels wide at 10 frames a second, quality 70 (stepped down by 10 until it fits 6 MB): the README's moving image, linked to the site | 4.7 MB |
 
-`litmus_wide.mp4` itself is 18.2 MB (CRF 16, the master); `--web-only` remakes just these three from it.
+`litmus_wide.mp4` itself is 18.2 MB (CRF 16, the master); `--web-only` remakes just these four from it. The release's
+`film` stage copies the preview from `<work>/media/` to `docs/images/`, so a new film reaches the README with the release.
 
 **What the research found (read 2026-11-18).**
 
@@ -224,12 +228,13 @@ README and the github.io site. `node render.mjs wide` (and `make.mjs`) also writ
 
 **Recommendation.**
 
-- **README: the uploaded video (`litmus_wide_readme.mp4`, 8.1 MB), with the poster as the fallback.** It is the only
-  route that gives an inline player with sound in the README, and 8.1 MB fits the free-plan limit of 10 MB, so it works
-  whichever plan the repository is on. It cannot autoplay, and GitHub's player is expected to show the file's first frame (the question, fully drawn, without the address; not tested),
-  so the linked poster above it carries the address. The upload is a manual step (the address exists only after GitHub receives the file): edit the
-  README on github.com, drag the file onto the editor, and keep the address it inserts on its own line. Nothing large goes
-  in the repository, and the video is not in the git history.
+- **README: the animated preview (`litmus_wide_preview.webp`, 4.7 MB), linked to the site.** Decided 2026-11-19 after
+  the README's linked poster was found not to render (it was never copied to `docs/images/`) and Logan asked for a GIF,
+  something shorter, or a picture. An animated image plays on its own, loops, and needs no manual upload, so a release
+  refreshes it with no step by hand. A GIF of the whole cut was 19 to 23 MB even at 640 to 800 pixels, over the 10 MB image
+  limit and slow to load, while animated WebP at 800 pixels is 4.7 MB with the captions sharp; current Chrome, Edge,
+  Firefox, and Safari play animated WebP. The sound plays on the site, which the image links to. The uploaded video
+  (`litmus_wide_readme.mp4`) stays available for a player with sound, but it needs the manual upload described below.
 - **Site: a `<video>` element on the page, from the site's own files (`litmus_wide_site.mp4` and the poster).** The site
   makes no request to any other host (`site/README.md`), a release asset cannot serve a `<video>` reliably (the
   redirect, the forced download type, no CORS), and Pages allows far more than 12 MB. The files live in the `gh-pages`
@@ -238,17 +243,14 @@ README and the github.io site. `node render.mjs wide` (and `make.mjs`) also writ
   `release/build_release.py`) and its link check wants every `src` to be a file in the built folder, so the video must be
   copied into the built folder as one more step; this task did not touch either file.
 
-**Markup for the README** (`PUBLIC_README.md`, under the one-line description; not applied here). Until the upload is done,
-the linked poster stands in its place (copy `litmus_wide_poster.png` to `docs/images/`; 0.46 MB). When the upload is done,
-replace the line with the address GitHub inserted, on a line of its own:
+**Markup for the README** (`PUBLIC_README.md`, under the one-line description and the site's links; applied):
 
-```markdown
-[![Litmus in 42 seconds: select text, press Ctrl+Alt+L, read how sure it is](docs/images/litmus_wide_poster.png)](https://lhallee.github.io/litmus/)
+```html
+<a href="https://lhallee.github.io/litmus/"><img alt="Litmus in a short film, playing silently: ..." src="docs/images/litmus_wide_preview.webp" width="100%"></a>
 ```
 
-```markdown
-https://github.com/user-attachments/assets/<the address GitHub inserts after the upload>
-```
+For a player with sound instead, upload `litmus_wide_readme.mp4` through the GitHub editor and put the address it
+inserts on a line of its own (`https://github.com/user-attachments/assets/<id>`).
 
 **Markup for the site** (a page of `site/`, for example under the home page's one-line description; not applied here).
 It starts muted and in a loop where the browser allows it, shows controls so a visitor can unmute, and leaves the poster
@@ -357,11 +359,34 @@ bundled into Litmus itself; these tools render the ad.
 | @fontsource-variable/source-serif-4, @fontsource-variable/inter, @fontsource/jetbrains-mono | 5.2.9, 5.2.8, 5.2.8 | SIL Open Font License 1.1 | The ad's three faces |
 | Docker image `capture/Dockerfile` | Ubuntu 22.04 with FFmpeg, Mousepad, openbox, and the packages named in it | each package's own license | The virtual display the Linux footage is recorded on |
 
-## What waits on the final model
+## A new release's film
 
-- `data/ad/readings.json`, `data/ad/hype_run.json` and `data/ad/app_memory.json` are the interim release's (step 4,999);
-  `node make.mjs` replaces all three. Every share, speed, and memory figure on screen is provisional until then; the
-  interim model reads some domains poorly and non-English text near chance, so the documents are English prose only.
+The film released with 1.0.0 was never rendered from it. `data/ad/readings.json`, `data/ad/hype_run.json` and
+`data/ad/app_memory.json` are the interim model's (step 4,999, measured 2026-11-18), so the film shows 23,549 tokens a
+second and 66 MB where 1.0.0 measured 28,267 tokens a second in `litmus bench`. Logan asked on 2026-11-19 for the film to
+be rendered again for 1.1. In order:
+
+1. Run the release through `verify` as usual. The builds take the film already in `<work>/media/`, the old one.
+2. On the Windows desktop with Docker Desktop running (Logan allowed it for short Docker jobs on 2026-11-19; it runs the
+   x86_64 Linux build natively, which the aarch64 GH200s cannot), capture from the release's Linux build:
+   `bash capture/run_linux.sh local <work>/ad/capture_stage <work>/build/linux/litmus-app <work>/measure/document.txt <work>/ad/clips`.
+   The image build and the three scenes take minutes. Over SSH, the same script runs on any x86_64 Linux machine with Docker.
+3. On the Windows desktop, with the machine otherwise quiet (the speed run is pinned to one core and counts the
+   machine's utilization): `npm ci` and `npx playwright install chromium` in `demo/` once, then
+   `py release/cut.py run --work <work> --only ad --ad-clips <clips folder>`. It reads the footage's texts again and
+   stops if the new model reads one differently from its caption (then replace the text and capture again), measures
+   speed and memory, recaptures the browser checker, and renders every cut into `<work>/ad/out/`.
+4. Review the stills in `<work>/ad/out/stills/wide/`, then copy `litmus_wide_site.mp4`, `litmus_wide_poster.png`, and
+   `litmus_wide_preview.webp` from `<work>/ad/out/` to `<work>/media/`.
+5. Run `film`, `build-windows`, and `verify` again, so the README's preview and the site's film are the new ones, before
+   `assemble`.
+
+- TODO(film_render_1_1): render the film from the 1.1 release by the steps above; it waits on the 1.1 release.
+
+What else to know before rendering:
+
+- The GPU panel (`data/ad/gpu_use.json`) keeps its 2026-11-18 measurement unless `python -m litmus_benchmarks gpu-use`
+  is run again on a GPU machine; it measures the other detectors, which a new Litmus does not change.
 - The two document sets differ in genre and the AI set is in-distribution (see "The documents"); the final measurement
   should use a genre-matched, people-written set and an AI set the training did not see.
 - The memory figure is the command line's. The desktop app holds more (156 to 172 MB on the Linux build with software

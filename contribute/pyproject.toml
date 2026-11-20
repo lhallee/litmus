@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "litmus-contribute"
-version = "1.0.0"
+version = "1.1.0"
 description = "The Litmus contribute site's server: serves the app, stores checked texts with their readings and annotations, compacts them to a private Hub dataset"
 requires-python = ">=3.11"
 license = "LicenseRef-PolyForm-Noncommercial-1.0.0"  # ../LICENSE; source available, free for noncommercial use

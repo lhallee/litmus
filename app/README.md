@@ -20,7 +20,7 @@ Linux and compiles to WebAssembly for the github.io page, in three builds of one
 | `src/scoring.rs` | Scoring off the UI thread: a worker thread (desktop), a Web Worker (browser), the site's server (contribute) |
 | `src/wording.rs`, `strip.rs`, `heatmap.rs`, `history.rs`, `model.rs`, `contribute.rs`, `brand.rs`, `theme.rs` | The logic the screens use, with unit tests |
 | `src/web.rs` | The browser's `start` and the `WorkerEngine` the page's worker drives |
-| `src/demo.rs`, `src/png.rs` | A scripted run for screenshots and end-to-end checks (desktop) |
+| `src/demo.rs`, `src/demo/quick.rs`, `src/png.rs` | A scripted run for screenshots and end-to-end checks (desktop), and quick check's scripts |
 | `assets/litmus_mark.svg`, `assets/litmus_icon.svg` | The mark, and the icon written from `brand.rs` (a test keeps them equal) |
 | `scripts/build_web.sh` | Builds the browser page into a dist folder |
 | `tests/release.rs`, `tests/reading_small.json` | Tests against a real release; a reading of a 14-token text by the placeholder, written by `litmus score --json` |
@@ -53,7 +53,7 @@ the command line's).
 
 **The shipped `litmus-app.exe` carries its model**: `release/build_release.py` builds it with
 `--features embedded`, so the download is one file that runs offline with nothing beside it. The release adds its
-13 MB to the program (d192 L4). Developers still load another release from a folder: Settings, `LITMUS_MODEL`,
+13 MB to the program for 1.0.0's d192 L4, and more for 1.1's d512 L6. Developers still load another release from a folder: Settings, `LITMUS_MODEL`,
 or a `release` folder beside the program win over the built-in one. The C runtime is linked in (`crt-static`), so
 the program needs no Visual C++ Redistributable. [`../release/RELEASING.md`](../release/RELEASING.md) has the steps. Settings and the history live in the data folder (`%APPDATA%\litmus`, `~/Library/Application
 Support/litmus`, `$XDG_DATA_HOME/litmus`; `LITMUS_DATA_DIR` overrides); the cache is the command line's
@@ -71,7 +71,7 @@ The script builds the cdylib for `wasm32-unknown-unknown` with SIMD128, runs `wa
 `site/app/index.html`, `site/app/worker.js`, the icon as `favicon.svg` and the release's three files beside it.
 `wasm-bindgen-cli` must be the version the crate pins (`=0.2.126`); install it with
 `cargo install wasm-bindgen-cli --version 0.2.126 --locked --root <folder>`. For the published page, the dist
-folder's contents go to `site/app/` of the github.io branch (the three model files included, about 16 MB for d192 L4).
+folder's contents go to `site/app/` of the github.io branch (the three model files included, about 16 MB for 1.0.0's d192 L4).
 
 **Contribute.**
 
@@ -119,7 +119,12 @@ the placeholder warning stays on every screen.
 - **Detailed** adds a panel beside the reading (under it on a narrow window): P(not human) with its interval, what
   the 10% set keeps, tokens, characters without spaces, and time; what a reading is and our recommendation for using one
   (`wording::RECOMMENDATION`: a reading is an estimate, not proof, and we recommend not using a reading alone to
-  accuse anyone); the minimap of a long text; and the reading of the part of the text clicked.
+  accuse anyone); the minimap of a long text; and the reading of the part of the text clicked. With a release that
+  carries its masked language head (1.1 on), it also adds the text's **surprise** (`student/SPEC.md`, Surprise): minus
+  the mean log probability the model gives each token seeing the rest of the text, the perplexity, and the share of
+  each origin's calibration texts the model found at least as surprising, with what it is not
+  (`wording::SURPRISE_CAUTION`). It is read in a pass of its own only when a reading's details are first shown, on the
+  scoring thread (in the browser, the worker), and stops when a new reading starts; the contribute site does not show it.
 - **Full** adds every other number, how the reading was made, the model, and the exports.
 
 The pieces:
@@ -167,9 +172,12 @@ Ctrl+1, 2 and 3 switch screens, Ctrl+, opens Settings, Ctrl+Shift+L switches the
 Ctrl+E and Ctrl+1 to 3 to the browser.
 
 **States.** First launch: one sentence, Sample and Open file beside Check, and the drop hint. Scoring: the text stays
-on screen with the progress in tokens and sections and a Cancel button (the reading runs off the UI thread). Errors
-say what happened and what to do (a file that does not read, a text with nothing to read, no model with a button to
-Settings). Under 32 tokens a reading adds that a few words carry little evidence.
+on screen with the progress in tokens and sections and a Cancel button (the reading runs off the UI thread). A file
+opened, dropped, or handed over by Explorer is read on the scoring thread as well ("Opening notes.pdf"), so a large
+PDF never freezes the window, and its text fills the editor when its reading arrives. Errors say what happened and
+what to do (a file that does not read, an empty file or a text with nothing to read, no model with a button to
+Settings). Under 32 tokens a reading adds that a few words carry little evidence. A text file saved as UTF-16 with its
+byte-order mark (Notepad's "Unicode") is read as such (`litmus_files::extract::decode`).
 
 **Desktop.** One app at a time: the first launch holds a lock in the data folder (`instance.lock`, the system's own
 file lock, so a crash leaves nothing stale); a later launch, or Explorer's "Check with Litmus", leaves its request
@@ -191,13 +199,23 @@ ticks it in Settings, beside one sentence on what it does (`quick::SENTENCE`).
   the reading, scored locally: the verdict, the strip with its band, and "Open full reading" (the main window, with heat map and explanation); it follows the detail level: Simple is
   the verdict word and the strip; at every level a line under the strip gives the selected text's words, characters,
   and tokens; Detailed adds P(not human) with its interval, and under 32 tokens that a few words carry little evidence; Full adds how the text was read. The placeholder warning shows at every
-  level. Checked at 100% and 150% display scaling (`LITMUS_DEMO_ZOOM=1.5`). It closes on Esc, when it loses the
-  focus after holding it (a click elsewhere), or after 25 seconds unless the pointer rests on it. The reading enters the history
-  only if "Keep a history" is on.
+  level. Checked at 100% and 150% display scaling (`LITMUS_DEMO_ZOOM=1.5`). It opens below and to the right of the
+  pointer, above or to the left of it where the screen's work area would cut it off, and always inside that work
+  area. It closes on Esc, when it loses the focus after holding it (a click elsewhere), or after 25 seconds unless
+  the pointer rests on it. Windows opens it without the focus when the app has no right to take it (it was in the
+  background, and the simulated copy was the last input): then the popup reads the state of Esc and the mouse
+  buttons, about 30 times a second while it is up, so Esc or a click outside it still closes it; neither is taken
+  from the app in front. The reading enters the history only if "Keep a history" is on.
+- **Its own scoring thread**: quick check's readings run on a second thread that shares the loaded model (the engine
+  is `Send` and `Sync`), so a popup never waits behind a batch or a long reading in the main window; a popup that
+  closes, or is replaced by the next press, stops its reading. A press while a capture is under way waits for it (two
+  copies at once could each save the other's selection as the clipboard to restore), and a press while the popup
+  holds the focus keeps the popup (the selection would be read from the popup itself).
 - **Reading the selection on Windows**: UI Automation's text pattern on the focused element first (rich edit
   controls, browsers, Office and most modern apps offer it); if there is none (classic Edit controls such as
   Notepad's offer none), simulated Ctrl+C after the hotkey's keys are released, sent only while the window the hotkey
-  was pressed over is still in front, with every memory-backed clipboard format saved first and put back after. The tray's item reads the clipboard as it is, because clicking the tray moves
+  was pressed over is still in front, with every memory-backed clipboard format saved first and put back after,
+  marked to stay out of clipboard history. The tray's item reads the clipboard as it is, because clicking the tray moves
   the focus away from the selection. The source app's own copy may enter Windows' clipboard history; that is the
   source app's write, not one the app can mark.
 - **Right-click**: there is no general way to add an item to every application's context menu on Windows. Settings
@@ -232,14 +250,17 @@ at least 40 points tall; the first screen says in one line that the text is read
 
 | Command | Checks |
 | --- | --- |
-| `cargo test` | Verdict wording, set sentences and the simple screen's plain sentences, number formats, strip geometry, cell tints ordered by lightness, cell-to-text mapping (pages, sections, byte lookup, characters), history (reopening, repeats, removal, a damaged index is an error), settings defaults and the detail level, the contribute API's request and response shapes, PNG encoding, dates, the placeholder test, the icon asset equal to the code, the icon resource's layout, every ink at 4.5:1 on every ground, sorting (direction, stability, gaps last), one app at a time (a second claim finds the lock, requests handed over oldest first and once, a damaged one reported), the window's saved place (sane sizes, jitter is not a move), history entries saved before bands |
-| `cargo test --features desktop-tests --test quick_windows -- --test-threads 1` (Windows) | Quick check against this machine, leaving it as found: the Explorer entry written, found and removed under a temporary root `HKEY_CURRENT_USER\Software\LitmusTest_<pid>` (never `Software\Classes`), which is then deleted; UI Automation reads the selection of a WordPad the test starts and ends; the clipboard is saved, overwritten with text marked to stay out of clipboard history, and put back byte for byte |
-| `LITMUS_MODEL=<release> cargo test --release --features release-tests` | Against a release: cells tile the text and map back from bytes, every cell has the engine's count of windows over it, a misplaced reading is refused; the scorer thread loads, scores, serves an unchanged text from the cache, cancels a long text, and scores a folder as a batch with an error row for an empty file |
-| `cargo test -p litmus-files` (in `engine/`) | Folder walks, CSV and JSON rows, HTML and entities, the word, character and token counts (empty text, runs of whitespace, CRLF, a non-breaking space, CJK, an emoji of several scalars) |
+| `cargo test` | Verdict wording, set sentences and the simple screen's plain sentences, number formats, strip geometry, cell tints ordered by lightness, cell-to-text mapping (pages, sections, byte lookup, characters), history (reopening, repeats, removal, a damaged index is an error), settings defaults and the detail level, the contribute API's request and response shapes, PNG encoding, dates, the placeholder test, the icon asset equal to the code, the icon resource's layout, every ink at 4.5:1 on every ground, sorting (direction, stability, gaps last), one app at a time (a second claim finds the lock, requests handed over oldest first and once, a damaged one reported), the window's saved place (sane sizes, jitter is not a move), history entries saved before bands, the quick-check popup's place (below and right of the pointer, flipped above or left at the work area's edges, inside it on any monitor), and a popup without the focus closing on Esc or a click outside it but not on a key or button already held when it opened, nor on a click on itself |
+| `cargo test --features desktop-tests --test quick_windows -- --test-threads 1` (Windows) | Quick check against this machine, leaving it as found: the Explorer entry written, found and removed under a temporary root `HKEY_CURRENT_USER\Software\LitmusTest_<pid>` (never `Software\Classes`), which is then deleted; UI Automation reads the selection of a WordPad the test starts and ends; the clipboard is saved, overwritten with text marked to stay out of clipboard history, and put back byte for byte, then put back as the copy path does, the same formats and the history marker |
+| `LITMUS_MODEL=<placeholder> cargo test --release --features release-tests` | Against the random placeholder release: cells tile the text and map back from bytes, every cell has the engine's count of windows over it, a misplaced reading is refused; the scorer thread loads, scores, serves an unchanged text from the cache, cancels a long text, scores a folder as a batch with an error row for an empty file, and reads and scores a file opened in the Check screen (its text with the reading, "Opening the file" first, an empty and a missing file as errors); quick check's thread answers while a long main-window reading runs, and its cancel stops its own reading only |
+| `LITMUS_MODEL=<trained release> cargo test --release --features desktop-tests,release-tests --test quick_scenes -- --test-threads 1` (Windows) | Every quick-check script of the demo (`src/demo/quick.rs`) on the built app, with the main window hidden in the tray and kept up: reading, loading, batch, replace, escape, expire, full and tray, each passing and ending through the tray's Quit within 90 seconds. Its windows show on the screen for a second or two per script; nothing is typed, clicked, or copied on the desktop |
+| `cargo test -p litmus-files` (in `engine/`) | Folder walks, CSV and JSON rows, HTML and entities, the word, character and token counts (empty text, runs of whitespace, CRLF, a non-breaking space, CJK, an emoji of several scalars), text files decoded by their byte-order mark (UTF-16LE and BE, UTF-8 with a mark, an HTML page in UTF-16) |
 
 Not tested by code: the screens themselves (they are run and photographed, below), the hotkey pressed by a person
-on a physical keyboard, the tray icon clicked with a mouse, the macOS build, Linux on Wayland, and the browser build
-in browsers other than Edge. Quick check on a release build of `litmus-app.exe` is driven end to end on Windows 10, with a
+on a physical keyboard (and so whether Windows gives that popup the focus; the demo's popup had it on some runs and
+not on others, and Esc and a click elsewhere close it either way), the tray icon clicked with a mouse (its actions
+are driven in-process by the `tray` script), placement across monitors of different scaling, the macOS build, Linux
+on Wayland, and the browser build in browsers other than Edge. Quick check on a release build of `litmus-app.exe` is driven end to end on Windows 10, with a
 fresh data folder and the machine left as found: the Settings switch ticked through UI Automation; the main window
 closed to the tray; Ctrl+Alt+L synthesized only while a Notepad holding a selected text is in front, which takes
 the copy path (Notepad's Edit control has no text pattern) and opens the popup with the same reading, field for
@@ -252,16 +273,25 @@ removal, a refusal without consent, and a change of terms.
 ## Screenshots and end-to-end runs (desktop)
 
 `LITMUS_DEMO=<scene>` with `LITMUS_SCREENSHOT=<file.png>` runs a scene and writes a PNG of the window, then
-closes. Scenes: `empty`, `check`, `short`, `long`, `explain`, `batch`, `history`, `settings`, `quick`, and the states
-`scoring` (photographed mid-reading), `error` (a file that does not read), `edit` (the editor over a reading) and
-`nomodel` (`LITMUS_MODEL` at an empty folder). The demo runs apart from the one-app lock and never saves the window's
+closes. Scenes: `empty`, `check`, `short`, `long`, `explain`, `batch`, `history`, `settings`, `quick`, `open`, and the
+states `scoring` (photographed mid-reading), `error` (a file that does not read), `edit` (the editor over a reading)
+and `nomodel` (`LITMUS_MODEL` at an empty folder). A scene runs in the app's logic, which also runs while the window
+is hidden in the tray. The demo runs apart from the one-app lock and never saves the window's
 place. `LITMUS_THEME=light|dark`, `LITMUS_DETAIL=simple|detailed|full`, `LITMUS_DEMO_ZOOM=1.5` (display scaling),
 `LITMUS_DEMO_SIZE=1280x820`, `LITMUS_DEMO_TEXT` (a text file the `check`, `explain` and `edit` scenes check in
-place of the sample),
+place of the sample; the `open` scene opens it as Open file does, any kind the app reads, and prints what it showed,
+how long it took, and its slowest frame meanwhile),
 `LITMUS_DEMO_FOLDER` (the batch scene's folder) and `LITMUS_DEMO_EXPORT` (where it writes the batch's CSV and JSON
-through the Export buttons' functions). `quick` turns quick check on for the run only (not saved), hides the window to
-the tray, reads a short sentence as if selected, and photographs the popup. In the browser, `#sample` checks the sample once the model loads and `#dark`
-or `#light` picks the theme.
+through the Export buttons' functions). `quick` turns quick check on for the run only (not saved, on a hotkey of its
+own, Ctrl+Alt+Shift+F10, so it never takes a running Litmus's), hides the window to the tray (`LITMUS_DEMO_WINDOW=shown`
+keeps it up), feeds in a capture as the hotkey would, and runs one script, `LITMUS_DEMO_QUICK` (`src/demo/quick.rs`):
+`reading` (the default: the popup draws its reading), `loading` (captured while the model reloads: the popup says it
+is loading, then shows the reading), `batch` (the reading shows while a batch of `LITMUS_DEMO_FOLDER` still runs),
+`replace` (a second capture replaces a long reading that shows its progress; the new reading shows at once, so the
+first was cancelled), `escape`, `expire` (after a two-second life), `full` (Open full reading shows it in the main
+window), and `tray` (the close button hides to the tray; Pause, Resume, Open). Scripts check the windows themselves
+on the screen (that a closed popup's window is gone), and every one ends through the tray's Quit. In the browser,
+`#sample` checks the sample once the model loads and `#dark` or `#light` picks the theme.
 
 ## Running a trained release
 

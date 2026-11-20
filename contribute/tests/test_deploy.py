@@ -3,11 +3,13 @@ settings, and a draft of the legal documents is refused unless a private trial s
 
 from __future__ import annotations
 
+import dataclasses
 import importlib
 import sys
 import pytest
 
 from pathlib import Path
+from litmus_contribute import legal
 
 from conftest import PRIVATE_PAGE, write_placeholder_site
 
@@ -30,14 +32,30 @@ def deploy_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, draft: s
 
 
 def test_web_app_defines(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    deploy_environment(tmp_path, monkeypatch, draft="allow")
+    deploy_environment(tmp_path, monkeypatch, draft=None)  # the documents as they stand are approved
     module = importlib.import_module("litmus_contribute.deploy_web")
     assert module.app.name == "litmus-contribute"
     assert module.MAX_CONTAINERS == 32
     assert module.Contribute is not None
 
 
+def draft_documents(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Have the deployment read the documents as a draft, whatever their status in the repository."""
+    def as_draft(directory: Path, private_page: str) -> legal.Legal:
+        return dataclasses.replace(read(directory, private_page), status="draft")
+
+    read = legal.load_legal
+    monkeypatch.setattr(legal, "load_legal", as_draft)
+
+
 def test_draft_documents_refuse_to_deploy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     deploy_environment(tmp_path, monkeypatch, draft=None)
+    draft_documents(monkeypatch)
     with pytest.raises(SystemExit, match="draft"):
         importlib.import_module("litmus_contribute.deploy_web")
+
+
+def test_a_private_trial_deploys_draft_documents(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    deploy_environment(tmp_path, monkeypatch, draft="allow")
+    draft_documents(monkeypatch)
+    assert importlib.import_module("litmus_contribute.deploy_web").app.name == "litmus-contribute"

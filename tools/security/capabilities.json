@@ -136,10 +136,10 @@
   "app/src/quick/windows.rs": {
    "component": "app",
    "capabilities": {
-    "clipboard": "quick check fallback when UI Automation offers no text: saves every clipboard format, simulates Copy, reads the text, and puts the saved contents back",
+    "clipboard": "quick check fallback when UI Automation offers no text: saves every clipboard format, simulates Copy, reads the text, and puts the saved contents back, marked to stay out of clipboard history",
     "registry": "the Explorer \"Check with Litmus\" entry, added and removed from Settings, under HKEY_CURRENT_USER\\Software\\Classes\\SystemFileAssociations only",
     "other_apps": "quick check: UI Automation's text pattern reads the selected text of the foreground app when the hotkey is pressed",
-    "input": "quick check: SendInput simulates Ctrl+C for the clipboard fallback, only while the window the hotkey was pressed over is still in front, and GetAsyncKeyState waits for the hotkey's keys to be released"
+    "input": "quick check: SendInput simulates Ctrl+C for the clipboard fallback, only while the window the hotkey was pressed over is still in front; GetAsyncKeyState waits for the hotkey's keys to be released, and, while the popup is up without the keyboard focus, reads whether Esc or a mouse button is down so that they still close it, never taking them from the app in front"
    }
   },
   "app/src/settings.rs": {
@@ -166,6 +166,13 @@
    "component": "app",
    "capabilities": {
     "process": "the contribute build's links in the served notice and consent label (the terms, the privacy notice, the private page), opened by the browser in a new tab; the private page and desktop builds do not compile this"
+   }
+  },
+  "app/tests/quick_scenes.rs": {
+   "component": "app",
+   "capabilities": {
+    "process": "a test that runs the built app in its scripted quick-check scenes (LITMUS_DEMO=quick) and waits for each to end",
+    "filesystem_write": "a test that writes two long text files and each scene's data folder under the system's temporary folder, and removes them"
    }
   },
   "app/tests/quick_windows.rs": {
@@ -464,6 +471,12 @@
     "filesystem_write": "writes the filled documents, site data, and the model file list in the checkout by replacing each file whole through a temporary file"
    }
   },
+  "release/litmus_release/film.py": {
+   "component": "release",
+   "capabilities": {
+    "filesystem_write": "copies the film's README preview from the work folder's media into the checkout's docs/images, from the film stage"
+   }
+  },
   "release/litmus_release/hub.py": {
    "component": "release",
    "capabilities": {
@@ -516,6 +529,12 @@
    }
   },
   "release/tests/test_documents.py": {
+   "component": "release",
+   "capabilities": {
+    "filesystem_write": "test fixtures in pytest's temporary folder"
+   }
+  },
+  "release/tests/test_film.py": {
    "component": "release",
    "capabilities": {
     "filesystem_write": "test fixtures in pytest's temporary folder"
@@ -588,7 +607,8 @@
   "student/src/litmus_student/data.py": {
    "component": "training",
    "capabilities": {
-    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+    "filesystem_write": "writes training or evaluation outputs to the folder named on its command line",
+    "process": "a pool of spawned worker processes of this same Python that read the corpus's parquet batches and tokenize them"
    }
   },
   "student/src/litmus_student/dense.py": {
@@ -601,6 +621,12 @@
    "component": "training",
    "capabilities": {
     "filesystem_write": "writes training or evaluation outputs to the folder named on its command line"
+   }
+  },
+  "student/src/litmus_student/export.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "writes the calibration texts' surprise values beside the release folder named on its command line, for study; never shipped"
    }
   },
   "student/src/litmus_student/poc.py": {
@@ -652,6 +678,18 @@
    "component": "training",
    "capabilities": {
     "filesystem_write": "test fixtures and outputs in pytest's temporary folder"
+   }
+  },
+  "student/tests/test_presentation.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "a four-text corpus and the token stores built from it, in pytest's temporary folder"
+   }
+  },
+  "student/tests/test_reading.py": {
+   "component": "training",
+   "capabilities": {
+    "filesystem_write": "a release's config.json written in pytest's temporary folder, to test which reading it names"
    }
   },
   "teacher/src/litmus_teacher/bank.py": {
@@ -970,8 +1008,8 @@
    "reason": "one Win32 call, AllowSetForegroundWindow, so the running app may take the focus when a second launch hands it a file"
   },
   "app/src/quick/windows.rs": {
-   "count": 26,
-   "reason": "the Win32 calls of quick check: COM and UI Automation, the clipboard, SendInput, the registry entry, all behind Settings"
+   "count": 28,
+   "reason": "the Win32 calls of quick check: COM and UI Automation, the clipboard, SendInput and the key state, the monitor's work area for the popup's place, the registry entry, all behind Settings; and a window lookup by title for the scripted demo"
   },
   "app/src/window_place.rs": {
    "count": 2,

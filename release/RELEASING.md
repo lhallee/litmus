@@ -129,8 +129,10 @@ matches no row or two, a float with no format, and an empty result are errors th
    https://github.com/lhallee/litmus.git <folder>`, then `--repository <folder>` on every later call), so the manifest
    names a commit anyone can check out. A work folder moves between checkouts that hold the same files.
 5. **Build.** `build-windows` on the Windows machine, `build-linux` on a Linux machine. The home page shows the ad's
-   film, which is not in the repository: copy the wide cut for the web and its poster (`litmus_wide_site.mp4`,
-   `litmus_wide_poster.png`, from `node render.mjs wide` in `demo/`) into `<work folder>/media` first. When the driver is started on
+   film, which is not in the repository: copy the wide cut for the web, its poster and its animated preview
+   (`litmus_wide_site.mp4`, `litmus_wide_poster.png`, `litmus_wide_preview.webp`, from `node render.mjs wide` in
+   `demo/`) into `<work folder>/media` first; the `film` stage, just before the builds, copies the preview into
+   `docs/images` for the README. When the driver is started on
    the wrong one, it stops with the exact steps: copy the work folder there (without `build/` and `publish/`; its
    receipts are what the stage checks), run `python release/cut.py run --work <copy> --only build-linux` from a checkout
    of the release commit, and bring the result back with `python release/cut.py adopt build-linux --work <work folder>

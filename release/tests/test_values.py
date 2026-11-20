@@ -22,6 +22,30 @@ def test_a_value_and_a_template_render_from_the_data(context) -> None:
     assert renderer.render("release.version", False) == "1.0.0"
 
 
+def test_the_counts_state_the_standings_from_the_results() -> None:
+    from litmus_release.values import comparison_counts
+    from tests.conftest import RESULTS
+    counts = comparison_counts(RESULTS)
+    assert counts == {"benchmarks": 1, "detectors": 1, "faster_than_litmus": 0, "fastest_other_tokens_per_second": 353.2,
+                      "more_accurate_unseen": 0, "unseen_benchmarks": 1, "speed_machine": "Xeon", "other_speed_machines": "Xeon",
+                      "speed_machines_differ": ""}
+    elsewhere = {**RESULTS, "costs": [{**RESULTS["costs"][0], "machine": "Arm Neoverse-V2 / Linux"}, *RESULTS["costs"][1:]]}
+    moved = comparison_counts(elsewhere)
+    assert (moved["speed_machine"], moved["other_speed_machines"], moved["speed_machines_differ"]) == ("Arm Neoverse-V2", "Xeon", "yes")
+    faster = {**RESULTS, "costs": [*RESULTS["costs"][:1], {**RESULTS["costs"][1], "tokens_per_second": 30000.0}],
+              "comparison": {**RESULTS["comparison"], "mean_pr_auc_unseen": [{"detector": "Litmus", "pr_auc": 0.6}, {"detector": "Other", "pr_auc": 0.7}]}}
+    assert comparison_counts(faster)["faster_than_litmus"] == 1 and comparison_counts(faster)["more_accurate_unseen"] == 1
+
+
+def test_the_length_table_is_a_document_when_the_results_stage_wrote_it(context) -> None:
+    assert "lengths" not in documents(context, context.repository / "release" / "targets.toml")
+    (context.work / "results").mkdir()
+    (context.work / "results" / "lengths.csv").write_text(
+        "benchmark,task,stratum,subset,detector,metric,value\npooled,ai_vs_human,length,401-1000,Litmus,pr_auc,0.9359\n", encoding="utf-8")
+    renderer = values(context)
+    assert renderer.render("lengths.rows[benchmark=pooled,subset=401-1000,detector=Litmus,metric=pr_auc].value as f2", False) == "0.94"
+
+
 def test_ternary_weights_count_every_matrix_and_the_projection(context) -> None:
     # docs/training/model.md: 1.79M for s192_l4, the embedding's projection included.
     assert documents(context, context.repository / "release" / "targets.toml")["model"]["ternary_weights"] == 4 * (4 * 192 * 192 + 2 * 192 * 768) + 128 * 192

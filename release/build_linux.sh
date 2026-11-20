@@ -5,7 +5,7 @@
 # The build is release/build_release.py --native-only run in the container: the fixed root, the pinned toolchain,
 # --locked, and the path-remapping flags the Windows programs are built with.
 #
-#   build_linux.sh <release folder> <output folder>
+#   build_linux.sh <release folder> <output folder> [release version]
 #
 # Writes litmus, litmus-app, manifest.json, and SHA256SUMS into <output folder>, which must be empty or absent, and
 # fails if either program needs a glibc symbol newer than 2.17. Needs Docker and network access to ghcr.io,
@@ -22,10 +22,12 @@ IMAGE="ghcr.io/pyo3/maturin:v1.16.0@sha256:50bf2ff99eeff7b09332bad9baf4a5e925e25
 RUST="1.100.0"
 GLIBC_FLOOR="2.17"
 
-if [ "$#" -ne 2 ]; then
-    echo "usage: $0 <release folder> <output folder>" >&2
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+    echo "usage: $0 <release folder> <output folder> [release version]" >&2
     exit 2
 fi
+# The release's version (MAJOR.MINOR.PATCH), which manifest.json states and release/cut.py checks; it enters no program.
+version="${3:-}"
 project=$(cd "$(dirname "$0")/.." && pwd)
 release=$(cd "$1" && pwd)
 mkdir -p "$2"
@@ -56,11 +58,12 @@ ${DOCKER:-docker} run --rm --name "litmus-linux-build-$$" \
     --env PROJECT="/repo$inner" \
     --env GLIBC_FLOOR="$GLIBC_FLOOR" \
     --env OWNER="$(id -u):$(id -g)" \
+    --env RELEASE_VERSION="$version" \
     --entrypoint /bin/bash \
     "$IMAGE" -euo pipefail -c '
         rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
         git config --global --add safe.directory "*"
-        python3.12 "$PROJECT/release/build_release.py" --native-only --release /release --out /out
+        python3.12 "$PROJECT/release/build_release.py" --native-only --release /release --out /out ${RELEASE_VERSION:+--release-version "$RELEASE_VERSION"}
         for program in /out/litmus /out/litmus-app; do
             newest=$(objdump -T "$program" | grep -o "GLIBC_[0-9.]*" | sed "s/GLIBC_//" | sort -uV | tail -n 1)
             if [ "$(printf "%s\n%s\n" "$newest" "$GLIBC_FLOOR" | sort -V | tail -n 1)" != "$GLIBC_FLOOR" ]; then

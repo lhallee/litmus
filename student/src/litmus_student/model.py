@@ -516,19 +516,84 @@ class StudentHead(nn.Module):
         return self.project(self.standardize(pooled.float()))  # (n, 2w)
 
 
+MASK_RATE = 0.15  # of a masked text's tokens
+MASK_SHARE, RANDOM_SHARE = 0.8, 0.1  # of the chosen positions; the rest stay as they are
+POSITIONS_AT_ONCE = 4096  # masked positions scored at once: (4096, V) logits
+
+
+def mask_stream(batch: PackedBatch, mask_id: int, vocab_size: int, text_share: float, generator: torch.Generator) -> tuple[PackedBatch, Tensor]:
+    """A share of the stream's texts with `MASK_RATE` of their tokens chosen, of which `MASK_SHARE` become `[MASK]`,
+    `RANDOM_SHARE` a random token and the rest stay (BERT's rule); returns the stream and the targets, the original
+    token at a chosen position and -100 elsewhere: (t,)."""
+    shape, device = batch.tokens.shape, batch.tokens.device
+    masked_text = torch.rand(batch.texts, generator=generator, device=device) < text_share  # (n,)
+    valid = batch.segment >= 0  # (t,)
+    draw = torch.rand(shape, generator=generator, device=device)  # (t,)
+    kind = torch.rand(shape, generator=generator, device=device)  # (t,)
+    other = torch.randint(0, vocab_size, shape, generator=generator, device=device)  # (t,)
+    chosen = valid & masked_text[batch.segment.clamp(min=0)] & (draw < MASK_RATE)  # (t,)
+    tokens = batch.tokens.clone()  # (t,)
+    tokens[chosen & (kind < MASK_SHARE)] = mask_id
+    swapped = chosen & (kind >= MASK_SHARE) & (kind < MASK_SHARE + RANDOM_SHARE)  # (t,)
+    tokens[swapped] = other[swapped]
+    targets = torch.where(chosen, batch.tokens, torch.full_like(batch.tokens, -100))  # (t,)
+
+    return PackedBatch(tokens, batch.segment, batch.position, batch.texts), targets
+
+
+class MaskedLanguageHead(nn.Module):
+    """Masked tokens from their states: a ternary projection to the embedding width, a norm, and the embedding's own
+    rows as the output (tied, int8 as a release stores them), with a learned scale and a bias per token. Trained beside
+    the pair loss, so one encoder is the detector, the surprise model and a base model; a release ships no part of it."""
+
+    def __init__(self, config: StudentConfig) -> None:
+        super().__init__()
+        self.config = config
+        self.project = BitLinear(config.width, config.embed_width, config)
+        self.norm = RMSNorm(config.embed_width, config.norm_eps)
+        self.token_bias = nn.Parameter(torch.zeros(config.vocab_size))  # (V,)
+        self.log_scale = nn.Parameter(torch.tensor(-0.5 * math.log(config.embed_width)))  # (); unit entries give dot products of variance e
+
+    def loss(self, H: Tensor, targets: Tensor, embed: QuantizedEmbedding) -> Tensor:
+        """The summed cross-entropy of the chosen positions: (t, d), (t,) with -100 where not chosen, to ()."""
+        chosen = targets >= 0  # (t,)
+        if not bool(chosen.any()):
+            return H.new_zeros((), dtype=torch.float32)
+
+        return -self.log_probabilities(H[chosen], targets[chosen], embed).sum()  # ()
+
+    def log_probabilities(self, H: Tensor, targets: Tensor, embed: QuantizedEmbedding) -> Tensor:
+        """Each position's log probability of its target token: (p, d) states and (p,) tokens to (p,) float32. In eval
+        mode this is the release's arithmetic (SPEC.md, Surprise): the int8 rows and integer products of a release."""
+        G = self.norm(self.project(H).float())  # (p, e)
+        with torch.autocast(H.device.type, enabled=False):
+            weight = embed.weight.float()  # (V, e)
+            integers, scale = QuantizedEmbedding.quantize(weight.detach())  # (V, e), (V, 1)
+            rows = straight_through(weight, integers * scale, self.training)  # (V, e)
+            out = []
+            for begin in range(0, len(targets), POSITIONS_AT_ONCE):
+                logits = self.log_scale.exp() * (G[begin : begin + POSITIONS_AT_ONCE] @ rows.T) + self.token_bias  # (q, V)
+                out.append(-F.cross_entropy(logits, targets[begin : begin + POSITIONS_AT_ONCE], reduction="none"))
+
+        return torch.cat(out) if out else G.new_zeros(0)  # (p,)
+
+
 class StudentModel(nn.Module):
     """The encoder and the head. `quantized` false is the full-precision twin (float weights and activations, the
     same architecture), a control for the proof of concept that no release is made from. `integer_attention` reads
     attention with `integer_block_attention`, the optional integer mode of SPEC.md (a format 2 release).
-    `int8_output` quantizes the head's query and key to int8 (`StudentHead`)."""
+    `int8_output` quantizes the head's query and key to int8 (`StudentHead`). `mlm` adds the masked language head
+    (`MaskedLanguageHead`), trained beside the pair loss and never released."""
 
-    def __init__(self, config: StudentConfig, quantized: bool = True, integer_attention: bool = False, int8_output: bool = False) -> None:
+    def __init__(self, config: StudentConfig, quantized: bool = True, integer_attention: bool = False, int8_output: bool = False,
+                 mlm: bool = False) -> None:
         super().__init__()
         self.config = config
         self.quantized = quantized
         self.integer_attention = integer_attention
         self.encoder = StudentEncoder(config, quantized, integer_attention)
         self.head = StudentHead(config, int8_output)
+        self.mlm = MaskedLanguageHead(config) if mlm else None
 
     def pooled(self, batch: PackedBatch) -> Tensor:
         """The texts' pooled statistics: (n, 2d)."""

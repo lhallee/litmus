@@ -140,12 +140,16 @@ then given to the four held-out sets (test, calibration, validation, bank) greed
 
 When no set can gain more, the rounds stop. Every cluster never picked and never moated is a **training cluster**.
 
-**The release build's split.** It set a lower cap per held-out cluster and origin (`--cap 100`, against 500 by
-default, in both the gain and the trim of step 4), kept every document in one cluster (`--keep-docs-together`), and
-gave the bank a target of zero, so only test, calibration, and validation took clusters. Only English and
-undetermined-language rows could enter a held-out set or the bank draw (`--held-out-languages en und`): a row of
-another language trains, unless its cluster is held out or moat or its document has a row in a held-out set or the
-bank draw, and then it is unused. Training's human and AI text was then cut, language by language, so that the larger
+**The release build's split.** From 1.1 there are **five sets**, disjoint by cluster: training, validation, test,
+calibration and the reference set (the bank), so the texts a reading compares against never trained and share no
+cluster with any other set (Logan, 2026-11-19: "Reference and calibration are exceedingly diverse. All 5 need to be
+disjoint"). It set a low cap per held-out cluster and origin (`--cap 50`, against 500 by default, in both the gain and
+the trim of step 4), so each held-out set draws from many clusters; let mixed text fill the held-out targets like the
+other origins (`--mixed-share 1.0`); kept every document in one cluster (`--keep-docs-together`); and gave the bank a
+target of 9,300 rows an origin, so that 8,192 of each exist once the export's filters run. Only English and
+undetermined-language rows could enter a held-out set or the bank (`--held-out-languages en und`): a row of
+another language trains, unless its cluster is held out or moat or its document has a row in a held-out set, and then
+it is unused. Training's human and AI text was then cut, language by language, so that the larger
 is at most 1.5 times the smaller (`--train-language-ratio 1.5`). Every argument is in [9. Reproduce it](reproduce.md#the-commands-in-order).
 
 <details>
@@ -158,11 +162,14 @@ The bank can be built three ways:
   documents no held-out set holds, so the bank covers every region of the corpus;
 - **(c) `mixed_out`**: the human and AI bank texts drawn uniformly from training rows when the release is exported,
   so the model has trained on them, and the mixed texts from a bank draw of mixed rows alone
-  (`--bank-draw-origins mixed`), which never train.
+  (`--bank-draw-origins mixed`), which never train. Litmus 1.0.0's bank.
+- **(d) `reference`**: all three origins from the held-out bank set (a), 8,192 texts an origin, the first in a seeded
+  order; Litmus 1.1's bank.
 
 Rows in the bank draw leave training with their whole documents. Validation chose (b) over (a) for the teacher's bank
-([experiment E9](experiments.md#e9-bank-held-out-clusters-or-a-draw-from-training-clusters)). The release's bank is
-drawn <!--litmus:record.model.bank_variant-->from training rows for human and AI text and from 4,096 reserved mixed rows that never trained, 2,048 an origin (the `mixed_out` recipe)<!--/litmus-->.
+([experiment E9](experiments.md#e9-bank-held-out-clusters-or-a-draw-from-training-clusters)); 1.1 takes (a), as the
+maintainer asked, so no reading compares a text with one the model trained on. The release's bank is
+drawn <!--litmus:record.model.bank_variant-->the withheld reference set, 8,192 texts an origin from clusters no other set holds and that never trained (the `reference` recipe), embedded again at every validation reading and by the export<!--/litmus-->.
 
 </details>
 
@@ -188,11 +195,11 @@ records, for a sample of each set, the median cosine of each row to its nearest 
 
 | Set | Target rows per origin (code default) | The release, rows built |
 | --- | --- | --- |
-| test | 20,000 | <!--litmus:record.split.built.test as int-->44,988<!--/litmus--> |
-| calibration | 30,000 | <!--litmus:record.split.built.calibration as int-->44,987<!--/litmus--> |
-| validation | 10,000 | <!--litmus:record.split.built.validation as int-->22,487<!--/litmus--> |
-| bank (held-out clusters; none in the release build) | 16,384 | <!--litmus:record.split.built.bank_heldout as int-->0<!--/litmus--> |
-| bank draw (from training clusters; mixed rows only in the release build) | 16,384 | <!--litmus:record.split.built.bank_draw as int-->4,096<!--/litmus--> |
+| test | 20,000 | <!--litmus:record.split.built.test as int-->57,991<!--/litmus--> |
+| calibration | 30,000 | <!--litmus:record.split.built.calibration as int-->58,012<!--/litmus--> |
+| validation | 10,000 | <!--litmus:record.split.built.validation as int-->28,990<!--/litmus--> |
+| bank (held-out clusters; none in the release build) | 16,384 | <!--litmus:record.split.built.bank_heldout as int-->26,892<!--/litmus--> |
+| bank draw (from training clusters; mixed rows only in the release build) | 16,384 | <!--litmus:record.split.built.bank_draw as int-->0<!--/litmus--> |
 
 ## A toy split, worked by hand
 
@@ -229,7 +236,7 @@ Three independent guards keep a copy of a held-out text out of training:
 
 The third guard is a geometric argument, not a proof: two texts that a reader would call near-copies but whose
 embeddings are far apart could still land in a training cluster and a test cluster. The distance report measures how
-close held-out rows sit to training: <!--litmus:record.split.distance_report-->the median cosine distance from a held-out row to its nearest training row is 0.792 for test, 0.806 for calibration and 0.801 for validation, against 0.763 from a training row to its nearest other training row (4,000 rows a set; tenth percentiles 0.650, 0.658, 0.672 and 0.627), so held-out rows sit further from training than training rows sit from each other<!--/litmus-->.
+close held-out rows sit to training: <!--litmus:record.split.distance_report-->the median cosine distance from a held-out row to its nearest training row is 0.769 for test, 0.767 for calibration, 0.773 for validation and 0.766 for the reference set, against 0.763 from a training row to its nearest other training row (4,000 rows a set; tenth percentiles 0.639, 0.632, 0.634, 0.630 and 0.628): with a cap of 50 rows a cluster the held-out sets draw from about twice as many clusters as 1.0.0's and sit about as far from training as training rows sit from each other<!--/litmus-->.
 
 **Benchmark test content** is kept out twice over: benchmark rows are never eligible for any set, and every training
 row that shares a document, a text, or an opening with a benchmark row was dropped before the split
@@ -239,16 +246,16 @@ row that shares a document, a text, or an opening with a benchmark row was dropp
 
 | Set | Clusters | Human | AI | Mixed | Rows |
 | --- | --- | --- | --- | --- | --- |
-| train | <!--litmus:record.splits.rows[set=train].clusters as int-->13,604<!--/litmus--> | <!--litmus:record.splits.rows[set=train].human as int-->6,657,360<!--/litmus--> | <!--litmus:record.splits.rows[set=train].ai as int-->6,355,055<!--/litmus--> | <!--litmus:record.splits.rows[set=train].mixed as int-->478,915<!--/litmus--> | <!--litmus:record.splits.rows[set=train].rows as int-->13,491,330<!--/litmus--> |
-| validation | <!--litmus:record.splits.rows[set=validation].clusters as int-->137<!--/litmus--> | <!--litmus:record.splits.rows[set=validation].human as int-->9,996<!--/litmus--> | <!--litmus:record.splits.rows[set=validation].ai as int-->9,996<!--/litmus--> | <!--litmus:record.splits.rows[set=validation].mixed as int-->2,495<!--/litmus--> | <!--litmus:record.splits.rows[set=validation].rows as int-->22,487<!--/litmus--> |
-| test | <!--litmus:record.splits.rows[set=test].clusters as int-->275<!--/litmus--> | <!--litmus:record.splits.rows[set=test].human as int-->19,996<!--/litmus--> | <!--litmus:record.splits.rows[set=test].ai as int-->19,996<!--/litmus--> | <!--litmus:record.splits.rows[set=test].mixed as int-->4,996<!--/litmus--> | <!--litmus:record.splits.rows[set=test].rows as int-->44,988<!--/litmus--> |
-| calibration | <!--litmus:record.splits.rows[set=calibration].clusters as int-->271<!--/litmus--> | <!--litmus:record.splits.rows[set=calibration].human as int-->19,996<!--/litmus--> | <!--litmus:record.splits.rows[set=calibration].ai as int-->19,996<!--/litmus--> | <!--litmus:record.splits.rows[set=calibration].mixed as int-->4,995<!--/litmus--> | <!--litmus:record.splits.rows[set=calibration].rows as int-->44,987<!--/litmus--> |
-| bank draw (mixed rows reserved for the bank) | <!--litmus:record.splits.rows[set=bank].clusters as int-->4,096<!--/litmus--> | <!--litmus:record.splits.rows[set=bank].human as int-->0<!--/litmus--> | <!--litmus:record.splits.rows[set=bank].ai as int-->0<!--/litmus--> | <!--litmus:record.splits.rows[set=bank].mixed as int-->4,096<!--/litmus--> | <!--litmus:record.splits.rows[set=bank].rows as int-->4,096<!--/litmus--> |
-| unused (moats and trims) | <!--litmus:record.splits.rows[set=unused].clusters as int-->5,245<!--/litmus--> | | | | <!--litmus:record.splits.rows[set=unused].rows as int-->1,220,489<!--/litmus--> |
+| train | <!--litmus:record.splits.rows[set=train].clusters as int-->11,337<!--/litmus--> | <!--litmus:record.splits.rows[set=train].human as int-->5,900,740<!--/litmus--> | <!--litmus:record.splits.rows[set=train].ai as int-->5,077,061<!--/litmus--> | <!--litmus:record.splits.rows[set=train].mixed as int-->153,889<!--/litmus--> | <!--litmus:record.splits.rows[set=train].rows as int-->11,131,690<!--/litmus--> |
+| validation | <!--litmus:record.splits.rows[set=validation].clusters as int-->344<!--/litmus--> | <!--litmus:record.splits.rows[set=validation].human as int-->9,995<!--/litmus--> | <!--litmus:record.splits.rows[set=validation].ai as int-->9,995<!--/litmus--> | <!--litmus:record.splits.rows[set=validation].mixed as int-->9,000<!--/litmus--> | <!--litmus:record.splits.rows[set=validation].rows as int-->28,990<!--/litmus--> |
+| test | <!--litmus:record.splits.rows[set=test].clusters as int-->676<!--/litmus--> | <!--litmus:record.splits.rows[set=test].human as int-->19,993<!--/litmus--> | <!--litmus:record.splits.rows[set=test].ai as int-->19,993<!--/litmus--> | <!--litmus:record.splits.rows[set=test].mixed as int-->18,005<!--/litmus--> | <!--litmus:record.splits.rows[set=test].rows as int-->57,991<!--/litmus--> |
+| calibration | <!--litmus:record.splits.rows[set=calibration].clusters as int-->669<!--/litmus--> | <!--litmus:record.splits.rows[set=calibration].human as int-->19,994<!--/litmus--> | <!--litmus:record.splits.rows[set=calibration].ai as int-->19,994<!--/litmus--> | <!--litmus:record.splits.rows[set=calibration].mixed as int-->18,024<!--/litmus--> | <!--litmus:record.splits.rows[set=calibration].rows as int-->58,012<!--/litmus--> |
+| reference set (the bank, held out) | <!--litmus:record.splits.rows[set=bank].clusters as int-->314<!--/litmus--> | <!--litmus:record.splits.rows[set=bank].human as int-->9,292<!--/litmus--> | <!--litmus:record.splits.rows[set=bank].ai as int-->9,292<!--/litmus--> | <!--litmus:record.splits.rows[set=bank].mixed as int-->8,308<!--/litmus--> | <!--litmus:record.splits.rows[set=bank].rows as int-->26,892<!--/litmus--> |
+| unused (moats and trims) | <!--litmus:record.splits.rows[set=unused].clusters as int-->3,677<!--/litmus--> | | | | <!--litmus:record.splits.rows[set=unused].rows as int-->3,524,802<!--/litmus--> |
 | benchmark (held apart) | | | | | <!--litmus:record.splits.rows[set=benchmark].rows as int-->2,578,146<!--/litmus--> |
 
 <!--litmus:record.split.strata_rows-->
-Every held-out set holds English and undetermined-language rows only (`--held-out-languages en und`), so a text of another language trains unless its cluster is held out or in a moat. The test set by format, human, AI and mixed: plain 6,426, 6,974, 1,979; code 6,548, 6,807, 1,979; markdown 5,380, 4,702, 786; math 962, 671, 171; list 420, 675, 32; table 249, 132, 49; chat 11, 35, 0. Long texts are thin in every held-out set: test holds 282 human and 282 AI rows of 2,048 to 4,095 tokens, 101 of 4,096 to 8,191 and 26 longer. The split cut the larger origin of each language in training to 1.5 times the smaller (`--train-language-ratio 1.5`), moving 10,734 rows of 70 languages to `unused`.
+Every held-out set holds English and undetermined-language rows only (`--held-out-languages en und`), so a text of another language trains unless its cluster is held out or in a moat. The test set by format, human, AI and mixed: plain 6,813, 7,519, 9,806; code 6,260, 6,210, 6,069; markdown 4,632, 4,398, 1,357; math 1,345, 806, 611; list 661, 901, 86; table 276, 139, 75; chat 6, 20, 1. Long texts are thin in every held-out set: test holds 361 human and 361 AI rows of 2,048 to 4,095 tokens, 114 of 4,096 to 8,191 and 21 longer. The split cut the larger origin of each language in training to 1.5 times the smaller (`--train-language-ratio 1.5`), moving 15,089 rows of 69 languages to `unused`.
 <!--/litmus-->
 
 ## Where in the code

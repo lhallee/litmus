@@ -191,7 +191,7 @@ and read at the same step counts.
 | | |
 | --- | --- |
 | **Result** | At step 999, `s384_l8` is 0.004 PR AUC and 0.046 MCC above `s192_l4`. At step 499, `s512_l12` is 0.008 PR AUC below `s384_l8` and 0.042 MCC above. While distilled, `s384_l8` at step 499 read about what `s192_l4` read at step 999 (PR AUC 0.8919 against 0.8972). On one core `s384_l8` reads about a fifth as many tokens a second as `s192_l4`, and `s512_l12` about half as many again |
-| **What it changed** | Sizes up to `s512_l12` stay candidates. The release size is <!--litmus:record.model.size_rule-->`s192_l4`, the smallest: in the release ablations `s256_l6` read 0.0059 PR AUC above it at equal steps, under the 0.01 a larger size must gain for 1.9 times the training time a step and about 2.7 times the arithmetic a token on one core<!--/litmus--> |
+| **What it changed** | Sizes up to `s512_l12` stay candidates. The release size is <!--litmus:record.model.size_rule-->`s512_l6`, chosen by the maintainer for 1.1 (Logan, 2026-11-19: "512 hidden size 6 layers, that should be a good size") in place of 1.0.0's `s192_l4`, so that one encoder also serves as the masked language model; no size search was run for this release<!--/litmus--> |
 | **Limits** | Very early in training (a few hundred to a thousand steps); one seed; equal steps are not equal compute; the larger arms shared the GPU; speeds are from random-weight releases (`s512_l12` measured once) |
 
 ---
@@ -273,7 +273,7 @@ gain held across three seeds.**
 | **Measured** | Validation PR AUC, ROC AUC, and MCC through each bank |
 | **Seeds** | One |
 | **Result** | Bank (b) at 1,024 texts per origin: 0.898, 0.913, and 0.720. Bank (a): 0.871, 0.893, and 0.711, at every size tried |
-| **What it changed** | Bank (b) was chosen for the teacher. The release's bank is drawn <!--litmus:record.model.bank_variant-->from training rows for human and AI text and from 4,096 reserved mixed rows that never trained, 2,048 an origin (the `mixed_out` recipe)<!--/litmus--> |
+| **What it changed** | Bank (b) was chosen for the teacher. The release's bank is drawn <!--litmus:record.model.bank_variant-->the withheld reference set, 8,192 texts an origin from clusters no other set holds and that never trained (the `reference` recipe), embedded again at every validation reading and by the export<!--/litmus--> |
 | **Limits** | The teacher's bank, not the student's; one split |
 
 ---

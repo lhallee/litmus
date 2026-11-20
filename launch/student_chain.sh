@@ -27,6 +27,19 @@ BANK_PER_ORIGIN="${BANK_PER_ORIGIN:-}"  # training's and export's defaults when 
 INTEGER_ATTENTION="${INTEGER_ATTENTION:-}"  # non-empty: train with integer attention (a format 2 release)
 INT8_OUTPUT="${INT8_OUTPUT:-}"  # non-empty: train with the head's int8 output (a format 3 release)
 SPLITS="${SPLITS:-validation test}"  # `validation` alone for a candidate checkpoint: the chain then stops before test and the benchmarks
+CUT_ENDS="${CUT_ENDS:-}"  # the chance a training text is cut mid-sentence near its end (data.Cutter); empty for none
+CUT_STARTS="${CUT_STARTS:-}"  # the same near its start
+TEXT_STORE="${TEXT_STORE:-}"  # the text store (data --texts): training texts presented anew at every draw; empty for none
+SYNONYMS="${SYNONYMS:-}"  # the presentation's synonym table; empty for no swaps
+PRESENT_WORKERS="${PRESENT_WORKERS:-16}"
+UNIFORM="${UNIFORM:-}"  # non-empty: training texts drawn uniformly over all of them, in epochs
+MLM_SHARE="${MLM_SHARE:-}"  # the share of texts masked for the masked language loss; empty for none
+MLM_WEIGHT="${MLM_WEIGHT:-}"
+EPOCHS="${EPOCHS:-}"  # the most epochs, in place of STEPS
+EVAL_EVERY_EPOCHS="${EVAL_EVERY_EPOCHS:-}"  # in place of EVAL_EVERY
+SELECT="${SELECT:-}"  # loss (default) or pr_auc: the validation reading best.pt is chosen on
+PATIENCE="${PATIENCE:-}"  # stop once this many evaluations in a row fail to improve it
+EVAL_PER_ORIGIN="${EVAL_PER_ORIGIN:-}"  # validation texts read per origin at each evaluation
 RUN="$ROOT/$SIZE${LABELS_ONLY:+_labels_only}"
 mkdir -p "$RUN"
 
@@ -40,7 +53,11 @@ if [[ ! -f "$RUN/train/done" ]]; then
         --out "$RUN/train" --steps "$STEPS" --minutes "$MINUTES" --texts-per-step "$TEXTS" --micro-tokens "$MICRO" \
         --eval-every "$EVAL_EVERY" --memory-fraction "$FRACTION" ${SETTINGS:+--settings "$SETTINGS"} ${LABELS_ONLY:+--labels-only} \
         ${BANK_RECIPE:+--bank-recipe "$BANK_RECIPE"} ${BANK_PER_ORIGIN:+--bank-per-origin "$BANK_PER_ORIGIN"} \
-        ${INTEGER_ATTENTION:+--integer-attention} ${INT8_OUTPUT:+--int8-output}
+        ${INTEGER_ATTENTION:+--integer-attention} ${INT8_OUTPUT:+--int8-output} ${CUT_ENDS:+--cut-ends "$CUT_ENDS"} \
+        ${CUT_STARTS:+--cut-starts "$CUT_STARTS"} ${TEXT_STORE:+--texts "$TEXT_STORE" --present-workers "$PRESENT_WORKERS"} \
+        ${SYNONYMS:+--synonyms "$SYNONYMS"} ${UNIFORM:+--uniform} ${MLM_SHARE:+--mlm-share "$MLM_SHARE"} ${MLM_WEIGHT:+--mlm-weight "$MLM_WEIGHT"} \
+        ${EPOCHS:+--epochs "$EPOCHS"} ${EVAL_EVERY_EPOCHS:+--eval-every-epochs "$EVAL_EVERY_EPOCHS"} ${SELECT:+--select "$SELECT"} \
+        ${PATIENCE:+--patience "$PATIENCE"} ${EVAL_PER_ORIGIN:+--eval-per-origin "$EVAL_PER_ORIGIN"}
     touch "$RUN/train/done"
 fi
 

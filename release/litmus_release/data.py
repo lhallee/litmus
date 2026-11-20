@@ -169,6 +169,10 @@ def documents(context: Context, targets_path: Path) -> Documents:
     links = repository / "site" / "assets" / "links.json"
     if links.is_file():
         loaders["links"] = lambda: json.loads(links.read_text(encoding="utf-8"))
+    lengths = work / "results" / "lengths.csv"
+    if lengths.is_file():
+        # Every detector's metrics by text length on the pooled public benchmarks (the results stage's table).
+        loaders["lengths"] = lambda: read_csv(lengths)
     markdown = work / "results" / "results.md"
     if markdown.is_file():
         loaders["results_md"] = lambda: split_results_markdown(markdown.read_text(encoding="utf-8"))

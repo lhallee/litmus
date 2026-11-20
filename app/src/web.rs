@@ -98,4 +98,13 @@ impl WorkerEngine {
             }))?;
         serde_json::to_string(&reading).map_err(|e| JsError::new(&e.to_string()))
     }
+
+    /// The surprise reading of a text as JSON (SPEC.md, Surprise), read only when the page asks for it.
+    pub fn surprise(&self, text: &str) -> Result<String, JsError> {
+        let reading = self.engine.surprise(text).map_err(|e| JsError::new(&match e {
+            litmus_engine::Error::Empty => crate::scoring::EMPTY.to_owned(),
+            other => other.to_string(),
+        }))?;
+        serde_json::to_string(&reading).map_err(|e| JsError::new(&e.to_string()))
+    }
 }

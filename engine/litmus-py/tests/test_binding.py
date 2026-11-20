@@ -47,6 +47,12 @@ def test_reading_matches_reference(engine: litmus_engine.Engine, fixtures: dict)
         text = record["text"]
         assert document["cells"][0]["start_char"] == 0 and document["cells"][-1]["end_char"] == len(text)
         assert document["label"] in {"human", "AI", "mixed", "uncertain", "unlike reference"}
+        # The surprise reading (SPEC.md, Surprise), within SPEC.md's tolerance scaled for a short text.
+        surprise, want_surprise = engine.surprise(text), record["surprise"]
+        scale = max(1.0, (512 / len(record["ids"])) ** 0.5)
+        assert surprise["n_tokens"] == len(record["ids"])
+        assert abs(surprise["mean_log_probability"] - want_surprise["mean_log_probability"]) <= 2e-3 * scale
+        assert all(abs(a - b) <= 1e-2 for a, b in zip(surprise["percentile"], want_surprise["percentile"], strict=True))
 
 
 def test_int8_output_release_reports_itself_and_matches_reference(fixtures_folder: Path, tokenizer_file: Path) -> None:

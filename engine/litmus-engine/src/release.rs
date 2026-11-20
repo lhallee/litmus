@@ -64,6 +64,10 @@ pub struct ReleaseConfig {
     pub reading: ReadingConfig,
     pub bank: BankConfig,
     pub calibration: Option<CalibrationTable>,
+    /// Where a text's surprise falls among each origin's calibration texts (SPEC.md, Surprise); absent in a release
+    /// without the masked language head.
+    #[serde(default)]
+    pub surprise: Option<crate::surprise::SurpriseTable>,
     #[serde(default)]
     pub provenance: serde_json::Value,
     #[serde(default)]
@@ -252,6 +256,9 @@ impl ReleaseConfig {
         check(!config.tokenizer.add_special_tokens, "the student reads ids without added special tokens")?;
         if let Some(table) = &config.calibration {
             table.validate()?;
+        }
+        if let Some(table) = &config.surprise {
+            table.check()?;
         }
         Ok(config)
     }

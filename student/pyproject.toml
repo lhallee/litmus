@@ -1,6 +1,6 @@
 [project]
 name = "litmus-student"
-version = "1.0.0"
+version = "1.1.0"
 description = "Litmus's student: a BitNet b1.58 encoder distilled from the teacher, its release format and NumPy reference"
 requires-python = ">=3.11"
 license = "PolyForm-Noncommercial-1.0.0"  # ../LICENSE; Required Notice: Copyright Logan Hallee (https://github.com/lhallee/litmus)

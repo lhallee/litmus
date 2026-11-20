@@ -171,6 +171,19 @@ impl Engine {
         Ok(value)
     }
 
+    /// A text's surprise reading (SPEC.md, Surprise) as a dict: `n_tokens`, `mean_log_probability`, `perplexity` and
+    /// `percentile` (human, AI, mixed). A pass of its own; raises `ValueError` for a release without the masked
+    /// language head or a text with no tokens, `KeyboardInterrupt` on Ctrl-C. Releases the GIL while it runs.
+    fn surprise<'py>(&self, py: Python<'py>, text: &str) -> PyResult<Bound<'py, PyAny>> {
+        let outcome = py.allow_threads(|| {
+            let reading = self.core.surprise_with(text, &mut |_| {
+                if Python::with_gil(|py| py.check_signals()).is_err() { Flow::Cancel } else { Flow::Continue }
+            })?;
+            Ok::<_, Error>(json_text(&reading))
+        });
+        from_json(py, outcome.map_err(error)??)
+    }
+
     /// The number of tokens `score` reads in a text.
     fn count_tokens(&self, py: Python<'_>, text: &str) -> usize {
         py.allow_threads(|| self.core.count_tokens(text))

@@ -6,8 +6,9 @@
 
 Training adjusts the latent weights of the encoder and the head so that two texts of the same origin get a high pair
 logit and two texts of different origins a low one. The model learns from the origins alone: one loss, over every
-pair of texts in a training step. It is trained from scratch, with quantization in the forward pass from the first
-step. The code is `student/src/litmus_student/train.py`.
+pair of texts in a training step, and beside it a masked language loss that teaches the same encoder to fill in
+hidden tokens (no part of which ships). It is trained from scratch, with quantization in the forward pass from the
+first step. The code is `student/src/litmus_student/train.py`.
 
 - [The loss](#the-loss)
 - [A 3 by 3 example](#a-3-by-3-example)
@@ -74,6 +75,29 @@ pair, in proportion to how wrong each is. One step with $`b = 1{,}024`$ texts tr
 | $`\lambda`$ | Loss weight | setting | scalar | <!--litmus:record.training.loss_weight-->7.47<!--/litmus--> |
 | $`a_s, b_s`$ | Pair logit scale and bias | fixed after training | scalars | |
 
+### The masked language loss
+
+From 1.1 the same encoder also learns masked language modeling, so one model is the detector, a surprise model and
+a base model for later work. In each step a share $`m`$ of the texts is chosen (at random, at every step, so a text
+drawn again is masked anew), and in each chosen text 15% of the tokens: 80% of those become `[MASK]`, 10% a random
+token and 10% stay (BERT's rule; `model.mask_stream`). The masked texts feed the pair loss as they are, so the pair
+loss also learns from texts with holes. A head reads each chosen position's final state $`h`$: a ternary projection
+to the embedding width $`e`$, a norm, and the token embedding's own rows $`E`$ as the output (tied, int8 as a
+release stores them), with a learned scale $`a_m`$ and a bias $`c`$ per token:
+
+```math
+\ell = a_m\, E\, \mathrm{norm}(W_m h) + c, \qquad
+\mathcal{L}_{\mathrm{mlm}} = \frac{1}{|M|} \sum_{p \in M} -\log \mathrm{softmax}(\ell_p)_{x_p}
+```
+
+over the step's chosen positions $`M`$ and their original tokens $`x_p`$. The loss the optimizer reduces is then
+$`\lambda\, \mathcal{L}_{\mathrm{pair}} + \mu\, \mathcal{L}_{\mathrm{mlm}}`$; for the release, the share and weight are
+<!--litmus:record.training.mlm-->half of each step's texts, chosen anew at every step, with 15% of their tokens chosen (80% `[MASK]`, 10% a random token, 10% kept), at weight 0.1 beside the pair loss's 7.47<!--/litmus-->. The head (`model.MaskedLanguageHead`) is saved in the
+checkpoint and exported with the release (`mlm.*`), whose verdicts never read it: it gives a text's **surprise**, its
+mean token log probability with nothing masked (the unmasked pseudo log likelihood), read in a pass of its own when a
+reading's details are opened, and placed among each origin's calibration texts by the table `export.py` fits on the
+`calibration` split (`../../student/SPEC.md`, Surprise).
+
 <details>
 <summary>More detail: the distillation terms, which the release does not use</summary>
 
@@ -127,8 +151,29 @@ step sees all nine kinds of pair (human-human, human-AI, ..., mixed-mixed). With
 option draws an origin's e-means clusters uniformly instead and one text within each; it is off, because each origin
 would then get its own mix of cells, which a model can read as the origin.)
 
-Eligible texts are training texts of at most 8,192 tokens, never a long document kept for evaluation. Texts are
-**never cropped**: a text is read whole, at its own length, from 8 to 8,192 tokens, as inference reads a chunk.
+Eligible texts are training texts of at most 8,192 tokens, never a long document kept for evaluation. By default
+texts are never cropped: a text is read whole, at its own length, from 8 to 8,192 tokens, as inference reads a chunk.
+
+**The 1.1 release draws differently** (`--uniform`, `--texts`, `--cut-ends`, `--cut-starts`): <!--litmus:record.training.sampling-->each epoch is a new random order of every eligible training text (11.12 million, so 10,863 steps an epoch), whatever its origin, so a step holds the corpus's own mix, about 53% human, 46% AI and 1.4% mixed text (Logan, 2026-11-19: "uniform over all texts"); every draw is presented anew and perhaps cut (below), with a chance of 0.5 near its end and 0.25 near its start, so a text seen again in a later epoch is seen differently.<!--/litmus-->
+
+Each draw of a training text is **presented anew** (`presentation.presented`, run in worker processes by
+`data.Presenter` from a store of the corpus's texts), so that no trace of how a text was displayed or collected tells
+its origin: Litmus 1.0.0 read Markdown, typography, spacing, line wrapping and how a text ends as evidence. Every
+choice is drawn from a fresh seed, never from the label or the content:
+
+- Markdown rendered as a reader copies it, or kept as written, at even odds; then, at any origin, a few phrases made
+  bold (0.15) and a short first line made a heading (0.1).
+- Prose paragraphs joined onto one line (0.75) or hard-wrapped at a width from 60 to 100 (0.25).
+- Every dash of a text in one style of eight (`—`, ` — `, `–`, ` – `, ` - `, `-`, `--`, ` -- `); quotes curly or
+  straight at even odds; ellipses `…` (0.3) or `...`; one space between sentences (0.85) or two.
+- In 5% of texts, each word of four letters or more that a WordNet table holds swapped with probability 0.1 for a
+  synonym of its commonest sense, its capital kept, never a function word or code.
+- Code and code spans as written.
+
+Then each text of 16 tokens or more is perhaps **cut mid-sentence** (`data.Cutter`): with one chance its tokens from a
+word start in its last quarter are dropped, with another its tokens before a word start in its first quarter, at the
+same rate for every origin. Validation, calibration, the reference set and test are never presented, swapped, cut or
+masked: they are read as stored.
 
 ## Packing texts into blocks
 
@@ -215,24 +260,25 @@ Every few hundred steps the run reads a fixed **validation** set the same way ea
 2. **Detection through the bank**: a bank and validation texts (3,000 per origin by default, spread evenly over
    clusters) are read in evaluation mode, every text chunked as inference reads it. By default the bank is 4,096 texts
    per origin of the bank split, spread evenly over clusters; with `--bank-recipe`, it is the bank the export draws by
-   that recipe for the same seed and size, which is how the release run read its own bank (`mixed_out`). From
+   that recipe for the same seed and size, which is how the release run read its own bank (the withheld reference
+   set, `reference`, embedded again with the current weights at every reading). From
    $`\mathrm{score} = 1 - r_{\mathrm{human}}`$: PR AUC, ROC AUC, and balanced MCC of AI or mixed text against human
    text, and the PR AUC of human against AI alone ([7. Evaluation](evaluation.md#the-metrics) defines each). When a
    run is given a teacher, the frozen teacher's numbers on the same texts and bank are logged beside them; the release
    run had no teacher.
 
 By default the run keeps the checkpoint with the **lowest validation loss** (`best.pt`) and the latest (`last.pt`).
-Test is never read during training. When a teacher is given, the code's rule for choosing among sizes is the smallest
-student within 0.01 PR AUC of the teacher on validation, human against AI. The release was not chosen by either
-default: a watcher outside `train.py` kept each reading's checkpoint and stopped the run by a patience rule on
-validation PR AUC, and the best reading after every origin's first full pass became the release's `best.pt`.
-How the release was chosen: <!--litmus:record.training.selection-->by a patience rule (Logan, 2026-11-18), not the lowest validation loss: after every origin had a full pass (step 19,466), every reading's checkpoint was kept, training stopped once ten readings in a row brought no new best validation PR AUC of AI or mixed against human (reading 65, step 32,499), and the release is the best reading in that region, reading 55 (step 27,499, PR AUC 0.9458), ahead of the lowest-loss candidate (reading 47) on every validation row but one MCC. Only `s192_l4` was trained, labels only, so the teacher-margin rule did not apply<!--/litmus-->.
+With `--select pr_auc` it keeps the reading of the **highest validation PR AUC** instead, and with `--patience n` it
+stops once $`n`$ readings in a row bring no better one; `--eval-every-epochs` sets the interval as a share of an
+epoch. Test is never read during training. When a teacher is given, the code's rule for choosing among sizes is the
+smallest student within 0.01 PR AUC of the teacher on validation, human against AI.
+How the release was chosen: <!--litmus:record.training.selection-->on validation PR AUC of AI or mixed against human, read every half epoch against the withheld reference set embedded again (Logan, 2026-11-19: "validation every 0.5 epoch, reembed reference set every 0.5 epoch for validation, done when patience of 3 is exceeded on validation PR AUC"): the readings were 0.9075, 0.9187, 0.9312, 0.9346, 0.9433, 0.9458, 0.9502 and 0.9506, each a new best, so patience was never exceeded, training ended at the four-epoch cap, and the release is the best reading, the last step (43,452)<!--/litmus-->.
 
 ## The release run
 
 | Setting | Code default | Release |
 | --- | --- | --- |
-| Configuration | | <!--litmus:model.config_name-->s192_l4<!--/litmus--> |
+| Configuration | | <!--litmus:model.config_name-->s512_l6<!--/litmus--> |
 | Teacher | a teacher export and the four distillation terms, unless `--labels-only` | <!--litmus:record.model.teacher-->None: this release is trained on the true labels alone; labels alone read level with or ahead of distillation at equal steps (E4), and the second build has no teacher export<!--/litmus--> |
 | Weights | ternary, absmean | <!--litmus:record.ablations.a1.outcome-->ternary, absmean (A1)<!--/litmus--> |
 | Precision schedule | quantized from step 0 | <!--litmus:record.ablations.a2.outcome-->quantized from step 0 (A2)<!--/litmus--> |
@@ -241,14 +287,16 @@ How the release was chosen: <!--litmus:record.training.selection-->by a patience
 | Attention | float | <!--litmus:model.attention-->integer<!--/litmus--> |
 | Query and key output | float | <!--litmus:model.output-->int8<!--/litmus--> |
 | Texts per step $`b`$ | 2,048 | <!--litmus:record.training.texts_per_step as int-->1,024<!--/litmus--> |
-| Micro-batch | 65,536 positions | <!--litmus:record.training.micro_batch-->262,144 positions<!--/litmus--> |
+| Masked language modeling | none | <!--litmus:record.training.mlm-->half of each step's texts, chosen anew at every step, with 15% of their tokens chosen (80% `[MASK]`, 10% a random token, 10% kept), at weight 0.1 beside the pair loss's 7.47<!--/litmus--> |
+| Drawing | a third of each origin, uniform within one | <!--litmus:record.training.draws-->uniform over every training text in epochs, whatever its origin (`--uniform`)<!--/litmus--> |
+| Micro-batch | 65,536 positions | <!--litmus:record.training.micro_batch-->65,536 positions<!--/litmus--> |
 | Peaks $`\eta_1`$, $`\eta_2`$; warmup | 1.5e-3, 1e-3; 100 steps | <!--litmus:record.training.peaks_warmup-->1.5e-3, 1e-3; 100 steps (the search's schedule settings were not taken)<!--/litmus--> |
-| Steps or time box | 2,000 steps | <!--litmus:record.training.steps_or_box-->a 240-minute box with a 60,000-step cap; stopped by patience at step 32,499 after 3 h 5 min<!--/litmus--> |
-| Evaluation interval | 250 steps | <!--litmus:record.training.eval_interval-->500 steps<!--/litmus--> |
+| Steps or time box | 2,000 steps | <!--litmus:record.training.steps_or_box-->four epochs, at most 43,452 steps, with patience 3 on validation PR AUC; ended at the cap after 19 h 30 min, still improving<!--/litmus--> |
+| Evaluation interval | 250 steps | <!--litmus:record.training.eval_interval-->half an epoch, 5,431 steps<!--/litmus--> |
 | Seed | 0 | <!--litmus:record.training.seed-->0<!--/litmus--> |
-| Steps run, texts and tokens seen | | <!--litmus:record.training.seen-->32,500 steps of 1,024 texts, 33.3 million draws: 1.67 passes over the human training rows, 1.75 over the AI and 23.2 over the mixed; about 6.3e9 tokens (568,700 a second for 3 h 5 min)<!--/litmus--> |
-| Chosen checkpoint (step) and its validation numbers | | <!--litmus:record.training.chosen-->Reading 55, step 27,499: training's validation PR AUC 0.9458; its release on validation reads PR AUC 0.9491, ROC AUC 0.9128 and balanced MCC 0.6503 (6,000 passages, AI or mixed against human)<!--/litmus--> |
-| GPU and wall time | | <!--litmus:record.training.compute-->One NVIDIA GH200: 3 h 5 min of training at 568,700 training tokens a second<!--/litmus--> |
+| Steps run, texts and tokens seen | | <!--litmus:record.training.seen-->43,452 steps of 1,024 texts, 44.5 million draws: four passes over every training text, each pass in a new order and every draw presented anew; about 1.1e10 tokens (about 156,000 a second for 19 h 30 min)<!--/litmus--> |
+| Chosen checkpoint (step) and its validation numbers | | <!--litmus:record.training.chosen-->The last step, 43,452, the end of the fourth epoch: training's validation PR AUC 0.9506 (ROC AUC 0.9147, balanced MCC 0.6545); its release on validation reads PR AUC 0.9518, ROC AUC 0.9113 and balanced MCC 0.6175 (6,000 passages, AI or mixed against human)<!--/litmus--> |
+| GPU and wall time | | <!--litmus:record.training.compute-->One NVIDIA GH200: 19 h 30 min of training at about 156,000 training tokens a second<!--/litmus--> |
 
 ## Where in the code
 
@@ -258,7 +306,9 @@ How the release was chosen: <!--litmus:record.training.selection-->by a patience
 | Targets $`Y`$ | `distill.same_origin` |
 | The loss, and the distillation terms | `distill.distillation_losses`; the release's weights: `train.labels_only` |
 | Binary cross-entropy from logits | `foundry.layers.cross_entropy.binary_cross_entropy_with_logits` |
-| Drawing a step's texts | `data.ClusterSampler.draw` |
+| Drawing a step's texts | `data.ClusterSampler.draw`; the release's epochs: `data.EpochSampler` |
+| Presenting each draw anew; synonyms; cuts | `data.Presenter`, `presentation.presented`, `presentation.swapped`; `data.Cutter` |
+| Masked language modeling | `model.mask_stream`, `model.MaskedLanguageHead`, `train.Masking` |
 | Packing into block-aligned streams | `data.pack`, `data.packed_batch`; the mask `model.block_mask` |
 | The gradient-cached step | `train.train_step` |
 | Learning rate, weight decay, time box | `train.learning_rate`, `train.weight_decay`, `train.scheduled_step` |
