@@ -92,5 +92,16 @@ self.onmessage = async ({ data }) => {
     } catch (error) {
       self.postMessage({ type: "error", job, message: words(error) });
     }
+  } else if (data.type === "surprise") {
+    // The surprise reading, only when the page shows a reading's details; the text stays in this worker.
+    const job = data.job;
+    try {
+      if (!engine) {
+        throw new Error("The model is not loaded.");
+      }
+      self.postMessage({ type: "surprise", job, json: engine.surprise(data.text) });
+    } catch (error) {
+      self.postMessage({ type: "error", job, message: words(error) });
+    }
   }
 };

@@ -110,6 +110,10 @@
         <h2 id="speed">Accuracy against speed</h2>
         <p>A detector you cannot afford to run does not help. Speed here is tokens a second on one processor core, measured where we could run the detector that way and estimated otherwise.</p>
       </div>
+      <div class="figure figure-slot needs-js" data-figure="speed" data-alt="Three panels. A: tokens read a second on one processor core, one bar per detector. B: mean PR AUC on the public benchmarks no detector trained on, the same rows. C: PR AUC by the number of words in the text, one line per detector, with Litmus's own test split dashed.">
+        <div class="pending-box">The speed figure is being finalized.</div>
+      </div>
+      <p class="small soft figure-caption" hidden>Speed on one processor core (A), accuracy on the public benchmarks that no detector trained on (B), and accuracy by text length (C), every detector run on the same texts and timed on one processor core, which the table below names. In C the solid lines are the public benchmarks, and the dashed line is Litmus on its own held-out test split, whose token counts are converted to words. PR AUC is 1.0 for a perfect detector, and the intervals are 95%.</p>
       <div class="figure figure-slot needs-js" data-figure="pareto" data-alt="Each detector's accuracy against its speed on one processor core, with the frontier of detectors that no other beats on both.">
         <div class="pending-box">The accuracy against speed figure is being finalized.</div>
       </div>
@@ -159,7 +163,7 @@
         <li><strong>They are mainly about English.</strong> This release is an English detector: almost all of the text it learned from was English, and other languages are not supported yet. The sets here in other languages, such as RAID extra's Czech and German, show how it reads text it does not support.</li>
         <li><strong>Different protocols are not one ranking.</strong> Numbers published elsewhere use other samples, thresholds, and metrics, so they are not comparable with these unless the benchmark, subset, and metric all match.</li>
         <li><strong>Training on a benchmark's family helps on its test split.</strong> Litmus and several open detectors learned from some benchmarks, from their official training splits and, for some open detectors, from the test texts themselves, and those results are marked <span class="seen" aria-hidden="true">T</span>. Results on unmarked benchmarks say more about text a detector has never seen.</li>
-        <li><strong>A sample supports its intervals and no more.</strong> A difference inside overlapping intervals is not a difference we can claim, and measured speeds come from one machine.</li>
+        <li><strong>A sample supports its intervals and no more.</strong> A difference inside overlapping intervals is not a difference we can claim, and a measured speed holds for the processor it was measured on, which the speed table names.</li>
         <li><strong>A high score is not proof about a person.</strong> Even at a 1% false positive rate, one human text in a hundred is flagged. We recommend not using a reading alone to accuse anyone.</li>
       </ul>
     </div>

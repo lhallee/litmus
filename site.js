@@ -377,7 +377,11 @@
         cost.replaceChildren(...costs.map((c) => {
           const tr = document.createElement("tr");
           if (c.detector === ours) tr.className = "ours";
-          tr.append(textCell(c.detector), textCell(format(c.tokens_per_second, "int"), "n"), textCell(c.measured ? "Measured" : "Estimated", "soft"));
+          // A measured speed names its processor (the machine without its operating system): the baselines were timed
+          // once, on the machine of their time, and a release's own speed may come from another.
+          const processor = has(c.machine) ? String(c.machine).split(" / ")[0] : "";
+          const how = c.measured ? (processor ? `Measured on ${processor}` : "Measured") : "Estimated";
+          tr.append(textCell(c.detector), textCell(format(c.tokens_per_second, "int"), "n"), textCell(how, "soft"));
           return tr;
         }));
       }
