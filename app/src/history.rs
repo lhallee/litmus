@@ -27,12 +27,15 @@ pub struct Entry {
     /// SHA-256 of the text's bytes (or the file's).
     pub hash: String,
     pub headline: String,
+    /// The verdict's probability of not human and its interval, as the release's table gives them.
     pub probability: f64,
     pub interval: [f64; 2],
-    pub position: f64,
-    /// The strip's band, for the list's small strip (entries saved before it was kept have none).
+    /// The verdict's chance of AI, what the list shows and its small strip draws (entries saved before it was kept
+    /// have none, and the list restates their probability by the loaded release's table).
     #[serde(default)]
-    pub band: Option<[f64; 2]>,
+    pub chance: Option<litmus_engine::Chance>,
+    /// The verdict's place between human, mixed and AI (`P_ai + P_mixed / 2`), which colors the verdict's marker.
+    pub position: f64,
     #[serde(default)]
     pub unlike_reference: bool,
     pub tokens: usize,
@@ -70,14 +73,6 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let partial = path.with_extension("json.partial");
     std::fs::write(&partial, bytes).map_err(|e| format!("{}: {e}", partial.display()))?;
     std::fs::rename(&partial, path).map_err(|e| format!("{}: {e}", path.display()))
-}
-
-impl Entry {
-    /// The entry's strip for the list: its band when it was kept, else a sliver at its mark.
-    pub fn strip(&self) -> litmus_engine::Strip {
-        let [band_lo, band_hi] = self.band.unwrap_or([self.position, self.position]);
-        litmus_engine::Strip { position: self.position, band_lo, band_hi, level: litmus_engine::STRIP_LEVEL, unlike_reference: self.unlike_reference }
-    }
 }
 
 impl History {
@@ -227,8 +222,8 @@ mod tests {
             headline: "Human".into(),
             probability: 0.2,
             interval: [0.1, 0.3],
+            chance: Some(litmus_engine::Chance::at_even_odds(0.2, [0.1, 0.3], 2.0 / 3.0)),
             position: 0.1,
-            band: Some([0.0, 0.1]),
             unlike_reference: false,
             tokens: 5,
             seconds: Some(0.01),
@@ -287,16 +282,20 @@ mod tests {
     }
 
     #[test]
-    fn entries_saved_before_bands_still_read() {
+    fn entries_of_earlier_versions_still_read() {
         let mut value = serde_json::to_value(entry("a", "pasted")).unwrap();
         let object = value.as_object_mut().unwrap();
-        object.remove("band");
+        // The first entries kept neither field, and an entry of 1.1.0 kept its probability alone, which the list
+        // restates by the loaded release's table.
         object.remove("unlike_reference");
+        object.remove("chance");
+        // 1.1.0 also kept the band of the strip it drew, over the origins not ruled out. The strip now bands the
+        // chance's range, so that field is read past.
+        object.insert("band".into(), serde_json::json!([0.0, 0.5]));
         let old: Entry = serde_json::from_value(value).unwrap();
-        assert_eq!(old.band, None);
-        let strip = old.strip();
-        assert_eq!((strip.band_lo, strip.band_hi, strip.position), (0.1, 0.1, 0.1), "a sliver at the mark");
-        assert_eq!(entry("a", "pasted").strip().band_lo, 0.0);
+        assert_eq!((old.chance, old.unlike_reference), (None, false));
+        assert_eq!((old.probability, old.interval, old.position), (0.2, [0.1, 0.3], 0.1));
+        assert!(serde_json::to_value(&old).unwrap().get("band").is_none(), "and is not written again");
     }
 
     #[test]

@@ -1,22 +1,25 @@
 //! Readings as CSV rows and JSON objects, one per file or text, in the same columns for the command line and the app.
 
-use litmus_engine::{DocumentReading, Origin};
+use litmus_engine::{Chance, DocumentReading, Origin};
 
 use crate::counts::TextCounts;
 
 /// One scored input: its name (a file path or the app's title for a pasted text), the SHA-256 of its bytes, whether
-/// the reading came from the cache, the reading or the error, and the counts of the text that was read (JSON only;
-/// the CSV columns are unchanged).
+/// the reading came from the cache, the reading or the error, the counts of the text that was read (JSON only), and
+/// the verdict's chance of AI (`DocumentReading::chance`; the last three CSV columns, empty without it).
 pub struct Row<'a> {
     pub name: &'a str,
     pub hash: &'a str,
     pub cached: bool,
     pub outcome: Result<&'a DocumentReading, &'a str>,
     pub counts: Option<&'a TextCounts>,
+    pub chance: Option<Chance>,
 }
 
-/// The CSV header; `csv_line` writes the matching rows.
-pub const CSV_HEADER: &str = "file,sha256,verdict,p_not_human,interval_lo,interval_hi,set_0.05,set_0.1,p_human,p_ai,p_mixed,three_way_human,three_way_ai,three_way_mixed,closeness_p,out_of_reference,strip_position,band_lo,band_hi,tokens,chunks,disagreement,mixed_document,map_lowest,map_highest,error";
+/// The CSV header; `csv_line` writes the matching rows. `p_not_human` and its interval are calibrated on the
+/// reference texts as they are mixed; `chance_of_ai` and its interval restate them at even odds, the number the app
+/// and the command line show. Columns are added at the end, so a reader by position keeps its columns.
+pub const CSV_HEADER: &str = "file,sha256,verdict,p_not_human,interval_lo,interval_hi,set_0.05,set_0.1,p_human,p_ai,p_mixed,three_way_human,three_way_ai,three_way_mixed,closeness_p,out_of_reference,strip_position,band_lo,band_hi,tokens,chunks,disagreement,mixed_document,map_lowest,map_highest,error,chance_of_ai,chance_lo,chance_hi";
 
 /// A conformal set in words, as `{human, AI}`.
 pub fn set_words(set: Option<&Vec<Origin>>) -> String {
@@ -50,13 +53,14 @@ pub fn map_range(document: &DocumentReading) -> (f64, f64) {
 /// One CSV row (no line break) in the columns of `CSV_HEADER`.
 pub fn csv_line(row: &Row) -> String {
     match row.outcome {
-        Err(error) => format!("{},{},,,,,,,,,,,,,,,,,,,,,,,,{}", csv_field(row.name), row.hash, csv_field(error)),
+        Err(error) => format!("{},{},,,,,,,,,,,,,,,,,,,,,,,,{},,,", csv_field(row.name), row.hash, csv_field(error)),
         Ok(document) => {
             let v = &document.verdict;
             let set = |level: f64| set_words(v.set(level)).trim_matches(['{', '}']).replace(", ", " ");
             let (low, high) = map_range(document);
+            let chance = row.chance.map_or_else(|| ",,".to_owned(), |c| format!("{},{},{}", c.value, c.interval[0], c.interval[1]));
             format!(
-                "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},",
+                "{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},,{chance}",
                 csv_field(row.name),
                 row.hash,
                 document.label().word(),
@@ -100,8 +104,8 @@ pub fn csv(rows: &[Row]) -> String {
 }
 
 /// One JSON object: the file, its hash, whether it was cached, the verdict in one word, every field of the reading
-/// and, when the row has them, the text's `counts` (words, characters, characters without spaces, tokens), or the
-/// error.
+/// and, when the row has them, the text's `counts` (words, characters, characters without spaces, tokens) and the
+/// verdict's `chance` of AI (`value`, `interval`, `reference_share`), or the error.
 pub fn json_value(row: &Row) -> serde_json::Value {
     match row.outcome {
         Ok(document) => {
@@ -109,6 +113,9 @@ pub fn json_value(row: &Row) -> serde_json::Value {
                 "label": document.label().word(), "reading": document});
             if let Some(counts) = row.counts {
                 value["counts"] = counts.json();
+            }
+            if let Some(chance) = row.chance {
+                value["chance"] = serde_json::json!(chance);
             }
             value
         }
@@ -137,7 +144,7 @@ mod tests {
 
     #[test]
     fn error_rows_keep_every_column() {
-        let row = Row { name: "x.txt", hash: "ab", cached: false, outcome: Err("broken, badly"), counts: None };
+        let row = Row { name: "x.txt", hash: "ab", cached: false, outcome: Err("broken, badly"), counts: None, chance: None };
         assert_eq!(csv_line(&row).split(',').count(), CSV_HEADER.split(',').count() + 1); // the quoted comma
         assert_eq!(json_value(&row)["error"], "broken, badly");
         assert!(csv(&[row]).starts_with(CSV_HEADER));

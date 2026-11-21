@@ -60,9 +60,10 @@ pub fn level_key(level: f64) -> String {
     format!("{level}")
 }
 
-/// One drawing for the app, the command line and the figures: a strip from 0 (human, blue) through 0.5 (mixed,
-/// purple) to 1 (AI, red), a mark at `position`, and a pale band `[band_lo, band_hi]` over what the conformal set at
-/// `level` (0.10) cannot rule out.
+/// A reading's place between the three origins (SPEC.md, The reading's place): `position` from 0 (human, blue)
+/// through 0.5 (mixed, purple) to 1 (AI, red), and the span `[band_lo, band_hi]` from it to the anchors of the
+/// origins the conformal set at `level` (0.10) cannot rule out. The heat map's cells are colored by `position`. The
+/// strip itself is drawn from the chance of AI (`Drawn`); releases through 1.1.0 drew this span as its band.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Strip {
     /// `P_ai + P_mixed / 2` of the three-way probabilities.
@@ -80,14 +81,175 @@ impl Strip {
     }
 }
 
-/// A one-word summary of a conformal set.
+/// The chance of AI (SPEC.md, Chance of AI): the probability of not human restated at even odds. The table's
+/// probability is right for texts mixed as the calibration texts of the span's length are (two thirds of the short
+/// ones are not human), so a reading that says nothing lands on that share, not on one half. Dividing its odds by the
+/// calibration texts' odds gives what the same evidence says of a text as likely human as not beforehand: a reading
+/// that says nothing lands on one half, where the strip's mark sits.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Chance {
+    pub value: f64,
+    /// The chance's range: the probability's interval restated the same way, then widened on each side by
+    /// `between_sources` in log odds.
+    pub interval: [f64; 2],
+    /// The share of not-human texts among the calibration texts behind the probability.
+    pub reference_share: f64,
+    /// How far the range was widened on each side, in log odds: the half width that holds the table's level of the
+    /// pairings of one human source with one not-human source (SPEC.md, Chance of AI). Zero for a table without the
+    /// fit, and for a chance kept by Litmus 1.1.0 and earlier.
+    #[serde(default)]
+    pub between_sources: f64,
+}
+
+/// What the chance of AI reads from a release's calibration table (`CalibrationTable::chance_rule`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct ChanceRule {
+    /// Per length bin, the share of not-human texts among the calibration texts behind the probability.
+    pub not_human_shares: Vec<f64>,
+    /// The half width, in log odds, by which the chance's range is widened on each side for the shift between
+    /// sources of text; zero for a table without the fit (Litmus 1.1.0 and earlier).
+    pub between_sources: f64,
+    /// The share of source pairings the half width holds (0.9), when the table has the fit.
+    pub level: Option<f64>,
+}
+
+impl ChanceRule {
+    /// The chance of a probability and its interval read in length bin `bin`.
+    pub fn chance(&self, probability: f64, interval: [f64; 2], bin: usize) -> Chance {
+        Chance::at_even_odds(probability, interval, self.not_human_shares[bin]).widened(self.between_sources)
+    }
+}
+
+impl Chance {
+    /// A probability and its interval, calibrated where a share `reference_share` of the texts is not human, at
+    /// even odds.
+    pub fn at_even_odds(probability: f64, interval: [f64; 2], reference_share: f64) -> Self {
+        let restate = |p: f64| {
+            let not_human = p * (1.0 - reference_share);
+            not_human / (not_human + (1.0 - p) * reference_share)
+        };
+        Self { value: restate(probability), interval: interval.map(restate), reference_share, between_sources: 0.0 }
+    }
+
+    /// The same chance with its range widened by `log_odds` on each side: the low end's odds divided by
+    /// `exp(log_odds)` and the high end's multiplied by it, so ends of 0 and 1 stay where they are and the value
+    /// stays inside.
+    pub fn widened(self, log_odds: f64) -> Self {
+        if log_odds == 0.0 {
+            return self; // a table without the fit: the range to the bit as the calibration gave it
+        }
+        let moved = |p: f64, by: f64| {
+            let odds = p * by.exp();
+            odds / (odds + 1.0 - p)
+        };
+        let (low, high) = (self.interval[0].min(self.interval[1]), self.interval[0].max(self.interval[1]));
+        Self { interval: [moved(low, -log_odds), moved(high, log_odds)], between_sources: self.between_sources + log_odds, ..self }
+    }
+
+    /// The ends of the range as whole percentages, in order, or `None` when the range is narrower than a point or its
+    /// ends round to one number: "69% (69-69%)" would say nothing, nor "56% (56-57%)" of a range from 56.4% to
+    /// 56.6%. An end is never written under 1% or over 99%, as the value never claims certainty, so a range inside
+    /// the last point of either end is left out (">99%", not ">99% (99-100%)").
+    fn range(&self) -> Option<(f64, f64)> {
+        whole_range(self.interval[0], self.interval[1])
+    }
+
+    /// The chance with its range, as the app's tables and the command line show it: "69% (62-75%)", or "69%" when the
+    /// range rounds away.
+    pub fn words(&self) -> String {
+        match self.range() {
+            Some((lo, hi)) => format!("{} ({lo:.0}-{hi:.0}%)", percent(self.value)),
+            None => percent(self.value),
+        }
+    }
+
+    /// The chance with its range inside a sentence: "69%, likely between 62% and 75%", or "69%".
+    pub fn sentence(&self) -> String {
+        match self.range() {
+            Some((lo, hi)) => format!("{}, likely between {lo:.0}% and {hi:.0}%", percent(self.value)),
+            None => percent(self.value),
+        }
+    }
+}
+
+/// The litmus strip as the app, the command line and the figures draw it (SPEC.md, The litmus strip): a scale from
+/// 0 (human, blue) through purple to 1 (AI, red), a mark at the chance of AI, and a pale band over the chance's
+/// range, which is the interval the chance is given with. The band is that interval and nothing wider: with a table
+/// that carries the shift between sources it is short near either end and wide in the middle, and without one a
+/// reading of one chunk has a range a fraction of a point wide, and its band hugs the mark.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Drawn {
+    /// The chance of AI, where the mark sits; none where no calibration table is at hand, and the scale is then bare.
+    pub mark: Option<f64>,
+    /// The chance's range, its ends in order and holding the mark; none for a text unlike the reference, whose range
+    /// says nothing.
+    pub band: Option<[f64; 2]>,
+    /// The text is unlike the reference: the strip is washed out and its mark a question mark.
+    pub unlike_reference: bool,
+}
+
+impl Drawn {
+    /// The drawing of a chance; `unlike_reference` is the reading's `strip.unlike_reference`.
+    pub fn of(chance: Option<&Chance>, unlike_reference: bool) -> Self {
+        let mark = chance.map(|chance| chance.value).filter(|value| value.is_finite());
+        let band = match (chance, mark) {
+            (Some(chance), Some(mark)) if !unlike_reference && chance.interval.iter().all(|end| end.is_finite()) => {
+                let [a, b] = chance.interval;
+                Some([a.min(b).min(mark).clamp(0.0, 1.0), a.max(b).max(mark).clamp(0.0, 1.0)])
+            }
+            _ => None,
+        };
+        Self { mark, band, unlike_reference }
+    }
+
+    /// The band's width in points of chance, 0 without a band.
+    pub fn range_points(&self) -> f64 {
+        self.band.map_or(0.0, |[lo, hi]| 100.0 * (hi - lo))
+    }
+
+    /// The band's ends as the whole percentages a chance's range is written with, or `None` without a band or for
+    /// one too narrow to write (`whole_range`).
+    pub fn range(&self) -> Option<(f64, f64)> {
+        self.band.and_then(|[lo, hi]| whole_range(lo, hi))
+    }
+}
+
+/// The ends of a range as whole percentages, in order, or `None` when the range is narrower than a point or its ends
+/// round to one number. An end is never written under 1% or over 99%, as a chance never claims certainty.
+pub fn whole_range(a: f64, b: f64) -> Option<(f64, f64)> {
+    let (low, high) = (a.min(b), a.max(b));
+    let end = |v: f64| (100.0 * v).round().clamp(1.0, 99.0);
+    (low.is_finite() && high.is_finite() && high - low >= 0.01 - 1e-9 && end(high) > end(low)).then(|| (end(low), end(high)))
+}
+
+/// A probability as a whole percentage that never claims certainty: "<1%", "69%", ">99%".
+pub fn percent(value: f64) -> String {
+    if !value.is_finite() {
+        return "unknown".to_owned();
+    }
+    let rounded = (100.0 * value).round();
+    if rounded < 1.0 {
+        "<1%".to_owned()
+    } else if rounded > 99.0 {
+        ">99%".to_owned()
+    } else {
+        format!("{rounded:.0}%")
+    }
+}
+
+/// The verdict of a conformal set, in a word or two. Every program that names a verdict takes it from here, so the
+/// app, the command line, the MCP tools, the exports and the Python module call the same set the same thing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Label {
     Human,
     Ai,
     Mixed,
-    /// More than one origin is not ruled out.
+    /// Human is ruled out and neither AI nor mixed is: the reading says a model wrote or edited the text and cannot
+    /// say which. Litmus 1.1.0 and earlier called this set uncertain; it is the verdict most model-written text gets
+    /// (78% of the AI test passages of 1.1.0, none of which read AI alone), so it has a name of its own.
+    AiOrMixed,
+    /// Human and at least one other origin are not ruled out.
     Uncertain,
     /// No origin is likely: the text is unlike the reference.
     UnlikeReference,
@@ -99,18 +261,22 @@ impl Label {
             Label::Human => "human",
             Label::Ai => "AI",
             Label::Mixed => "mixed",
+            Label::AiOrMixed => "AI or mixed",
             Label::Uncertain => "uncertain",
             Label::UnlikeReference => "unlike reference",
         }
     }
 
-    fn of(set: Option<&Vec<Origin>>) -> Label {
-        match set.map(Vec::as_slice) {
-            Some([]) | None => Label::UnlikeReference,
-            Some([Origin::Human]) => Label::Human,
-            Some([Origin::Ai]) => Label::Ai,
-            Some([Origin::Mixed]) => Label::Mixed,
-            Some(_) => Label::Uncertain,
+    /// The verdict of a set of origins not ruled out, in any order (`None` when the release has no set at the level).
+    pub fn of(set: Option<&Vec<Origin>>) -> Label {
+        let kept = |origin: Origin| set.is_some_and(|set| set.contains(&origin));
+        match (kept(Origin::Human), kept(Origin::Ai), kept(Origin::Mixed)) {
+            (false, false, false) => Label::UnlikeReference,
+            (true, false, false) => Label::Human,
+            (false, true, false) => Label::Ai,
+            (false, false, true) => Label::Mixed,
+            (false, true, true) => Label::AiOrMixed,
+            (true, _, _) => Label::Uncertain,
         }
     }
 }
@@ -130,8 +296,8 @@ pub struct Reading {
     pub score: f64,
     /// Grid conformal p-value per origin, by length group (an upper bound, exact at the levels).
     pub p_values: [f64; 3],
-    /// Per level of the table (`"0.05"`, `"0.1"`): the origins not ruled out, `p_o > level`. Several read as
-    /// uncertain; none as unlike the reference.
+    /// Per level of the table (`"0.05"`, `"0.1"`): the origins not ruled out, `p_o > level`. `Label` names what a
+    /// set reads as.
     pub sets: BTreeMap<String, Vec<Origin>>,
     /// Per level: `p_human <= level`. For human text like the calibration texts of its length, at most a share
     /// `level` is so called.
@@ -159,9 +325,19 @@ impl Reading {
         self.sets.get(&level_key(level))
     }
 
-    /// The one-word summary of the conformal set at `level` (0.10 is the strip's).
+    /// The verdict of the conformal set at `level` (0.10 is the strip's).
     pub fn label(&self, level: f64) -> Label {
         Label::of(self.set(level))
+    }
+
+    /// The chance of AI of this span; `rule` is the release's `ModelInfo::chance_rule`.
+    pub fn chance(&self, rule: &ChanceRule) -> Chance {
+        rule.chance(self.probability, self.interval, self.length_bin)
+    }
+
+    /// The strip drawn of this span: its mark at the chance of AI, its band over the chance's range.
+    pub fn drawn(&self, rule: &ChanceRule) -> Drawn {
+        Drawn::of(Some(&self.chance(rule)), self.strip.unlike_reference)
     }
 }
 
@@ -255,7 +431,7 @@ impl Verdict {
         self.sets.get(&level_key(level))
     }
 
-    /// The one-word summary of the merged conformal set at `level` (0.10 is the strip's).
+    /// The verdict of the merged conformal set at `level` (0.10 is the strip's).
     pub fn label(&self, level: f64) -> Label {
         Label::of(self.set(level))
     }
@@ -275,9 +451,21 @@ pub struct DocumentReading {
 }
 
 impl DocumentReading {
-    /// The verdict's one-word summary at the strip's level (0.10).
+    /// The document's verdict, at the strip's level (0.10).
     pub fn label(&self) -> Label {
         self.verdict.label(STRIP_LEVEL)
+    }
+
+    /// The verdict's chance of AI: its probability and interval at even odds, by the calibration texts of the first
+    /// chunk's length (chunks are equal to a token), widened for the shift between sources; `rule` is the release's
+    /// `ModelInfo::chance_rule`.
+    pub fn chance(&self, rule: &ChanceRule) -> Chance {
+        rule.chance(self.verdict.probability, self.verdict.interval, self.chunks[0].reading.length_bin)
+    }
+
+    /// The strip drawn of the verdict: its mark at the chance of AI, its band over the chance's range.
+    pub fn drawn(&self, rule: &ChanceRule) -> Drawn {
+        Drawn::of(Some(&self.chance(rule)), self.verdict.strip.unlike_reference)
     }
 }
 
@@ -653,6 +841,8 @@ pub struct Reader<'a> {
     pub bank: &'a Bank,
     pub calibration: &'a CalibrationTable,
     pub explainer: &'a Explainer,
+    /// Threads the bank's pass is spread over (`bank_readings`); 1 reads on the calling thread alone.
+    pub threads: usize,
 }
 
 impl Reader<'_> {
@@ -782,11 +972,37 @@ impl Reader<'_> {
             .collect()
     }
 
-    /// The bank readings of the head's queries and keys, `(v, w)` each.
+    /// The bank readings of the head's queries and keys, `(v, w)` each. With `threads` over one, the vectors are cut
+    /// into that many runs and each run takes its own pass over the bank on a scoped thread. A vector's sums add up in
+    /// the bank's order whichever run holds it, and a dot product does not depend on the vectors beside it
+    /// (`dots_f64`, `dots_i8`), so the readings are those of one pass, bit for bit.
     fn bank_readings(&self, vectors: &HeadVectors) -> Vec<BankReading> {
+        let count = match vectors {
+            HeadVectors::Float { queries, .. } => queries.len() / self.bank.out,
+            HeadVectors::Int8 { queries, .. } => queries.len() / self.bank.out,
+        };
+        #[cfg(not(target_arch = "wasm32"))]
+        if self.threads > 1 && count > 1 {
+            let size = count.div_ceil(self.threads.min(count));
+            let runs: Vec<(usize, usize)> = (0..count).step_by(size).map(|first| (first, (first + size).min(count))).collect();
+            return std::thread::scope(|scope| {
+                let others: Vec<_> = runs[1..].iter().map(|&run| scope.spawn(move || self.bank_readings_of(vectors, run))).collect();
+                let mut readings = self.bank_readings_of(vectors, runs[0]);
+                for other in others {
+                    readings.extend(other.join().expect("a pass over the bank does not panic"));
+                }
+                readings
+            });
+        }
+        self.bank_readings_of(vectors, (0, count))
+    }
+
+    /// The bank readings of vectors `first..end` of the head's queries and keys.
+    fn bank_readings_of(&self, vectors: &HeadVectors, (first, end): (usize, usize)) -> Vec<BankReading> {
+        let span = first * self.bank.out..end * self.bank.out;
         match (&self.bank.vectors, vectors) {
-            (BankVectors::Float { vectors: bank, norms }, HeadVectors::Float { queries, keys }) => self.bank_readings_float(bank, norms, queries, keys),
-            (BankVectors::Int8 { .. }, HeadVectors::Int8 { queries, keys }) => self.bank_readings_int8(queries, keys),
+            (BankVectors::Float { vectors: bank, norms }, HeadVectors::Float { queries, keys }) => self.bank_readings_float(bank, norms, &queries[span.clone()], &keys[span]),
+            (BankVectors::Int8 { .. }, HeadVectors::Int8 { queries, keys }) => self.bank_readings_int8(&queries[span.clone()], &keys[span]),
             _ => unreachable!("a release's head and bank have the same output (checked at load)"),
         }
     }
@@ -1040,6 +1256,112 @@ mod tests {
         assert!(!s.unlike_reference);
         let empty = strip(&[0.2, 0.6, 0.2], &[], false);
         assert!(empty.unlike_reference && empty.width() == 0.0);
+    }
+
+    #[test]
+    fn a_set_has_one_verdict_in_any_order() {
+        use Origin::{Ai, Human, Mixed};
+        let label = |set: &[Origin]| Label::of(Some(&set.to_vec()));
+        assert_eq!((label(&[]), Label::of(None)), (Label::UnlikeReference, Label::UnlikeReference));
+        assert_eq!((label(&[Human]), label(&[Ai]), label(&[Mixed])), (Label::Human, Label::Ai, Label::Mixed));
+        // Human ruled out with AI and mixed both kept is a verdict of its own, which 1.1.0 called uncertain.
+        for set in [[Ai, Mixed], [Mixed, Ai]] {
+            assert_eq!((label(&set), label(&set).word()), (Label::AiOrMixed, "AI or mixed"));
+        }
+        // A set that keeps human beside another origin makes no call.
+        for set in [vec![Human, Ai], vec![Mixed, Human], vec![Human, Ai, Mixed], vec![Mixed, Ai, Human]] {
+            assert_eq!((label(&set), label(&set).word()), (Label::Uncertain, "uncertain"), "{set:?}");
+        }
+    }
+
+    #[test]
+    fn the_chance_of_ai_is_the_probability_at_even_odds() {
+        // Two thirds of the calibration texts are not human: a probability of two thirds is no evidence, so one half.
+        let nothing = Chance::at_even_odds(2.0 / 3.0, [0.6, 0.7], 2.0 / 3.0);
+        assert!((nothing.value - 0.5).abs() < 1e-12);
+        // Odds of 0.6 : 0.4 over 2 : 1 are 3 : 4, and of 0.7 : 0.3 over 2 : 1 are 7 : 6.
+        assert!((nothing.interval[0] - 3.0 / 7.0).abs() < 1e-12 && (nothing.interval[1] - 7.0 / 13.0).abs() < 1e-12);
+        // The 1.1 release's reading of a short human text: "Human" beside a probability of 0.518 became 0.349.
+        assert!((Chance::at_even_odds(0.517684852203761, [0.516129, 0.5193548], 2.0 / 3.0).value - 0.3492).abs() < 1e-4);
+        // Calibration texts already at even odds leave the probability as it is, and certainty stays certain.
+        assert_eq!(Chance::at_even_odds(0.31, [0.25, 0.4], 0.5), Chance { value: 0.31, interval: [0.25, 0.4], reference_share: 0.5, between_sources: 0.0 });
+        for share in [0.2, 0.5, 2.0 / 3.0] {
+            let ends = Chance::at_even_odds(0.0, [0.0, 1.0], share);
+            assert_eq!((ends.value, ends.interval), (0.0, [0.0, 1.0]));
+        }
+        // Order is kept, so the interval still holds the value.
+        let chance = Chance::at_even_odds(0.9, [0.85, 0.97], 0.6);
+        assert!(chance.interval[0] < chance.value && chance.value < chance.interval[1]);
+    }
+
+    #[test]
+    fn the_strip_is_drawn_from_the_chance_and_its_range() {
+        let chance = |value: f64, interval: [f64; 2]| Chance { value, interval, reference_share: 0.5, between_sources: 0.0 };
+        let drawn = Drawn::of(Some(&chance(0.62, [0.4, 0.8])), false);
+        assert_eq!(drawn, Drawn { mark: Some(0.62), band: Some([0.4, 0.8]), unlike_reference: false });
+        assert!((drawn.range_points() - 40.0).abs() < 1e-9);
+        // The ends in either order, and a mark outside its interval stretches the band to itself.
+        assert_eq!(Drawn::of(Some(&chance(0.62, [0.8, 0.4])), false).band, Some([0.4, 0.8]));
+        assert_eq!(Drawn::of(Some(&chance(0.9, [0.4, 0.8])), false).band, Some([0.4, 0.9]));
+        // Without the shift between sources a reading of one chunk has a range a fraction of a point wide: still a
+        // band, of that width and no wider, and too narrow to write.
+        assert_eq!(Drawn::of(Some(&chance(0.5643, [0.5635, 0.5663])), false).band, Some([0.5635, 0.5663]));
+        assert_eq!(Drawn::of(Some(&chance(0.5643, [0.5635, 0.5663])), false).range(), None);
+        // A band is written as its chance's range is: whole percentages that never reach 0% or 100%.
+        assert_eq!(drawn.range(), Some((40.0, 80.0)));
+        assert_eq!(Drawn::of(Some(&chance(0.99, [0.959, 0.998])), false).range(), Some((96.0, 99.0)));
+        assert_eq!(Drawn::of(Some(&chance(0.62, [0.4, 0.8])), true).range(), None, "no band, no range");
+        // A text unlike the reference keeps its mark and loses its band; no chance, no mark.
+        let unlike = Drawn::of(Some(&chance(0.62, [0.4, 0.8])), true);
+        assert_eq!((unlike.mark, unlike.band, unlike.unlike_reference), (Some(0.62), None, true));
+        assert_eq!(Drawn::of(None, false), Drawn { mark: None, band: None, unlike_reference: false });
+        assert_eq!(Drawn::of(Some(&chance(f64::NAN, [0.4, 0.8])), false).mark, None);
+    }
+
+    #[test]
+    fn a_chance_reads_as_a_percentage_with_a_range() {
+        let chance = |value: f64, interval: [f64; 2]| Chance { value, interval, reference_share: 0.5, between_sources: 0.0 };
+        assert_eq!(chance(0.6234, [0.4, 0.801]).words(), "62% (40-80%)");
+        assert_eq!(chance(0.6234, [0.4, 0.801]).sentence(), "62%, likely between 40% and 80%");
+        // An interval narrower than a point is left out, in either order of its ends, also where its ends round apart.
+        assert_eq!(chance(0.69, [0.69, 0.69]).words(), "69%");
+        assert_eq!(chance(0.69, [0.694, 0.686]).sentence(), "69%");
+        assert_eq!(chance(0.5643, [0.5635, 0.5663]).words(), "56%");
+        assert_eq!(chance(0.56, [0.55, 0.56]).words(), "56% (55-56%)", "a point wide");
+        assert_eq!(chance(0.5, [0.9, 0.2]).words(), "50% (20-90%)");
+        // No reading claims certainty.
+        assert_eq!((percent(0.0), percent(0.004), percent(0.006), percent(0.994), percent(0.996), percent(1.0)), ("<1%".into(), "<1%".into(), "1%".into(), "99%".into(), ">99%".into(), ">99%".into()));
+        // Nor does a range: its ends stay within 1% and 99%, and a range inside the last point of an end is left out.
+        assert_eq!(chance(0.9993, [0.97, 1.0]).words(), ">99% (97-99%)");
+        assert_eq!(chance(0.9993, [0.991, 0.9999]).words(), ">99%");
+        assert_eq!(chance(0.002, [0.0004, 0.009]).words(), "<1%");
+        assert_eq!(chance(0.02, [0.004, 0.07]).sentence(), "2%, likely between 1% and 7%");
+        assert_eq!(percent(f64::NAN), "unknown");
+    }
+
+    #[test]
+    fn the_range_widens_by_the_shift_between_sources() {
+        // The 1.2 table's half width, 1.432 log odds: the odds 4.19 times either way. A chance of one half with no
+        // interval of its own ranges from 19.3% to 80.7%, and one of 95% from 81.9% to 98.8%.
+        let half_width = 1.431902;
+        let at = |value: f64| Chance::at_even_odds(value, [value, value], 0.5).widened(half_width);
+        let near = |a: f64, b: f64| (a - b).abs() < 5e-4;
+        assert!(near(at(0.5).interval[0], 0.193) && near(at(0.5).interval[1], 0.807), "{:?}", at(0.5));
+        assert!(near(at(0.95).interval[0], 0.819) && near(at(0.95).interval[1], 0.988), "{:?}", at(0.95));
+        assert_eq!((at(0.5).value, at(0.5).between_sources, at(0.5).words()), (0.5, half_width, "50% (19-81%)".to_owned()));
+        // The calibration's own interval is widened, not replaced, whichever way its ends are given, and certainty
+        // at an end stays certainty.
+        let wide = Chance::at_even_odds(0.6, [0.7, 0.5], 0.5).widened(half_width);
+        assert!(near(wide.interval[0], 0.193) && wide.interval[1] > at(0.7).interval[1] - 1e-9 && wide.interval[1] < 0.91, "{wide:?}");
+        assert_eq!(Chance::at_even_odds(0.5, [0.0, 1.0], 0.5).widened(half_width).interval, [0.0, 1.0]);
+        // A table without the fit (Litmus 1.1.0 and earlier) leaves the range as the calibration gave it.
+        let rule = ChanceRule { not_human_shares: vec![2.0 / 3.0, 0.5], between_sources: 0.0, level: None };
+        assert_eq!(rule.chance(0.31, [0.25, 0.4], 1), Chance::at_even_odds(0.31, [0.25, 0.4], 0.5));
+        let fitted = ChanceRule { between_sources: half_width, level: Some(0.9), ..rule };
+        assert_eq!(fitted.chance(0.31, [0.25, 0.4], 1), Chance::at_even_odds(0.31, [0.25, 0.4], 0.5).widened(half_width));
+        // A chance kept before the field was reads back with no widening.
+        let kept: Chance = serde_json::from_str(r#"{"value":0.2,"interval":[0.1,0.3],"reference_share":0.5}"#).unwrap();
+        assert_eq!(kept.between_sources, 0.0);
     }
 
     #[test]

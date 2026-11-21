@@ -119,7 +119,7 @@ def spell(value: Any, spec: str = "") -> str:
     `int` groups thousands; `sig2` rounds to two significant figures and groups thousands, for an approximate count
     (28,267 as 28,000); `f1` to `f4` fix the decimals; `pct0` to `pct2` write a fraction as a percentage with the
     percent sign; `mb1` writes bytes as megabytes; `ms0` writes seconds as milliseconds; `m2` writes a count in millions; `hours1` writes seconds as hours;
-    `list` joins with an Oxford comma; `text` takes a string as it is. A float with no format, a missing value, and a
+    `odds1` writes a distance in log odds as the number of times it multiplies the odds (1.4319 as 4.2); `list` joins with an Oxford comma; `text` takes a string as it is. A float with no format, a missing value, and a
     format that does not fit the value are errors.
     """
     if value is None or (isinstance(value, float) and not math.isfinite(value)):
@@ -134,7 +134,7 @@ def spell(value: Any, spec: str = "") -> str:
         raise ValueError(f"a boolean has no default text; name a format ({value})")
     if isinstance(value, str):
         value = float(value)
-    if isinstance(value, Mapping) or isinstance(value, Sequence):
+    if isinstance(value, (Mapping, Sequence)):
         raise ValueError(f"{value!r} needs a format")
     if not spec:
         if isinstance(value, int):
@@ -156,4 +156,6 @@ def spell(value: Any, spec: str = "") -> str:
         return f"{value / 1e6:.2f}M"
     if spec == "hours1":
         return f"{value / 3600:.1f}"
+    if spec == "odds1":
+        return f"{math.exp(value):.1f}"
     raise ValueError(f"no format named {spec!r}")

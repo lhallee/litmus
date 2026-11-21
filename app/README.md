@@ -104,39 +104,56 @@ No `wasm-opt` pass is run.
 
 ## What a reading shows
 
-**Three levels of detail**, simple by default. The level is the user's choice, remembered (the settings file on the desktop, the
-page's local storage in the browser), switched by "More detail" under the strip, the Detail switch beside a
-reading, Settings, or Ctrl+M. Exports always carry every field, and the JSON exports the text's `counts` object as
-`litmus score --json` does (the CSV columns are unchanged); the level is about the screen. No level hides
-uncertainty: an uncertain reading says "Uncertain" and shows its band, "Unlike reference" stays its own state, and
-the placeholder warning stays on every screen.
+**Two levels of detail**, Simple by default (1.1.0 had a third between them, and a saved `detailed` now reads as
+Full). The level is the user's choice, remembered (the settings file on
+the desktop, the page's local storage in the browser), switched by "More detail" under the strip, the Detail switch
+beside a reading, Settings, or Ctrl+M. Exports always carry every field, and the JSON exports the text's `counts`
+object as `litmus score --json` does; the level is about the screen. No level hides uncertainty: a reading that
+cannot rule human out says "Uncertain" and names the origins it keeps, one that rules human out and cannot tell AI
+from mixed says "AI or mixed", "Unlike reference" stays its own state, and the placeholder warning stays on every
+screen.
 
 - **Simple** (the default): before a check, one sentence, the text box and one primary Check button; after it, the
   verdict word, one plain sentence (`wording::plain_sentence`, in the site's words), one muted line with the text's size
   (`1,234 words, 7,890 characters, 1,650 tokens`, from `litmus-files`' `counts`, counted once as the reading opens),
-  the strip with its band, and the user's own text tinted as the heat map, with Edit to go back to editing. Nothing
-  else.
-- **Detailed** adds a panel beside the reading (under it on a narrow window): P(not human) with its interval, what
-  the 10% set keeps, tokens, characters without spaces, and time; what a reading is and our recommendation for using one
+  the strip, and the user's own text tinted as the heat map, with Edit to go back to editing. Nothing else.
+- **Full** adds a panel beside the reading (under it on a narrow window): the chance of AI with its range, what the
+  10% set keeps, tokens, characters without spaces, and time; what a reading is and our recommendation for using one
   (`wording::RECOMMENDATION`: a reading is an estimate, not proof, and we recommend not using a reading alone to
-  accuse anyone); the minimap of a long text; and the reading of the part of the text clicked. With a release that
-  carries its masked language head (1.1 on), it also adds the text's **surprise** (`student/SPEC.md`, Surprise): minus
-  the mean log probability the model gives each token seeing the rest of the text, the perplexity, and the share of
-  each origin's calibration texts the model found at least as surprising, with what it is not
-  (`wording::SURPRISE_CAUTION`). It is read in a pass of its own only when a reading's details are first shown, on the
-  scoring thread (in the browser, the worker), and stops when a new reading starts; the contribute site does not show it.
-- **Full** adds every other number, how the reading was made, the model, and the exports.
+  accuse anyone); the minimap of a long text; the reading of the part of the text clicked; every other number; how
+  the reading was made; the model; and the exports. With a release that carries its masked language head (1.1 on),
+  it also shows the text's **surprise** (`student/SPEC.md`, Surprise): minus the mean log probability the model gives
+  each token seeing the rest of the text, the perplexity, and the share of each origin's calibration texts the model
+  found at least as surprising, with what it is not (`wording::SURPRISE_CAUTION`). It is read in a pass of its own
+  only when a reading's details are first shown, on the scoring thread (in the browser, the worker), and stops when a
+  new reading starts; the contribute site does not show it.
+
+**The chance of AI** is the one number every screen leads with (`litmus_engine::Chance`, `student/SPEC.md`, Chance
+of AI): the release's probability of not human restated at even odds, since the calibration texts are not an even
+mix (two thirds of the short ones are not human, so a reading that says nothing would read 67%, and at even odds
+reads 50%). It is written "69% (35-90%)" with its range, which is the calibration's interval widened by how far the
+chance moves from one source of text to another (the table's `between_sources`), so it is short near either end and
+wide in the middle; a range whose ends round to one percentage is left out. The app reads the shares and the widening
+from the release's calibration table (`ModelMeta.chance_rule`), the contribute page takes the chance its server
+sends, and a history entry of 1.1.0 is restated by the loaded table.
 
 The pieces:
 
-- **Verdict**: the conformal set at 0.10. One origin reads "Human", "AI" or "Mixed"; several read "Uncertain: human
-  or mixed" (named, in strip order, with the Oxford comma for three); none reads "Unlike reference". When the set is
-  not empty but the text is out of reference, the set's word stays and a "? unlike reference" caution sits beside
-  it, as on the site. A marker beside the headline differs in shape by call (disc, ring, question mark).
-- **The strip**: blue `#2F6FDB` to purple `#8E5BC9` to red `#D9483B`, a triangle marker at `strip.position`, the pale
-  band `#C9B8E6` from `band_lo` to `band_hi` bracketed at both ends, the words Human, Mixed and AI under it; washed out
-  with a question mark when the strip is unlike the reference.
-- **Numbers** (Detailed and Full): P(not human) with its interval, the three-way probabilities, the conformal p-values, the sets at 10%
+- **Verdict**: the conformal set at 0.10, named by the engine's `Label` so every program says the same. One origin
+  reads "Human", "AI" or "Mixed"; AI and mixed with human ruled out read "AI or mixed"; human beside another reads
+  "Uncertain" with the origins after it ("human or mixed", in strip order, with the Oxford comma for three); none
+  reads "Unlike reference". When the set is not empty but the text is out of reference, the set's word stays and a
+  "? unlike reference" caution sits beside it, as on the site. A marker beside the headline differs in shape by call
+  (a disc for a call, a ring for uncertain, a question mark for unlike reference).
+- **The strip** (`litmus_engine::Drawn`, `strip.rs`): blue `#2F6FDB` through purple `#8E5BC9` to red `#D9483B`, a
+  bar of ink for the mark at the chance of AI, the pale dashed band `#C9B8E6` over the chance's range, and the words
+  Human and AI under its ends. The band is the chance's range and nothing else; through 1.1.0 it spanned the
+  origins the 10% set kept, which read as a class and not as an interval. A range too narrow to see (a chance within
+  a point of either end, or a table without the widening) keeps a rim on both sides of the mark, so the band then
+  hugs it. A text unlike the reference gets a washed-out strip, a question mark for its mark, and no
+  band. The verdict's marker and the heat map are colored by `strip.position`, the reading's place between human,
+  mixed and AI, which is where a mixed text sits apart from an AI one.
+- **Numbers** (Full): the chance of AI with its range, the three-way probabilities, the conformal p-values, the sets at 10%
   and 5%, whether the text is called not human at 10% (left out when the set is empty), tokens and sections, the
   time taken or "from the cache", the closeness p-value, the model and when it was read; then the flags (out of
   reference; for long texts the mixed-document signal or its absence).
@@ -196,10 +213,11 @@ ticks it in Settings, beside one sentence on what it does (`quick::SENTENCE`).
   because the user switched it on.
 - **On the hotkey**: the selected text is read on a thread of its own from the app the hotkey was pressed in, and
   only then, since a new window takes the focus, a small borderless, always-on-top window opens by the pointer with
-  the reading, scored locally: the verdict, the strip with its band, and "Open full reading" (the main window, with heat map and explanation); it follows the detail level: Simple is
-  the verdict word and the strip; at every level a line under the strip gives the selected text's words, characters,
-  and tokens; Detailed adds P(not human) with its interval, and under 32 tokens that a few words carry little evidence; Full adds how the text was read. The placeholder warning shows at every
-  level. Checked at 100% and 150% display scaling (`LITMUS_DEMO_ZOOM=1.5`). It opens below and to the right of the
+  the reading, scored locally: the verdict, the strip, and "Open full reading" (the main window, with heat map and
+  explanation). It follows the detail level: Simple is the verdict word and the strip, Full adds the chance of AI
+  with its range, and at both a line gives the selected text's words, characters, and tokens, with a note under 32
+  tokens that a few words carry little evidence. The window is as tall as what it shows, and nothing is drawn past
+  its edge (`views::quick`'s `every_reading_fits_the_popup`). The placeholder warning shows at every level. Checked at 100% and 150% display scaling (`LITMUS_DEMO_ZOOM=1.5`). It opens below and to the right of the
   pointer, above or to the left of it where the screen's work area would cut it off, and always inside that work
   area. It closes on Esc, when it loses the focus after holding it (a click elsewhere), or after 25 seconds unless
   the pointer rests on it. Windows opens it without the focus when the app has no right to take it (it was in the
@@ -277,7 +295,7 @@ closes. Scenes: `empty`, `check`, `short`, `long`, `explain`, `batch`, `history`
 states `scoring` (photographed mid-reading), `error` (a file that does not read), `edit` (the editor over a reading)
 and `nomodel` (`LITMUS_MODEL` at an empty folder). A scene runs in the app's logic, which also runs while the window
 is hidden in the tray. The demo runs apart from the one-app lock and never saves the window's
-place. `LITMUS_THEME=light|dark`, `LITMUS_DETAIL=simple|detailed|full`, `LITMUS_DEMO_ZOOM=1.5` (display scaling),
+place. `LITMUS_THEME=light|dark`, `LITMUS_DETAIL=simple|full`, `LITMUS_DEMO_ZOOM=1.5` (display scaling),
 `LITMUS_DEMO_SIZE=1280x820`, `LITMUS_DEMO_TEXT` (a text file the `check`, `explain` and `edit` scenes check in
 place of the sample; the `open` scene opens it as Open file does, any kind the app reads, and prints what it showed,
 how long it took, and its slowest frame meanwhile),

@@ -1,36 +1,53 @@
 {
  "about": "Measured by tools/read_samples.mjs: the engine's reading of each text the footage shows. Replaced by re-measuring with a new release.",
  "model": {
-  "version": "sha256:2beea4431f731fb4",
-  "size": "d192 L4",
-  "checkpoint_step": 4999
+  "version": "sha256:537736c2bb33a839",
+  "weights_sha256": "5c3ac1685e72924073c18015d7ed9601359f47b4322932499d695f6f8df18cf8",
+  "size": "d512 L6",
+  "checkpoint_step": 43451
  },
  "readings": {
   "app": {
-   "label": "AI",
+   "label": "AI or mixed",
    "set": [
-    "ai"
+    "ai",
+    "mixed"
    ],
    "tokens": 410,
-   "probability": 0.9752,
+   "probability": 0.9986,
+   "chance": {
+    "value": 0.9972,
+    "interval": [
+     0.9883,
+     1
+    ]
+   },
    "strip": {
-    "position": 0.9687,
-    "band_lo": 0.9687,
+    "position": 0.848,
+    "band_lo": 0.5,
     "band_hi": 1,
     "unlike_reference": false
    },
    "out_of_reference": false
   },
   "quick_ai": {
-   "label": "AI",
+   "label": "AI or mixed",
    "set": [
-    "ai"
+    "ai",
+    "mixed"
    ],
    "tokens": 172,
-   "probability": 0.9402,
+   "probability": 0.998,
+   "chance": {
+    "value": 0.9961,
+    "interval": [
+     0.9838,
+     0.9995
+    ]
+   },
    "strip": {
-    "position": 0.9692,
-    "band_lo": 0.9692,
+    "position": 0.8357,
+    "band_lo": 0.5,
     "band_hi": 1,
     "unlike_reference": false
    },
@@ -44,9 +61,16 @@
     "mixed"
    ],
    "tokens": 23,
-   "probability": 0.7014,
+   "probability": 0.7817,
+   "chance": {
+    "value": 0.6416,
+    "interval": [
+     0.2991,
+     0.8831
+    ]
+   },
    "strip": {
-    "position": 0.6341,
+    "position": 0.6081,
     "band_lo": 0,
     "band_hi": 1,
     "unlike_reference": false
@@ -59,11 +83,18 @@
     "human"
    ],
    "tokens": 227,
-   "probability": 0.0021,
+   "probability": 0.0169,
+   "chance": {
+    "value": 0.0085,
+    "interval": [
+     0.0019,
+     0.0347
+    ]
+   },
    "strip": {
-    "position": 0.0621,
+    "position": 0.0838,
     "band_lo": 0,
-    "band_hi": 0.0621,
+    "band_hi": 0.0838,
     "unlike_reference": false
    },
    "out_of_reference": false

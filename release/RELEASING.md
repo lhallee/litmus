@@ -16,7 +16,7 @@ same work folder is refused. A stage that has run is skipped until something it 
 stages are done, stale (and why), or waiting. A stage that cannot run on this machine stops the run with exit code 3 and
 says what to do; any other failure exits with 1 and names the file or number at fault.
 
-Nothing in this driver sends anything anywhere except the three gated stages (publish, pages, macos), and they run only
+Nothing in this driver sends anything anywhere except the three gated stages (publish, macos, pages), and they run only
 with `--confirm`, which is the person's word and never an agent's choice. `--dry-run` prints what each would do and
 writes no receipt.
 
@@ -62,18 +62,32 @@ writes no receipt.
 | `bench` | any | Runs `litmus bench` for speed and memory on one core | fetch |
 | `browser` | by hand | The browser page's speed, a person's measurement with a real browser, adopted ([below](#the-browser-page)) | bench |
 | `docs` | any | Fills every slot of every document and the site's data from the data files | record, results, bench, browser |
+| `film` | any | Copies the film's README preview into `docs/images`, once the film's record names this release's weights | fetch |
 | `build-windows` | Windows | `release/build_release.py`: the app, the command line, the site, the browser page, and the contribute page | docs |
 | `build-linux` | Linux x86-64 with Docker | `release/build_linux.sh`: the app and the command line in the pinned image | docs |
 | `verify` | any | Checks hashes, manifests, commit, and the release block of each build against this release | both builds |
 | `reproduce` | Windows | Rebuilds both Windows programs twice and compares them with the build | build-windows |
 | `assemble` | any | Lays out what GitHub, the Pages branch, and the Hub receive, and sends nothing | verify, reproduce |
 | `publish` | any, gated | The Hub upload and tag, and the GitHub release as a draft | assemble |
-| `pages` | any, gated | The site and browser page as one ordinary commit on `gh-pages`, after the release is public | publish |
-| `macos` | any, gated | The macOS programs from the release-build workflow, attached to the release | pages |
+| `macos` | any, gated | The macOS programs from the release-build workflow, attached to the release once it is public | publish |
+| `pages` | any, gated | The site and browser page as one ordinary commit on `gh-pages`, once the release is public and holds the macOS programs the site links | publish |
 | `ad` | Windows, optional | Re-renders the ad from this release | verify |
 
 `run` goes as far as `assemble` by default (`--until`, `--from`, `--only`, and `--force` choose others). The gated
-stages have their own commands (`publish`, `pages`, `macos`, each with `--dry-run` or `--confirm`).
+stages have their own commands (`publish`, `macos`, `pages`, each with `--dry-run` or `--confirm`).
+
+**A release of the same weights.** A release that changes only what no benchmark score reads (the calibration's
+`between_sources`, which widens the range of the chance of AI) reads every text to the same score as the release before
+it, so it takes that release's scores and cost instead of reading sixteen benchmarks again:
+
+```sh
+python release/cut.py adopt score --work <work folder> --from <the earlier release's work folder>
+python release/cut.py adopt cost --work <work folder> --from <the earlier release's work folder>
+```
+
+`adopt` refuses an earlier release whose weights, tokenizer, or config differ in anything else, a stage that did not
+finish there, files changed since it ran, and scores of other rows than the baselines this release fetched. The
+receipt names the folder the result came from and when and where it was made.
 
 ## Every number comes from the model
 
@@ -129,10 +143,11 @@ matches no row or two, a float with no format, and an empty result are errors th
    https://github.com/lhallee/litmus.git <folder>`, then `--repository <folder>` on every later call), so the manifest
    names a commit anyone can check out. A work folder moves between checkouts that hold the same files.
 5. **Build.** `build-windows` on the Windows machine, `build-linux` on a Linux machine. The home page shows the ad's
-   film, which is not in the repository: copy the wide cut for the web, its poster and its animated preview
-   (`litmus_wide_site.mp4`, `litmus_wide_poster.png`, `litmus_wide_preview.webp`, from `node render.mjs wide` in
-   `demo/`) into `<work folder>/media` first; the `film` stage, just before the builds, copies the preview into
-   `docs/images` for the README. When the driver is started on
+   film, which is not in the repository: copy the wide cut for the web, its poster, its animated preview, and its
+   record (`litmus_wide_site.mp4`, `litmus_wide_poster.png`, `litmus_wide_preview.webp`, `litmus_wide_film.json`, from
+   `node render.mjs wide` in `demo/`) into `<work folder>/media` first; the `film` stage, just before the builds,
+   copies the preview into `docs/images` for the README, and refuses a film that was measured with other weights than
+   this release's (`demo/README.md`, A new release's film). When the driver is started on
    the wrong one, it stops with the exact steps: copy the work folder there (without `build/` and `publish/`; its
    receipts are what the stage checks), run `python release/cut.py run --work <copy> --only build-linux` from a checkout
    of the release commit, and bring the result back with `python release/cut.py adopt build-linux --work <work folder>
@@ -153,13 +168,15 @@ matches no row or two, a float with no format, and an empty result are errors th
    as one commit and tags it `vX.Y.Z`, then creates the GitHub release as a draft. Nothing already published is
    overwritten: an existing tag stops it. Review the draft on GitHub, and publish it
    (`gh release edit vX.Y.Z --repo lhallee/litmus --draft=false`).
-9. **Pages.** `pages --confirm`, once the release is public: the site and browser page replace the `gh-pages` branch's
-   files in one ordinary commit, never a force-push. The model's files go into the branch's history (about 13 MB for
-   the smallest size).
-10. **macOS.** `macos --confirm` starts the release-build workflow against the tag; wait for it, download its artifacts
-    into `<work folder>/macos/`, and the stage attaches the programs and replaces the release's `SHA256SUMS` with one that
-    also names them. Replacing that file needs the person's word, and `targets.toml`'s `[programs] platforms` gains
-    `"macos"` for the next release's site.
+9. **macOS.** `macos --confirm`, once the release is public, starts the release-build workflow against the tag (the
+   workflow downloads the model from the release); wait for it, download its artifacts into `<work folder>/macos/`,
+   and the stage attaches the programs and replaces the release's `SHA256SUMS` with one that also names them.
+   Replacing that file needs the person's word.
+10. **Pages.** `pages --confirm`, once the release is public: the site and browser page replace the `gh-pages`
+    branch's files in one ordinary commit, never a force-push. The model's files go into the branch's history (about
+    13 MB for the smallest size). The site links the macOS programs (`targets.toml` lists `"macos"`), so the stage
+    refuses while the release does not hold all four. If the macOS build cannot be had, `pages --confirm
+    --ahead-of-macos` publishes the site anyway, and its macOS links resolve once the programs are attached.
 11. **The contribute site.** It is a deployment, not a stage: follow `contribute/README.md` with
     `LITMUS_CONTRIBUTE_SITE=<work folder>/build/windows/contribute`, `LITMUS_RELEASE=<work folder>/model`, the Linux wheel
     of `litmus_engine`, and `LITMUS_PRIVATE_PAGE=<pages_url>app/`. Set `[contribute] site_url` in
@@ -188,7 +205,9 @@ program is not attached gets the install script's message to build from source. 
 lists the model's three files only, because the release-build workflow checks the model it downloads against it; a
 program's hash cannot be in the commit it is built from, so the programs' hashes live in the release's `SHA256SUMS`.
 
-A download loses the executable bit on Linux: `chmod +x litmus litmus-app`. A user checks a download with
+A download loses the executable bit on Linux and macOS: `chmod +x litmus litmus-app`. macOS also marks a downloaded
+program as quarantined and, since the programs are not code-signed, refuses to open it until the mark is removed
+(`xattr -d com.apple.quarantine <file>`) or the person allows it under Privacy & Security in System Settings. A user checks a download with
 `sha256sum -c --ignore-missing SHA256SUMS`, or in PowerShell `Get-FileHash` against its line, and can rebuild both
 Windows programs from the tagged source with `tools/verify_build.py --model <folder>`. An unsigned binary makes Windows
 SmartScreen show "unknown publisher".

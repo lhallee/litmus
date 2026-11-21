@@ -21,7 +21,7 @@ from .versions import MANIFESTS, problems, apply
 REPOSITORY = Path(__file__).resolve().parents[2]
 DEFAULT_RELEASE_PATH = "release"
 DEFAULT_RECORD_PATH = "record"
-PUBLISHING = ("publish", "pages", "macos")
+PUBLISHING = ("publish", "macos", "pages")
 
 
 def add_work(parser: argparse.ArgumentParser) -> None:
@@ -63,6 +63,9 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
         mode = publish.add_mutually_exclusive_group(required=True)
         mode.add_argument("--dry-run", action="store_true")
         mode.add_argument("--confirm", action="store_true", help="do it: the person's explicit word is required first")
+        if name == "pages":
+            publish.add_argument("--ahead-of-macos", action="store_true",
+                                 help="publish the site although the release does not hold the macOS programs it links; the links resolve once the macos stage has attached them")
 
     bundle = commands.add_parser("bundle", help="gather a run's outputs into the release folder and record folder to upload with the model")
     bundle.add_argument("--release", type=Path, required=True, help="the exported release folder")
@@ -130,7 +133,7 @@ def command_adopt(arguments: argparse.Namespace) -> int:
 
 
 def command_publishing(arguments: argparse.Namespace) -> int:
-    options = stages.Options(publish=arguments.confirm, dry_run=arguments.dry_run)
+    options = stages.Options(publish=arguments.confirm, dry_run=arguments.dry_run, ahead_of_macos=getattr(arguments, "ahead_of_macos", False))
     context = make_context(arguments, options)
     registry_stages = registry.build()
     stages.execute(context, registry_stages, stages.order(registry_stages, [arguments.command]))

@@ -49,6 +49,7 @@ windows_cli = "litmus.exe"
 linux_app = "litmus-app-linux-x86_64"
 linux_cli = "litmus-linux-x86_64"
 macos_arm64_app = "litmus-app-macos-arm64"
+macos_x86_64_app = "litmus-app-macos-x86_64"
 [bench]
 document_tokens = 1000
 [citation]

@@ -32,7 +32,7 @@ const result = {
     where: 'the Linux build of the app in a container on a virtual display, software rendering, no GPU, six processor cores available to the container; the app is not pinned to one core, so the processor figure is what it used, not a limit',
     counters: '/proc/<pid>/status VmRSS (resident now), VmHWM (resident at its peak), RssAnon (the private part), sampled every 100 ms; processor time from /proc/<pid>/stat',
     text_characters: characters,
-    model: manifest ? { version: manifest.model.version, size: manifest.model.size, checkpoint_step: manifest.model.checkpoint_step } : null,
+    model: manifest ? { version: manifest.model.version, weights_sha256: manifest.model.files['model.safetensors'].sha256, size: manifest.model.size, checkpoint_step: manifest.model.checkpoint_step } : null,
   },
   memory_mb: {
     idle_resident: mb(median(idle.map((e) => e.rss_kb))),

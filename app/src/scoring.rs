@@ -25,6 +25,8 @@ pub struct Scored {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Contribution {
     pub id: String,
+    /// The verdict's chance of AI as the site's engine gave it (the page holds no calibration table to work it out).
+    pub chance: Option<litmus_engine::Chance>,
     pub model_version: String,
     pub terms_version: String,
     pub annotation_window_seconds: u64,
@@ -281,7 +283,7 @@ mod native {
                             if cancel.load(Ordering::Relaxed) {
                                 break;
                             }
-                            let label = format!("File {} of {total}: ", index + 1);
+                            let label = format!("File {} of {total}, ", index + 1);
                             let result = self.read_file(job, &file, &cancel, &label);
                             self.emit(Event::BatchFile { job, index, result });
                         }
@@ -348,7 +350,12 @@ mod native {
             }
             let started = Instant::now();
             let mut last = Instant::now() - Duration::from_secs(1);
-            let outcome = engine.score_with(&text, &mut |p| {
+            // A text's blocks are spread over every logical processor: the same reading bit for bit as on one, several
+            // times sooner for a text of more than a block (256 tokens). Leaving one processor to the window was
+            // measured and bought nothing: the window's slowest pass while a 132,000-token text is read is its own
+            // layout of that text, about 0.2 s with 15 threads or 16.
+            let threads = std::thread::available_parallelism().map_or(1, std::num::NonZero::get);
+            let outcome = engine.score_threads(&text, threads, &mut |p| {
                 if cancel.load(Ordering::Relaxed) {
                     return Flow::Cancel;
                 }
@@ -492,7 +499,7 @@ mod worker {
             let worker = match web_sys::Worker::new_with_options("./worker.js", &options) {
                 Ok(worker) => worker,
                 Err(error) => {
-                    self.out.push(Event::Loaded(Err(format!("The page could not start its worker: {error:?}"))));
+                    self.out.push(Event::Loaded(Err(format!("The page could not start its worker ({error:?})."))));
                     return;
                 }
             };
@@ -505,7 +512,7 @@ mod worker {
             });
             let (inbox, ctx) = (self.inbox.clone(), self.ctx.clone());
             let on_error = Closure::<dyn FnMut(web_sys::ErrorEvent)>::new(move |event: web_sys::ErrorEvent| {
-                inbox.borrow_mut().push(Message::Failed(format!("The worker stopped: {}", event.message())));
+                inbox.borrow_mut().push(Message::Failed(format!("The worker stopped ({}).", event.message())));
                 ctx.request_repaint();
             });
             worker.set_onmessage(Some(on_message.as_ref().unchecked_ref()));
@@ -513,7 +520,7 @@ mod worker {
             let load = js_sys::Object::new();
             let _ = js_sys::Reflect::set(&load, &"type".into(), &"load".into());
             if let Err(error) = worker.post_message(&load) {
-                self.out.push(Event::Loaded(Err(format!("The page could not reach its worker: {error:?}"))));
+                self.out.push(Event::Loaded(Err(format!("The page could not reach its worker ({error:?})."))));
             }
             self.worker = Some(worker);
             self._on_message = Some(on_message);
@@ -538,7 +545,7 @@ mod worker {
             let _ = js_sys::Reflect::set(&request, &"job".into(), &JsValue::from_f64(job as f64));
             let _ = js_sys::Reflect::set(&request, &"text".into(), &JsValue::from_str(&text));
             if let Err(error) = worker.post_message(&request) {
-                self.out.push(Event::Scored { job, result: Err(format!("The page could not reach its worker: {error:?}")) });
+                self.out.push(Event::Scored { job, result: Err(format!("The page could not reach its worker ({error:?}).")) });
                 return job;
             }
             self.pending = Some(Pending { job, text, hash });
@@ -559,7 +566,7 @@ mod worker {
             let _ = js_sys::Reflect::set(&request, &"job".into(), &JsValue::from_f64(job as f64));
             let _ = js_sys::Reflect::set(&request, &"text".into(), &JsValue::from_str(&text));
             if let Err(error) = worker.post_message(&request) {
-                self.out.push(Event::Surprised { hash, result: Err(format!("The page could not reach its worker: {error:?}")) });
+                self.out.push(Event::Surprised { hash, result: Err(format!("The page could not reach its worker ({error:?}).")) });
                 return;
             }
             self.surprise = Some((job, hash));
@@ -717,12 +724,13 @@ mod server {
                 }
                 let result = match answer {
                     Ok((status, body)) => contribute::parse_score(status, &body).map(|response| Scored {
-                        reading: Arc::new(response.reading),
+                        reading: Arc::new(response.reading.document),
                         hash: litmus_files::cache::sha256(text.as_bytes()),
                         text,
                         seconds: Some((crate::clock::now_ms() - sent_ms) as f64 / 1000.0),
                         contribution: Some(Contribution {
                             id: response.id,
+                            chance: response.reading.chance,
                             model_version: response.model_version,
                             terms_version: response.terms_version,
                             annotation_window_seconds: response.annotation_window_seconds,

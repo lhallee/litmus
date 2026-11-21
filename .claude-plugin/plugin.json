@@ -1,7 +1,7 @@
 {
   "name": "litmus",
   "displayName": "Litmus",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Litmus is a free detector of AI written text that says how sure it is. This plugin adds its skill and its MCP server, so an agent can check text or code.",
   "author": { "name": "Logan Hallee" },
   "homepage": "https://github.com/lhallee/litmus",

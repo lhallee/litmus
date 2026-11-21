@@ -13,10 +13,37 @@ head_widths = "hidden width {config.head.hidden}, output width {config.head.out_
 bank_counts = "{model.bank.human as int} human, {model.bank.ai as int} AI, and {model.bank.mixed as int} mixed"
 attention_use = "the release's `model.attention` is `{model.attention}`"
 output_use = "the release's `model.output` is `{model.output}`"
-calibration_fit = "{record.splits.rows[set=calibration].human as int} human, {record.splits.rows[set=calibration].ai as int} AI, and {record.splits.rows[set=calibration].mixed as int} mixed calibration texts, in {model.length_groups} length groups"
+# The texts the table was fitted on are the table's own counts: the calibration split without its long documents,
+# which the export leaves out (`litmus_student.export`), so a few fewer than the split's rows.
+calibration_fit = "{model.calibration.human as int} human, {model.calibration.ai as int} AI, and {model.calibration.mixed as int} mixed calibration texts, in {model.length_groups} length groups"
 released_config = "`{model.config_name}`, with release files of {model.files_bytes as mb1} including its bank, reading {bench.rows[tokens=8192].text_tokens_per_second as int} tokens a second on one core"
 release_speed = "{bench.rows[tokens=8192].text_tokens_per_second as int} tokens a second on one core and a process peak of {bench.rows[tokens=8192].process_peak_bytes as mb1} (`litmus bench` on {bench.machine.name}, {bench.machine.system})"
 ece_test = { if = "teacher_uncertainty.rows", then = "{teacher_uncertainty.rows[split=test,stratum_kind=all,stratum=all,metric=expected_calibration_error].value as f3}", else = "n/a" }
+
+# The range of the chance of AI. `ranges` is what the programs print for a chance, made from the release's calibration
+# table (`config.calibration.between_sources`: how far the chance moves between sources); `chance_range` is the record's
+# file of the fit's checks, with sources left out and on the test passages.
+chance_range_example = "50% ({ranges.at_50_low}-{ranges.at_50_high}%)"
+chance_range_sources = "{ranges.human_sources} human sources and {ranges.not_human_sources} AI and mixed sources"
+chance_range_rule = "{ranges.level_percent}% of the pairings of one human source with one AI or mixed source, which is {ranges.odds as f1} times the odds in either direction"
+chance_range_log_odds = "{config.calibration.between_sources.log_odds as f2} log odds, {ranges.odds as f1} times the odds"
+chance_range_table = '''
+| Chance of AI | Its range |
+| --- | --- |
+| 5% | {ranges.at_5_low}% to {ranges.at_5_high}% |
+| 20% | {ranges.at_20_low}% to {ranges.at_20_high}% |
+| 50% | {ranges.at_50_low}% to {ranges.at_50_high}% |
+| 80% | {ranges.at_80_low}% to {ranges.at_80_high}% |
+| 95% | {ranges.at_95_low}% to {ranges.at_95_high}% |
+| 99% | {ranges.at_99_low}% to {ranges.at_99_high}% |
+'''
+chance_range_left_out = "With each source left out of the fit in turn, {chance_range.calibration.left_out.human.share as pct0} of the human sources' shifts and {chance_range.calibration.left_out.not_human.share as pct0} of the AI and mixed sources' shifts fell inside the half width fitted without them, which stayed between {chance_range.calibration.left_out.log_odds.low as f2} and {chance_range.calibration.left_out.log_odds.high as f2} log odds"
+chance_range_test = "On the {chance_range.test.passages as int} test passages, read once after the rule was fixed, {chance_range.test.worlds_inside as pct0} of the pairings of test sources fell inside the range"
+chance_range_largest_source = "{chance_range.calibration.largest_source.texts as int} of the {chance_range.calibration.texts as int} calibration texts ({chance_range.calibration.largest_source.share as pct0}), and {chance_range.calibration.largest_source.not_human_share as pct0} of its AI and mixed texts"
+
+# The README's speed line. The app reads a text on every logical processor, so once the bench stage has measured the
+# document that way the line says so; a measurement made before that keeps the one-core line.
+speed_summary = { if = "bench.document_all_processors", then = "On one CPU core the app reads ~{results.release.app_tokens_per_second as sig2} tokens (pieces of words) a second, on the {bench.document_all_processors.threads as int} logical processors of the same machine ~{bench.document_all_processors.text_tokens_per_second as sig2}, and the browser page ~{results.release.browser_tokens_per_second as sig2}.", else = "On one CPU core the app reads ~{results.release.app_tokens_per_second as sig2} tokens (pieces of words) a second, and the browser page ~{results.release.browser_tokens_per_second as sig2}." }
 
 speed_sentence = "on one processor core ({bench.machine.name}), reading a {bench.document.tokens as int}-token document, the app read about {results.release.app_tokens_per_second as int} tokens (word pieces) a second and the browser page about {results.release.browser_tokens_per_second as int} ({browser.browser}, {browser.threads} worker), so the document took about {results.release.app_document_seconds as f1} seconds in the app and about {results.release.browser_document_seconds as f1} in the page"
 

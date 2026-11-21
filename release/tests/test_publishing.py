@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import re
 import subprocess
 import pytest
 
@@ -56,6 +57,56 @@ def test_a_listed_platform_without_its_programs_is_an_error(context) -> None:
     build(context.work, "windows", "c" * 40)
     with pytest.raises(StageError, match="linux"):
         packaging.github_assets(context)
+
+
+def list_platforms(context, platforms: str) -> None:
+    targets = context.repository / "release" / "targets.toml"
+    text, changed = re.subn(r"(?m)^platforms = .*$", f"platforms = {platforms}", targets.read_text(encoding="utf-8"))
+    assert changed == 1
+    targets.write_text(text, encoding="utf-8")
+
+
+def test_macos_is_listed_for_the_site_and_assembled_by_no_build(context) -> None:
+    for name in ("windows", "linux"):
+        build(context.work, name, "c" * 40)
+    before = set(packaging.github_assets(context))
+    list_platforms(context, '["windows", "linux", "macos"]')
+    assert set(packaging.github_assets(context)) == before and not any("macos" in name for name in before)
+    list_platforms(context, '["windows", "linux", "solaris"]')
+    with pytest.raises(StageError, match="solaris"):
+        packaging.github_assets(context)
+
+
+def test_the_macos_programs_are_attached_before_the_site_that_links_them(context, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    assert [stage.name for stage in publishing.stages(())] == ["publish", "macos", "pages"]
+    assert {stage.name: stage.needs for stage in publishing.stages(())} == {"publish": ("assemble",), "macos": ("publish",), "pages": ("publish",)}
+    programs = ["litmus-macos-arm64", "litmus-app-macos-arm64", "litmus-macos-x86_64", "litmus-app-macos-x86_64"]
+    settings = publishing.targets(context)
+    assert publishing.missing_macos_programs(settings, {"assets": [{"name": name} for name in programs]}) == []
+    list_platforms(context, '["windows", "linux", "macos"]')
+    settings = publishing.targets(context)
+    assert publishing.missing_macos_programs(settings, {"assets": [{"name": name} for name in programs]}) == []
+    assert publishing.missing_macos_programs(settings, {"assets": [{"name": name} for name in programs[:3]]}) == ["litmus-app-macos-x86_64"]
+    assert publishing.missing_macos_programs(settings, None) == programs
+
+    # A public release without the macOS programs: the stage refuses before it touches the branch.
+    monkeypatch.setattr(publishing, "gh_json", lambda running, *arguments: {"isDraft": False, "tagName": "v1.0.0", "assets": [{"name": "litmus.exe"}]})
+    with pytest.raises(StageError, match="run the `macos` stage first"):
+        publishing.pages(context, ())
+    assert not (context.work / "pages_repo").exists()
+    context.options.dry_run = True
+    publishing.pages(context, ())
+    shown = capsys.readouterr().out
+    assert "will refuse until the `macos` stage has attached them" in shown and "litmus-app-macos-arm64" in shown
+    context.options.ahead_of_macos = True
+    publishing.pages(context, ())
+    assert "resolve once the `macos` stage has attached them" in capsys.readouterr().out
+
+
+def test_the_macos_stage_waits_for_a_public_release(context, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(publishing, "gh_json", lambda running, *arguments: {"isDraft": True, "tagName": "v1.0.0"})
+    with pytest.raises(StageError, match="not public yet"):
+        publishing.macos(context, ())
 
 
 def repository_with_origin(context) -> str:

@@ -153,7 +153,7 @@ pub fn minimap(app: &mut LitmusApp, ui: &mut egui::Ui) {
         let token = ((pointer.x - rect.left()) / rect.width() * total).max(0.0) as usize;
         let index = cells.partition_point(|c| c.place.end <= token).min(cells.len() - 1);
         let cell = &cells[index];
-        response.clone().on_hover_text(format!("Part {} of {}: characters {} to {}", index + 1, cells.len(), export::thousands(cell.place.start_char), export::thousands(cell.place.end_char)));
+        response.clone().on_hover_text(format!("Part {} of {}, characters {} to {}", index + 1, cells.len(), export::thousands(cell.place.start_char), export::thousands(cell.place.end_char)));
         if response.clicked() {
             app.selected_cell = Some(index);
             app.heat.scroll_to_cell = Some(index);
@@ -185,6 +185,10 @@ pub fn legend(ui: &mut egui::Ui) {
 pub fn cell_detail(app: &mut LitmusApp, ui: &mut egui::Ui) {
     let Some(shown) = &app.shown else { return };
     let reading = shown.scored.reading.clone();
+    // A window's chance of AI, by the loaded release's table (none on the contribute site's page, which holds none).
+    let meta = app.meta().cloned();
+    let chance_of = |r: &litmus_engine::Reading| meta.as_ref().and_then(|m| m.chance_of(r));
+    let strip_of = |r: &litmus_engine::Reading| strip::Drawn::of(chance_of(r).as_ref(), r.strip.unlike_reference);
     let p = theme::palette(dark(ui));
     controls::section(ui, "This part of the text");
     let Some(index) = app.selected_cell.filter(|&i| i < reading.cells.len()) else {
@@ -198,64 +202,63 @@ pub fn cell_detail(app: &mut LitmusApp, ui: &mut egui::Ui) {
     let r = &window.reading;
     controls::card(ui, 12, |ui| {
         ui.set_width(ui.available_width());
-        ui.label(RichText::new(wording::reading_headline(r)).font(theme::strong(17.0)));
-        strip::mini(ui, &r.strip, ui.available_width().min(260.0), 18.0);
+        let headline = wording::reading_headline(r);
+        ui.label(crate::views::headline_job(&headline, 17.0, p.ink, p.muted));
+        strip::mini(ui, &strip_of(r), ui.available_width().min(260.0), 18.0);
         egui::Grid::new("cell_numbers").num_columns(2).spacing([16.0, 4.0]).show(ui, |ui| {
             controls::fact(ui, "Part", format!("{} of {}", index + 1, reading.cells.len()), None);
             controls::fact(ui, "Characters", format!("{} to {}", export::thousands(cell.place.start_char), export::thousands(cell.place.end_char)), None);
-            controls::fact(ui, "P(not human)", wording::probability(r.probability, r.interval), None);
+            if let Some(chance) = chance_of(r) {
+                controls::fact(ui, wording::CHANCE, chance.words(), None);
+            }
         });
         ui.label(
             RichText::new(format!(
-                "Read as the {}-token window centered nearest this part{}. A window describes where to look; the verdict above decides.",
+                "Read as the {}-token window centered nearest this part{}. A window shows where to look, and the verdict above decides.",
                 export::thousands(r.n_tokens),
                 if cell.unlike_reference { ", which sits unlike the reference" } else { "" }
             ))
             .small()
             .color(p.muted),
         );
-        if app.settings.detail.at_least(crate::settings::Detail::Full) {
-            ui.label(
-                RichText::new(format!(
-                    "Cell tokens {} to {}: position {:.2} (spread {:.2}) from {} window{}; widest band {:.2} to {:.2}. Window tokens {} to {}: p-values human {:.3}, mixed {:.3}, AI {:.3}; not ruled out at 10% {}.",
-                    export::thousands(cell.place.start),
-                    export::thousands(cell.place.end),
-                    cell.position,
-                    cell.spread,
-                    cell.windows,
-                    if cell.windows == 1 { "" } else { "s" },
-                    cell.band_lo,
-                    cell.band_hi,
-                    export::thousands(window.place.start),
-                    export::thousands(window.place.end),
-                    r.p_values[0],
-                    r.p_values[2],
-                    r.p_values[1],
-                    export::set_words(r.set(STRIP_LEVEL))
-                ))
-                .monospace()
-                .small(),
-            );
-            if covering.len() > 1 {
-                ui.collapsing(format!("The other {} windows over this part", covering.len() - 1), |ui| {
-                    for &other in &covering[1..] {
-                        let w = &reading.windows[other];
-                        ui.horizontal(|ui| {
-                            strip::mini(ui, &w.reading.strip, 90.0, 14.0);
-                            ui.label(
-                                RichText::new(format!(
-                                    "tokens {} to {}: {}, {}",
-                                    export::thousands(w.place.start),
-                                    export::thousands(w.place.end),
-                                    wording::reading_headline(&w.reading),
-                                    wording::probability(w.reading.probability, w.reading.interval)
-                                ))
-                                .small(),
-                            );
-                        });
-                    }
-                });
-            }
+        ui.label(
+            RichText::new(format!(
+                "Cell tokens {} to {} are colored at {:.2} between human (0), mixed (0.5), and AI (1), with spread {:.2}, from {} window{}. Window tokens {} to {} have p-values human {:.3}, mixed {:.3}, and AI {:.3}, with {} not ruled out at 10%.",
+                export::thousands(cell.place.start),
+                export::thousands(cell.place.end),
+                cell.position,
+                cell.spread,
+                cell.windows,
+                if cell.windows == 1 { "" } else { "s" },
+                export::thousands(window.place.start),
+                export::thousands(window.place.end),
+                r.p_values[0],
+                r.p_values[2],
+                r.p_values[1],
+                wording::kept(r.set(STRIP_LEVEL))
+            ))
+            .monospace()
+            .small(),
+        );
+        if covering.len() > 1 {
+            ui.collapsing(format!("The other {} windows over this part", covering.len() - 1), |ui| {
+                for &other in &covering[1..] {
+                    let w = &reading.windows[other];
+                    ui.horizontal(|ui| {
+                        strip::mini(ui, &strip_of(&w.reading), 90.0, 14.0);
+                        ui.label(
+                            RichText::new(format!(
+                                "tokens {} to {}, {}{}",
+                                export::thousands(w.place.start),
+                                export::thousands(w.place.end),
+                                wording::reading_headline(&w.reading).line(),
+                                chance_of(&w.reading).map_or_else(String::new, |chance| format!(", chance of AI {}", chance.words()))
+                            ))
+                            .small(),
+                        );
+                    });
+                }
+            });
         }
     });
 }

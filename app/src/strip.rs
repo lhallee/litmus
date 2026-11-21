@@ -1,11 +1,12 @@
 //! The litmus strip, drawn as the site draws it (`site/style.css`, `.strip`): a rounded bar from blue (human, 0)
-//! through purple (mixed, 0.5) to red (AI, 1), the pale dashed band over what the conformal set cannot rule out, and
-//! the mark, a bar of ink at the reading's position. A text unlike the reference gets a washed-out bar in a dashed
-//! outline and a question mark for its mark, and no band when every origin is ruled out. The scale is labeled in
-//! words at both ends and the middle, so the strip reads without telling red from blue.
+//! through purple to red (AI, 1), the mark, a bar of ink at the reading's chance of AI, and the pale dashed band over
+//! the chance's range, which is the interval the chance is given with (SPEC.md, Chance of AI). A text unlike the
+//! reference gets a washed-out bar in a dashed outline, a question mark for its mark, and no band. The scale is
+//! labeled in words at both ends, so the strip reads without telling red from blue.
 
 use eframe::egui::{self, Align2, Color32, CornerRadius, FontId, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, Vec2};
-use litmus_engine::Strip;
+pub use litmus_engine::Drawn;
+use litmus_engine::reading::percent;
 
 use crate::brand;
 use crate::theme;
@@ -24,24 +25,18 @@ impl Geometry {
         self.left + self.width * p as f32
     }
 
-    /// The band's ends, in order, at least `min_width` apart (a band of no width is still drawn as a sliver).
-    pub fn band(&self, strip: &Strip, min_width: f32) -> (f32, f32) {
-        let (a, b) = (self.x(strip.band_lo), self.x(strip.band_hi));
+    /// The band's ends, in order, at least `min_width` apart and inside the strip: a range too narrow to see is
+    /// widened evenly about its middle, so it is still drawn, hugging the mark.
+    pub fn band(&self, band: [f64; 2], min_width: f32) -> (f32, f32) {
+        let (a, b) = (self.x(band[0]), self.x(band[1]));
         let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
         if hi - lo >= min_width {
             return (lo, hi);
         }
-        let middle = (lo + hi) / 2.0;
-        let half = min_width / 2.0;
-        let lo = (middle - half).max(self.left);
-        (lo, (lo + min_width).min(self.left + self.width))
+        let right = self.left + self.width;
+        let lo = ((lo + hi) / 2.0 - min_width / 2.0).clamp(self.left, (right - min_width).max(self.left));
+        (lo, (lo + min_width).min(right))
     }
-}
-
-/// Whether a strip has a band to draw: a text unlike the reference whose set is empty has none (the site's "there
-/// is no band"); the engine then gives a band of no width.
-pub fn has_band(strip: &Strip) -> bool {
-    !(strip.unlike_reference && (strip.band_hi - strip.band_lo).abs() < 1e-9)
 }
 
 fn scale_color(t: f64, washed: bool) -> Color32 {
@@ -77,91 +72,119 @@ fn dashed_rect(painter: &egui::Painter, rect: Rect, stroke: Stroke) {
     painter.extend(Shape::dashed_line(&path, stroke, 5.0, 3.0));
 }
 
+/// How far the mark and the band reach over a bar `bar` tall, above it and below it.
+fn overhang(bar: f32) -> f32 {
+    (bar * 0.4).max(6.0)
+}
+
+/// The height `show` takes for a bar `bar` tall: the bar, the mark's reach over both edges, and the words under it.
+pub fn height(bar: f32) -> f32 {
+    overhang(bar) * 2.0 + bar + 18.0
+}
+
+/// The width of the full strip's mark for a bar `bar` tall, without its outline.
+fn mark_width(bar: f32) -> f32 {
+    (bar * 0.24).clamp(3.0, 6.0)
+}
+
 /// The full strip with its words under it, the bar `height` tall. Hovering shows the numbers.
-pub fn show(ui: &mut egui::Ui, strip: &Strip, height: f32) -> egui::Response {
+pub fn show(ui: &mut egui::Ui, drawn: &Drawn, height: f32) -> egui::Response {
     let p = theme::palette(ui.visuals().dark_mode);
-    let over = (height * 0.4).max(6.0);
+    let over = overhang(height);
     let label_font = FontId::proportional(if height >= 20.0 { 13.0 } else { 12.0 });
-    let total = Vec2::new(ui.available_width().max(160.0), over * 2.0 + height + 18.0);
+    let total = Vec2::new(ui.available_width().max(160.0), self::height(height));
     let (rect, response) = ui.allocate_exact_size(total, Sense::hover());
     let painter = ui.painter_at(rect.expand(4.0));
     let inset = height * 0.5;
     let bar = Rect::from_min_size(Pos2::new(rect.left() + inset, rect.top() + over), Vec2::new(rect.width() - 2.0 * inset, height));
     let geometry = Geometry { left: bar.left(), width: bar.width() };
-    let washed = strip.unlike_reference;
+    let washed = drawn.unlike_reference;
     paint_scale(&painter, bar, washed);
     if washed {
         dashed_rect(&painter, bar.expand(3.0), Stroke::new(1.5, p.band_edge));
     }
-    if has_band(strip) {
-        let (lo, hi) = geometry.band(strip, 6.0);
+    let w = mark_width(height);
+    if let Some(range) = drawn.band {
+        // A range under a point or two would hide behind the mark and its outline: it keeps a rim on both sides.
+        let (lo, hi) = geometry.band(range, w + 12.0);
         let band = Rect::from_x_y_ranges(lo..=hi, (bar.top() - over * 0.5)..=(bar.bottom() + over * 0.5));
         painter.rect_filled(band, CornerRadius::same(4), p.band_wash);
         dashed_rect(&painter, band, Stroke::new(1.5, p.band_edge));
     }
-    let x = geometry.x(strip.position);
-    if washed {
-        let r = height * 0.5 + 2.0;
-        painter.circle(Pos2::new(x, bar.center().y), r, p.raised, Stroke::new(2.0, p.ink));
-        painter.text(Pos2::new(x, bar.center().y), Align2::CENTER_CENTER, "?", theme::strong(height * 0.62), p.ink);
-    } else {
-        let w = (height * 0.24).clamp(3.0, 6.0);
-        let mark = Rect::from_x_y_ranges((x - w / 2.0)..=(x + w / 2.0), (bar.top() - over)..=(bar.bottom() + over));
-        painter.rect(mark, CornerRadius::same(3), p.ink, Stroke::new(2.0, p.ground), StrokeKind::Outside);
+    if let Some(mark) = drawn.mark {
+        let x = geometry.x(mark);
+        if washed {
+            let r = height * 0.5 + 2.0;
+            painter.circle(Pos2::new(x, bar.center().y), r, p.raised, Stroke::new(2.0, p.ink));
+            painter.text(Pos2::new(x, bar.center().y), Align2::CENTER_CENTER, "?", theme::strong(height * 0.62), p.ink);
+        } else {
+            let mark = Rect::from_x_y_ranges((x - w / 2.0)..=(x + w / 2.0), (bar.top() - over)..=(bar.bottom() + over));
+            painter.rect(mark, CornerRadius::same(3), p.ink, Stroke::new(2.0, p.ground), StrokeKind::Outside);
+        }
     }
     // Words under the scale, so the strip reads without color.
     let y = bar.bottom() + over + 2.0;
     painter.text(Pos2::new(bar.left() - inset, y), Align2::LEFT_TOP, "Human", label_font.clone(), p.human_ink);
-    painter.text(Pos2::new(bar.center().x, y), Align2::CENTER_TOP, "Mixed", label_font.clone(), p.mixed_ink);
     painter.text(Pos2::new(bar.right() + inset, y), Align2::RIGHT_TOP, "AI", label_font, p.ai_ink);
-    response.on_hover_text(hover_words(strip))
+    response.on_hover_text(hover_words(drawn))
 }
 
-fn hover_words(strip: &Strip) -> String {
-    format!(
-        "Mark at {:.2} (0 human, 0.5 mixed, 1 AI).{} {}",
-        strip.position,
-        if has_band(strip) {
-            format!(" Pale band from {:.2} to {:.2}: what the set at {:.0}% cannot rule out.", strip.band_lo.min(strip.band_hi), strip.band_hi.max(strip.band_lo), strip.level * 100.0)
-        } else {
-            String::new()
-        },
-        if strip.unlike_reference { "Washed out with a question mark: the text is unlike the reference." } else { "" }
-    )
+/// What the strip says in words: the chance at the mark, the range under the band, and why a strip is washed out.
+pub fn hover_words(drawn: &Drawn) -> String {
+    let Some(mark) = drawn.mark else {
+        return "The strip runs from human at the left to AI at the right. This reading has no chance of AI to mark, because the model's calibration is not loaded.".to_owned();
+    };
+    let mut words = format!("The mark is the chance of AI, {}.", percent(mark));
+    // The range in the words every other place writes it with: whole percentages that never reach 0% or 100%.
+    match (drawn.band, drawn.range()) {
+        (Some(_), Some((lo, hi))) => words.push_str(&format!(" The pale band is its range, {lo:.0}% to {hi:.0}%.")),
+        (Some(_), None) => words.push_str(" Its range is about a point wide or less, so the pale band hugs the mark."),
+        (None, _) => {}
+    }
+    if drawn.unlike_reference {
+        words.push_str(" Washed out with a question mark because the text is unlike the reference, so the chance is no evidence either way.");
+    }
+    words
 }
 
-/// A small strip for tables: the bar, the band and the mark in `width` by `height`.
-pub fn mini(ui: &mut egui::Ui, strip: &Strip, width: f32, height: f32) -> egui::Response {
+/// A small strip for tables: the bar, the band and the mark in `width` by `height`. The band is drawn at its true
+/// width, so a range narrower than the mark stays behind it.
+pub fn mini(ui: &mut egui::Ui, drawn: &Drawn, width: f32, height: f32) -> egui::Response {
     let p = theme::palette(ui.visuals().dark_mode);
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, height), Sense::hover());
     let painter = ui.painter_at(rect.expand(1.0));
     let bar_height = (height * 0.42).round().max(4.0);
     let bar = Rect::from_center_size(rect.center(), Vec2::new(width - 6.0, bar_height));
-    paint_scale(&painter, bar, strip.unlike_reference);
+    paint_scale(&painter, bar, drawn.unlike_reference);
     let geometry = Geometry { left: bar.left(), width: bar.width() };
-    if has_band(strip) {
-        let (lo, hi) = geometry.band(strip, 3.0);
-        let band = Rect::from_x_y_ranges(lo..=hi, (bar.top() - 2.0)..=(bar.bottom() + 2.0));
-        painter.rect_filled(band, CornerRadius::same(2), p.band_wash);
-        painter.rect_stroke(band, CornerRadius::same(2), Stroke::new(1.0, p.band_edge), StrokeKind::Inside);
+    if let Some(range) = drawn.band {
+        let (lo, hi) = geometry.band(range, 0.0);
+        if hi - lo > 5.0 {
+            let band = Rect::from_x_y_ranges(lo..=hi, (bar.top() - 2.0)..=(bar.bottom() + 2.0));
+            painter.rect_filled(band, CornerRadius::same(2), p.band_wash);
+            painter.rect_stroke(band, CornerRadius::same(2), Stroke::new(1.0, p.band_edge), StrokeKind::Inside);
+        }
     }
-    let x = geometry.x(strip.position);
-    if strip.unlike_reference {
-        painter.circle(Pos2::new(x, rect.center().y), height * 0.42, p.raised, Stroke::new(1.5, p.ink));
-        painter.text(Pos2::new(x, rect.center().y), Align2::CENTER_CENTER, "?", theme::strong(height * 0.6), p.ink);
-    } else {
-        let mark = Rect::from_x_y_ranges((x - 1.5)..=(x + 1.5), rect.top() + 1.0..=rect.bottom() - 1.0);
-        painter.rect(mark, CornerRadius::same(1), p.ink, Stroke::new(1.0, p.ground), StrokeKind::Outside);
+    if let Some(mark) = drawn.mark {
+        let x = geometry.x(mark);
+        if drawn.unlike_reference {
+            painter.circle(Pos2::new(x, rect.center().y), height * 0.42, p.raised, Stroke::new(1.5, p.ink));
+            painter.text(Pos2::new(x, rect.center().y), Align2::CENTER_CENTER, "?", theme::strong(height * 0.6), p.ink);
+        } else {
+            let mark = Rect::from_x_y_ranges((x - 1.5)..=(x + 1.5), rect.top() + 1.0..=rect.bottom() - 1.0);
+            painter.rect(mark, CornerRadius::same(1), p.ink, Stroke::new(1.0, p.ground), StrokeKind::Outside);
+        }
     }
-    response.on_hover_text(hover_words(strip))
+    response.on_hover_text(hover_words(drawn))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use litmus_engine::Chance;
 
-    fn strip(position: f64, band_lo: f64, band_hi: f64) -> Strip {
-        Strip { position, band_lo, band_hi, level: 0.1, unlike_reference: false }
+    fn chance(value: f64, interval: [f64; 2]) -> Chance {
+        Chance { value, interval, reference_share: 0.5, between_sources: 0.0 }
     }
 
     #[test]
@@ -178,18 +201,26 @@ mod tests {
     #[test]
     fn bands_are_ordered_and_never_vanish() {
         let g = Geometry { left: 0.0, width: 100.0 };
-        assert_eq!(g.band(&strip(0.7, 0.5, 1.0), 3.0), (50.0, 100.0));
-        assert_eq!(g.band(&strip(0.7, 1.0, 0.5), 3.0), (50.0, 100.0));
-        let (lo, hi) = g.band(&strip(0.3, 0.3, 0.3), 3.0);
+        assert_eq!(g.band([0.5, 1.0], 3.0), (50.0, 100.0));
+        assert_eq!(g.band([1.0, 0.5], 3.0), (50.0, 100.0));
+        let (lo, hi) = g.band([0.3, 0.3], 3.0);
         assert!((hi - lo - 3.0).abs() < 1e-4 && lo <= 30.0 && hi >= 30.0);
-        let (lo, hi) = g.band(&strip(0.0, 0.0, 0.0), 3.0);
-        assert_eq!((lo, hi), (0.0, 3.0), "a sliver at the edge stays inside the strip");
+        assert_eq!(g.band([0.0, 0.0], 3.0), (0.0, 3.0), "a sliver at the left edge stays inside the strip");
+        assert_eq!(g.band([1.0, 1.0], 3.0), (97.0, 100.0), "and one at the right edge");
+        assert_eq!(g.band([0.5, 0.5], 0.0), (50.0, 50.0), "no least width leaves the range as it is");
+        assert_eq!(g.band([0.25, 0.375], 0.0), (25.0, 37.5));
     }
 
     #[test]
-    fn only_an_empty_set_loses_its_band() {
-        assert!(has_band(&strip(0.3, 0.3, 0.3)), "a confident reading keeps its sliver");
-        assert!(!has_band(&Strip { unlike_reference: true, ..strip(0.5, 0.5, 0.5) }));
-        assert!(has_band(&Strip { unlike_reference: true, ..strip(0.5, 0.2, 0.7) }), "out of reference with a set keeps its band");
+    fn the_hover_words_give_the_chance_and_its_range() {
+        assert_eq!(hover_words(&Drawn::of(Some(&chance(0.62, [0.4, 0.8])), false)), "The mark is the chance of AI, 62%. The pale band is its range, 40% to 80%.");
+        assert_eq!(
+            hover_words(&Drawn::of(Some(&chance(0.5643, [0.5635, 0.5663])), false)),
+            "The mark is the chance of AI, 56%. Its range is about a point wide or less, so the pale band hugs the mark."
+        );
+        // An end is written as the tables write it, never as 100%.
+        assert_eq!(hover_words(&Drawn::of(Some(&chance(0.99, [0.959, 0.998])), false)), "The mark is the chance of AI, 99%. The pale band is its range, 96% to 99%.");
+        assert!(hover_words(&Drawn::of(Some(&chance(0.62, [0.4, 0.8])), true)).ends_with("so the chance is no evidence either way."));
+        assert!(hover_words(&Drawn::of(None, false)).contains("no chance of AI to mark"));
     }
 }

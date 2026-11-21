@@ -11,7 +11,7 @@
 use std::io::{BufRead, Read, Write};
 use std::path::Path;
 
-use litmus_engine::{DocumentReading, Engine, STRIP_LEVEL};
+use litmus_engine::{Chance, DocumentReading, Engine, Label, STRIP_LEVEL};
 use litmus_files::counts::TextCounts;
 use litmus_files::export::{set_words, thousands};
 use litmus_files::extract;
@@ -47,10 +47,13 @@ trained almost entirely on English, so other languages are not supported yet. We
 it alone as an accusation against a person.";
 
 const TEXT_DESCRIPTION: &str = "Read whether a text looks human, AI, or mixed, with calibrated uncertainty. Returns the \
-verdict (human, AI, mixed, uncertain, or unlike reference), the origins that cannot be ruled out at the 10% level, \
-P(not human) with an interval, and the word, character, and token counts. A reading is evidence, never proof, and never an accusation against \
+verdict (human, AI, mixed, AI or mixed, uncertain, or unlike reference), the origins that cannot be ruled out at the 10% level, \
+the chance of AI (how likely it is that a language model wrote or edited some of the text, for a text as likely human \
+as not beforehand) with its range (how far that chance moves from one kind of text to another, short near either end \
+and wide in the middle), and the word, character, and token counts. A reading is evidence, never proof, and never an accusation against \
 a person: short texts are less reliable, the model is trained almost entirely on English (other languages are not \
-supported yet), and code is weaker than prose. An \"uncertain\" or \"unlike reference\" verdict means no call. Runs \
+supported yet), and code is weaker than prose. \"AI or mixed\" means human is ruled out and the reading cannot tell \
+whether a model wrote all of the text or part of it. An \"uncertain\" or \"unlike reference\" verdict means no call. Runs \
 on this computer with no network. detail \"full\" adds every chunk, window, and heat-map cell, exactly as `litmus score \
 --json` prints them, which is large for long texts.";
 
@@ -64,6 +67,8 @@ not supported yet), and code is weaker than prose. Reads only the one file, writ
 pub trait Scorer {
     fn count_tokens(&self, text: &str) -> usize;
     fn score(&self, text: &str) -> Result<DocumentReading, String>;
+    /// The chance of AI of a reading this scorer made (`Engine::chance`).
+    fn chance(&self, document: &DocumentReading) -> Chance;
 }
 
 /// The loaded engine.
@@ -77,6 +82,10 @@ impl Scorer for Loaded {
     fn score(&self, text: &str) -> Result<DocumentReading, String> {
         self.0.score(text).map_err(|e| e.to_string())
     }
+
+    fn chance(&self, document: &DocumentReading) -> Chance {
+        self.0.chance(document)
+    }
 }
 
 /// A server whose model failed to load: it still answers, and every check says why it cannot read.
@@ -89,6 +98,10 @@ impl Scorer for Missing {
 
     fn score(&self, _text: &str) -> Result<DocumentReading, String> {
         Err(format!("no model is loaded: {}", self.0))
+    }
+
+    fn chance(&self, _document: &DocumentReading) -> Chance {
+        unreachable!("a server without a model makes no reading: {}", self.0)
     }
 }
 
@@ -161,8 +174,10 @@ fn caveats(document: &DocumentReading) -> Vec<String> {
     }
     if verdict.out_of_reference || verdict.set(STRIP_LEVEL).is_none_or(|set| set.is_empty()) {
         caveats.push("The text is unlike the reference texts the model learned from, so the reading is no evidence either way.".to_owned());
-    } else if verdict.set(STRIP_LEVEL).is_some_and(|set| set.len() > 1) {
-        caveats.push("More than one origin is not ruled out, so the reading makes no call.".to_owned());
+    } else if document.label() == Label::AiOrMixed {
+        caveats.push("Human is ruled out at the 10% level, and the reading cannot tell whether a model wrote all of the text or part of it.".to_owned());
+    } else if document.label() == Label::Uncertain {
+        caveats.push("More than one origin is not ruled out, human among them, so the reading makes no call.".to_owned());
     }
     if verdict.mixed_document {
         caveats.push("Different chunks of this document read differently; ask for detail \"full\" to see where.".to_owned());
@@ -171,15 +186,12 @@ fn caveats(document: &DocumentReading) -> Vec<String> {
 }
 
 /// The one plain sentence that leads a result.
-fn sentence(document: &DocumentReading, counts: &TextCounts) -> String {
-    let verdict = &document.verdict;
+fn sentence(document: &DocumentReading, counts: &TextCounts, chance: &Chance) -> String {
     format!(
-        "Litmus reads this text as {} (not ruled out at the 10% level: {}); P(not human) {:.2}, interval {:.2} to {:.2}, {}.",
+        "Litmus reads this text as {} (not ruled out at the 10% level: {}); chance of AI {}, {}.",
         document.label().word(),
-        set_words(verdict.set(STRIP_LEVEL)),
-        verdict.probability,
-        verdict.interval[0],
-        verdict.interval[1],
+        set_words(document.verdict.set(STRIP_LEVEL)),
+        chance.sentence(),
         counts.line()
     )
 }
@@ -189,16 +201,18 @@ fn failure(message: impl Into<String>) -> Value {
 }
 
 /// A successful reading as a tool result: the sentence, then the structured reading. `counts` are the words,
-/// characters and tokens of the text that was read.
-fn success(document: &DocumentReading, counts: &TextCounts, full: bool, file: Option<&str>) -> Result<Value, String> {
+/// characters and tokens of the text that was read, and `chance` the verdict's chance of AI, the number to quote
+/// (the reading's `probability` is calibrated on the reference texts as they are mixed, most of them not human).
+fn success(document: &DocumentReading, counts: &TextCounts, chance: &Chance, full: bool, file: Option<&str>) -> Result<Value, String> {
     let reading = if full {
         serde_json::to_value(document).map_err(|e| e.to_string())?
     } else {
         json!({"n_tokens": document.n_tokens, "chunk_tokens": document.chunk_tokens, "verdict": document.verdict})
     };
-    let text = sentence(document, counts);
+    let text = sentence(document, counts, chance);
     let mut structured = json!({
         "label": document.label().word(),
+        "chance": chance,
         "n_tokens": document.n_tokens,
         "words": counts.words,
         "characters": counts.characters,
@@ -222,7 +236,7 @@ fn check_text(scorer: &dyn Scorer, text: &str, full: bool, file: Option<&str>) -
     if tokens > MAX_TOKENS {
         return failure(format!("The text has {} tokens; at most {} are read. Split it and check the parts.", thousands(tokens), thousands(MAX_TOKENS)));
     }
-    match scorer.score(text).and_then(|document| success(&document, &TextCounts::of(text, document.n_tokens), full, file)) {
+    match scorer.score(text).and_then(|document| success(&document, &TextCounts::of(text, document.n_tokens), &scorer.chance(&document), full, file)) {
         Ok(result) => result,
         Err(message) => failure(message),
     }
@@ -478,6 +492,11 @@ mod tests {
         fn score(&self, text: &str) -> Result<DocumentReading, String> {
             if text.trim().is_empty() { Err("the text has no tokens, so no reading".into()) } else { Ok(self.0.clone()) }
         }
+
+        /// As a release whose calibration texts of this length are two thirds not human.
+        fn chance(&self, document: &DocumentReading) -> Chance {
+            Chance::at_even_odds(document.verdict.probability, document.verdict.interval, 2.0 / 3.0)
+        }
     }
 
     fn modern(method: &str, id: u64, params: Value) -> Value {
@@ -512,10 +531,11 @@ mod tests {
         assert_eq!(result["structuredContent"]["words"], 3, "the words of \"one two three\"");
         assert_eq!(result["structuredContent"]["characters"], 13);
         assert_eq!(result["structuredContent"]["n_tokens"], 200, "the tokens are the reading's own");
+        // The number to quote is the chance of AI: 0.81 where two thirds of the reference is not human is 68% at even odds.
+        let chance = &result["structuredContent"]["chance"];
+        assert!((chance["value"].as_f64().unwrap() - 0.6807).abs() < 1e-4 && (chance["reference_share"].as_f64().unwrap() - 2.0 / 3.0).abs() < 1e-12, "{chance}");
         let text = result["content"][0]["text"].as_str().unwrap();
-        assert!(text.starts_with("Litmus reads this text as AI (not ruled out at the 10% level: {AI}); P(not human) 0.81"), "{text}");
-        assert!(text.ends_with(", 3 words, 13 characters, 200 tokens."), "{text}");
-        assert_eq!(text.matches('.').count(), 4, "one sentence: {text}");
+        assert_eq!(text, "Litmus reads this text as AI (not ruled out at the 10% level: {AI}); chance of AI 68%, likely between 45% and 82%, 3 words, 13 characters, 200 tokens.");
     }
 
     #[test]

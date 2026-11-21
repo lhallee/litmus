@@ -1,5 +1,6 @@
-// Read the texts the ad's footage shows with the engine, and keep the numbers the ad draws around them (the strip's
-// position and band, the verdict word, the token count), so what the hook and the end card show is the engine's own.
+// Read the texts the ad's footage shows with the engine, and keep the numbers the ad draws around them (the chance of
+// AI and its range, which the strip marks and bands, the verdict word, the token count), so what the hook and the end
+// card show is the engine's own.
 //
 //   node tools/read_samples.mjs --litmus <litmus.exe> --out data/ad/readings.json [--manifest <release manifest.json>]
 //
@@ -35,24 +36,28 @@ for (const [name, text] of Object.entries(samples)) {
   const row = JSON.parse(execFileSync(resolve(args.litmus), ['score', '--json', '--no-cache', file], { encoding: 'utf8', maxBuffer: 1 << 28 }).trim().split('\n')[0]);
   const v = row.reading.verdict;
   const set = v.sets['0.1'];
+  if (!row.chance) throw new Error(`${resolve(args.litmus)} prints no chance of AI beside the reading: use a release whose \`litmus score --json\` carries \`chance\``);
   out[name] = {
     label: row.label,
     set,
     tokens: row.reading.n_tokens,
     probability: Number(v.probability.toFixed(4)),
+    // What the strip draws: the mark at the chance of AI and the pale band over its range.
+    chance: { value: Number(row.chance.value.toFixed(4)), interval: row.chance.interval.map((end) => Number(end.toFixed(4))) },
     strip: { position: Number(v.strip.position.toFixed(4)), band_lo: Number(v.strip.band_lo.toFixed(4)), band_hi: Number(v.strip.band_hi.toFixed(4)), unlike_reference: v.strip.unlike_reference },
     out_of_reference: v.out_of_reference,
   };
 }
-// The ad's captions say what these readings show ("AI", "It says when it can't tell", a human reading); a release that
-// reads a text differently must be given another text, not another caption by accident.
-const expected = { app: 'AI', quick_ai: 'AI', quick_short: 'uncertain', quick_human: 'human' };
-for (const [name, label] of Object.entries(expected)) {
-  if (out[name].label !== label) throw new Error(`${name} reads "${out[name].label}", not "${label}": choose another text for it in data/ad/texts and record the footage again`);
+// The footage shows what the storyboard says only if the model-written texts get a call that rules human out ("AI" or
+// "AI or mixed"), the short sentence gets no call ("It says when it can't tell"), and the novel's paragraph reads
+// human; a release that reads a text differently must be given another text, not another caption by accident.
+const expected = { app: ['AI', 'AI or mixed'], quick_ai: ['AI', 'AI or mixed'], quick_short: ['uncertain'], quick_human: ['human'] };
+for (const [name, labels] of Object.entries(expected)) {
+  if (!labels.includes(out[name].label)) throw new Error(`${name} reads "${out[name].label}", not ${labels.map((label) => `"${label}"`).join(' or ')}: choose another text for it in data/ad/texts and record the footage again`);
 }
 const manifest = args.manifest ? JSON.parse(readFileSync(resolve(args.manifest), 'utf8')) : null;
 writeFileSync(
   resolve(args.out),
-  JSON.stringify({ about: 'Measured by tools/read_samples.mjs: the engine\'s reading of each text the footage shows. Replaced by re-measuring with a new release.', model: manifest ? { version: manifest.model.version, size: manifest.model.size, checkpoint_step: manifest.model.checkpoint_step } : null, readings: out }, null, 1),
+  JSON.stringify({ about: 'Measured by tools/read_samples.mjs: the engine\'s reading of each text the footage shows. Replaced by re-measuring with a new release.', model: manifest ? { version: manifest.model.version, weights_sha256: manifest.model.files['model.safetensors'].sha256, size: manifest.model.size, checkpoint_step: manifest.model.checkpoint_step } : null, readings: out }, null, 1),
 );
 console.log(JSON.stringify(out, null, 1));

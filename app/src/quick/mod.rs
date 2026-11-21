@@ -5,7 +5,8 @@
 //! The selected text is read locally, through the platform's accessibility interface where the foreground app
 //! offers it (UI Automation's text pattern on Windows), else by simulating Copy with the clipboard saved first and
 //! restored after. Nothing leaves the machine. Per platform: `windows.rs` (built and tested on Windows), `unix.rs`
-//! (macOS and Linux: Linux on X11 built and run, macOS never compiled).
+//! (macOS and Linux: Linux on X11 built and run; macOS built and tested by the release workflow, its hotkey and copy
+//! route never run on a Mac).
 //!
 //! On Windows, Settings can also add a "Check with Litmus" entry to Explorer's right-click menu for the file kinds
 //! the app reads (per-user registry keys, removed again from Settings). There is no general way to add an item to
@@ -29,21 +30,21 @@ pub const DEFAULT_HOTKEY: &str = "Ctrl+Alt+L";
 /// The popup closes by itself after this long unless the pointer rests on it.
 pub const POPUP_SECONDS: u64 = 25;
 
-/// The one sentence Settings shows beside the switch.
+/// What Settings says beside the switch.
 #[cfg(target_os = "linux")]
 pub const SENTENCE: &str = "Quick check lets a hotkey read the text selected in any app while Litmus is open and show its reading \
-in a small window; the selection is read as it is, so nothing is copied, and it never leaves this computer. The hotkey works \
+in a small window. The selection is read as it is, so nothing is copied, and it never leaves this computer. The hotkey works \
 on X11, not on Wayland.";
-/// The one sentence Settings shows beside the switch.
+/// What Settings says beside the switch.
 #[cfg(not(target_os = "linux"))]
 pub const SENTENCE: &str = "Quick check keeps Litmus running in the background (tray icon) so that a hotkey reads the text \
-selected in any app and shows its reading in a small window by the pointer; the text is read from the app's accessibility \
+selected in any app and shows its reading in a small window by the pointer. The text is read from the app's accessibility \
 interface, or else by copying it with your clipboard saved first and put back after, and it never leaves this computer.";
 
 /// A hotkey from its words ("Ctrl+Alt+L"). At least one of Ctrl, Alt or the Windows / Command key is required, so
 /// the hotkey never takes over plain typing.
 pub fn parse_hotkey(words: &str) -> Result<HotKey, String> {
-    let hotkey = HotKey::try_from(words.trim()).map_err(|e| format!("\"{words}\" is not a hotkey: {e}"))?;
+    let hotkey = HotKey::try_from(words.trim()).map_err(|e| format!("\"{words}\" is not a hotkey ({e})"))?;
     let modifiers = hotkey.mods;
     use global_hotkey::hotkey::Modifiers;
     if !modifiers.intersects(Modifiers::CONTROL | Modifiers::ALT | Modifiers::META) {
@@ -220,7 +221,7 @@ fn tray(ctx: &eframe::egui::Context) -> Result<Tray, String> {
     let icon = tray_icon::Icon::from_rgba(crate::brand::icon_rgba(size), size as u32, size as u32).map_err(|e| e.to_string())?;
     let built = tray_icon::TrayIconBuilder::new()
         .with_menu(Box::new(menu))
-        .with_tooltip(format!("{}: quick check is on", crate::brand::NAME))
+        .with_tooltip(format!("{} quick check is on", crate::brand::NAME))
         .with_icon(icon)
         .build()
         .map_err(|e| e.to_string())?;
@@ -241,8 +242,8 @@ impl Quick {
     /// Register the hotkey and show the tray icon. Called only when the user's switch in Settings is on.
     pub fn start(ctx: &eframe::egui::Context, hotkey_words: &str) -> Result<Self, String> {
         let hotkey = parse_hotkey(hotkey_words)?;
-        let manager = GlobalHotKeyManager::new().map_err(|e| format!("the hotkey service did not start: {e}"))?;
-        manager.register(hotkey).map_err(|e| format!("{hotkey_words} could not be registered (another app may hold it): {e}"))?;
+        let manager = GlobalHotKeyManager::new().map_err(|e| format!("The hotkey service did not start ({e})."))?;
+        manager.register(hotkey).map_err(|e| format!("{hotkey_words} could not be registered. Another app may hold it ({e})."))?;
         // Every waker names the main window: its logic drains these queues, and a plain `request_repaint` from another
         // thread reaches whichever window is mid-pass, the popup's included.
         let waker = ctx.clone();
@@ -383,7 +384,7 @@ pub fn set_explorer_entry(on: bool) -> Result<(), String> {
     #[cfg(not(windows))]
     {
         let _ = on;
-        Err("the file-manager entry exists on Windows only; on macOS a Services entry is the native route (not built yet)".into())
+        Err("The file-manager entry exists on Windows only.".into())
     }
 }
 

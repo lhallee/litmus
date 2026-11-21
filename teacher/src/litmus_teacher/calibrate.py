@@ -12,9 +12,16 @@ Public functions:
     three_way(mean: ndarray (n, 3)) -> ndarray (n, 3)
     not_human_score(mean: ndarray (n, 3)) -> ndarray (n,)
     merge_bins(counts: ndarray (bins,) or (bins, c), min_rows: int) -> list[list[int]]
-    fit_calibration(readings: Readings, labels: ndarray (n,), *, min_rows: int = MIN_CELL_ROWS) -> dict[str, Any]
+    fit_calibration(readings: Readings, labels: ndarray (n,), *, min_rows: int = MIN_CELL_ROWS,
+                    sources: ndarray (n,) | None = None) -> dict[str, Any]
     save_table(table: dict[str, Any], path: Path) -> None;  load_table(path: Path) -> dict[str, Any]
     apply_calibration(table: dict[str, Any], readings: Readings) -> Verdicts
+    not_human_shares(table: dict[str, Any]) -> ndarray (bins,)
+    chance_log_odds(table: dict[str, Any], readings: Readings) -> ndarray (n,)
+    source_shifts(region: ndarray (m,), group: ndarray (m,), sources: ndarray (m,), regions: int, groups: int)
+        -> (shift (s, regions), variance (s, regions), usable (s, regions), names)
+    fit_between_sources(table: dict[str, Any], readings: Readings, labels: ndarray (n,), sources: ndarray (n,), *,
+                        level: float = BETWEEN_SOURCES_LEVEL) -> dict[str, Any]
     section_uncertainty(table: dict[str, Any], sections: Readings, level: float = 0.05) -> SectionUncertainty
     merge_p_values(p_values: ndarray (C, k)) -> ndarray (k,)
     combine_chunks(table: dict[str, Any], verdicts: Verdicts, level: float = 0.05) -> ChunkCombination
@@ -44,6 +51,13 @@ The methods, each fitted on the calibration split alone, per length group:
   parametric shape, and the interval's width is the evidence the calibration set holds near that score. Weak
   evidence from a short text shows as a probability near the base rate and a set of more than one origin, since
   both are fitted per length group.
+- **The range between sources** (`fit_between_sources`, when each calibration text's source is given). The
+  probability is one curve over every source pooled, and one source sits above or below it. At even odds of human and
+  not human the probability is the chance of AI (`chance_log_odds`); in each region of that chance, each source's
+  texts of one side are counted against where the side's other sources' texts of the same lengths fall
+  (`source_shifts`), and the shifts' spread across sources is taken apart from their sampling noise. The table's
+  `between_sources` holds the half width, in log odds, that holds the chance of `BETWEEN_SOURCES_LEVEL` of the
+  pairings of one human source with one not-human source; the engine widens the chance's range by it.
 - **Three-way probabilities.** `softmax(slope * log r + bias)` per length group, fitted by Newton's method on the
   calibration rows' log loss (temperature with a per-origin offset); a reading, not a set.
 - **The mechanism's own signals.** The spread of the pair probabilities against each origin's bank, as a percentile
@@ -91,6 +105,11 @@ RELIABILITY_BINS = 10
 SIGNIFICANT_DIGITS = 7
 LOG_FLOOR = 1e-12
 MERGE_FACTOR = 2.0  # twice the mean of p-values is a p-value under any dependence (merge_p_values)
+BETWEEN_SOURCES_LEVEL = 0.9  # the share of worlds (one human source with one not-human source) the range holds
+CHANCE_REGIONS = (0.01, 0.1, 0.3, 0.7, 0.9, 0.99)  # the chances of AI at which the between-source regions divide
+SOURCE_MIN_TEXTS = 30  # a source says nothing of a side it has fewer texts of
+SOURCE_MIN_EXPECTED = 5.0  # nor of a region where the other sources' texts of its lengths put fewer than this
+SOURCE_MIN_COUNT = 8  # fewest sources a region's spread is fitted from
 
 
 @dataclass(frozen=True)
@@ -371,9 +390,11 @@ def _rounded(value: Any) -> Any:
     return value
 
 
-def fit_calibration(readings: Readings, labels: np.ndarray, *, min_rows: int = MIN_CELL_ROWS) -> dict[str, Any]:
-    """The calibration table from the calibration split's readings and labels (0 human, 1 ai, 2 mixed)."""
-    # labels: (n,)
+def fit_calibration(readings: Readings, labels: np.ndarray, *, min_rows: int = MIN_CELL_ROWS,
+                    sources: np.ndarray | None = None) -> dict[str, Any]:
+    """The calibration table from the calibration split's readings and labels (0 human, 1 ai, 2 mixed). With each
+    text's source, the table also carries how far the chance of AI moves between sources (`fit_between_sources`)."""
+    # labels: (n,); sources: (n,) names
     labels = np.asarray(labels).astype(np.int64)  # (n,)
     if labels.shape != readings.tokens.shape or not np.isin(labels, range(len(ORIGINS))).all():
         raise ValueError("one label of 0, 1 or 2 per reading")
@@ -421,8 +442,11 @@ def fit_calibration(readings: Readings, labels: np.ndarray, *, min_rows: int = M
         "conformity": "r_y = mean_y / (mean_human + mean_ai + mean_mixed)",
         "conformal": conformal, "probability": venn, "three_way": softmax, "spread": spread, "closeness": closeness,
     }
+    table = _rounded(table)
+    if sources is not None:
+        table["between_sources"] = fit_between_sources(table, readings, labels, sources)
 
-    return _rounded(table)
+    return table
 
 
 def save_table(table: dict[str, Any], path: Path) -> None:
@@ -486,6 +510,161 @@ def apply_calibration(table: dict[str, Any], readings: Readings) -> Verdicts:
 
     return Verdicts(bins, p_values, sets, probability, interval, calibrated, spread_percentile, closeness_p,
                     closeness_p <= table["out_of_reference_level"])
+
+
+def not_human_shares(table: dict[str, Any]) -> np.ndarray:
+    """Per length bin, the share of not-human texts among the calibration texts behind its probability: (bins,).
+
+    One minus the human conformal groups' rows over the probability groups' rows, both over the fewest bins that the
+    two groupings split at the same places (the probability group itself whenever the human groups tile it)."""
+    bins = len(table["length_edges"])
+    human_starts = {min(entry["bins"]) for entry in table["conformal"]["human"]}
+    starts = sorted(human_starts & {min(entry["bins"]) for entry in table["probability"]})
+    shares = np.zeros(bins)  # (bins,)
+    for first, end in zip(starts, [*starts[1:], bins], strict=True):
+        total = sum(entry["n"] for entry in table["probability"] if first <= min(entry["bins"]) < end)
+        human = sum(entry["n"] for entry in table["conformal"]["human"] if first <= min(entry["bins"]) < end)
+        shares[first:end] = 1.0 - human / total
+    if not ((shares > 0) & (shares < 1)).all():
+        raise ValueError(f"every length bin's probability needs human and not-human calibration texts: {shares.tolist()}")
+
+    return shares  # (bins,)
+
+
+def chance_log_odds(table: dict[str, Any], readings: Readings) -> np.ndarray:
+    """The chance of AI of each reading in log odds: the probability of not human at even odds, (n,)."""
+    verdicts = apply_calibration(table, readings)
+    share = not_human_shares(table)[verdicts.length_bin]  # (n,)
+    probability = verdicts.probability  # (n,)
+    if not ((probability > 0) & (probability < 1)).all():
+        raise ValueError("a Venn-Abers probability of 0 or 1 has no log odds")
+
+    return np.log(probability / (1.0 - probability)) - np.log(share / (1.0 - share))  # (n,)
+
+
+def _random_effects(shifts: np.ndarray, variances: np.ndarray) -> tuple[float, float]:
+    """The mean of noisy effects and their spread beyond the noise (DerSimonian and Laird): (s,), (s,) to mean, tau."""
+    # shifts, variances: (s,)
+    weight = 1.0 / variances  # (s,)
+    fixed = (weight * shifts).sum() / weight.sum()
+    scatter = (weight * (shifts - fixed) ** 2).sum()
+    scale = weight.sum() - (weight**2).sum() / weight.sum()
+    between = max(0.0, (scatter - (len(shifts) - 1)) / scale)
+    weight = 1.0 / (variances + between)  # (s,)
+
+    return float((weight * shifts).sum() / weight.sum()), float(np.sqrt(between))
+
+
+def source_shifts(region: np.ndarray, group: np.ndarray, sources: np.ndarray, regions: int, groups: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, list[str]]:
+    """How each source's texts of one side fall across the chance's regions, against the side's other sources.
+
+    For a source with `SOURCE_MIN_TEXTS` texts or more: `observed[r]` of its texts fall in region `r`, where the other
+    sources' texts of the same length groups would put `expected[r]`. Its shift in the region is
+    `log((observed + 1/2) / (expected + 1/2))`, with sampling variance `1 / (observed + 1/2)`, usable where
+    `expected >= SOURCE_MIN_EXPECTED`. A world whose human texts are this source alone has a chance lower by the
+    shift in that region; one whose not-human texts are this source alone, higher by it.
+    """
+    # region, group: (m,) ints; sources: (m,) names
+    names = [str(name) for name, count in zip(*np.unique(sources, return_counts=True), strict=True) if count >= SOURCE_MIN_TEXTS]
+    pooled = np.zeros((groups, regions))  # (groups, regions) texts of the side
+    np.add.at(pooled, (group, region), 1.0)
+    shift, variance = np.zeros((len(names), regions)), np.ones((len(names), regions))  # (s, regions) each
+    usable = np.zeros((len(names), regions), dtype=bool)  # (s, regions)
+    for index, name in enumerate(names):
+        mine = sources == name  # (m,)
+        own = np.zeros((groups, regions))  # (groups, regions)
+        np.add.at(own, (group[mine], region[mine]), 1.0)
+        others = pooled - own  # (groups, regions)
+        compared = others.sum(1) > 0  # (groups,) the length groups other sources have texts in
+        share = others[compared] / others[compared].sum(1, keepdims=True)  # (g, regions)
+        expected = own[compared].sum(1) @ share  # (regions,)
+        observed = own[compared].sum(0)  # (regions,)
+        shift[index] = np.log((observed + 0.5) / (expected + 0.5))
+        variance[index] = 1.0 / (observed + 0.5)
+        usable[index] = expected >= SOURCE_MIN_EXPECTED
+
+    return shift, variance, usable, names  # (s, regions) each; names has s
+
+
+def _held_share(half_width: float, centers: np.ndarray, spreads: np.ndarray, weights: np.ndarray) -> float:
+    """The share of worlds whose shift is within `half_width` of zero, over regions of normal shifts: (r,) each."""
+    # centers, spreads, weights: (r,)
+    from math import erf, sqrt
+
+    held = 0.0
+    for center, spread, weight in zip(centers, spreads, weights, strict=True):
+        if spread <= 0:
+            held += weight * float(abs(center) <= half_width)
+        else:
+            upper, lower = (half_width - center) / spread, (-half_width - center) / spread
+            held += weight * 0.5 * (erf(upper / sqrt(2.0)) - erf(lower / sqrt(2.0)))
+
+    return held
+
+
+def fit_between_sources(table: dict[str, Any], readings: Readings, labels: np.ndarray, sources: np.ndarray, *,
+                        level: float = BETWEEN_SOURCES_LEVEL) -> dict[str, Any]:
+    """How far the chance of AI moves from one source of text to another: the table's `between_sources` entry.
+
+    The table's probability is fitted on every calibration text pooled. A reader's text comes from one kind of
+    writing, and the same score means more or less there. Take a world to be one human source and one not-human
+    source: the chance calibrated for that world alone differs from the pooled chance, in each region of the chance,
+    by the not-human source's shift minus the human source's (`source_shifts`). Across sources a region's shifts have
+    a mean and a spread beyond their sampling noise (`_random_effects`), so a world's shift there is about normal
+    with the difference of the two sides' means as its center and their spreads added in quadrature. A side with too
+    few sources in a region (hardly any human text reads near certain AI) takes the spread of its nearest fitted
+    region and no mean. `log_odds` is the half width, in log odds about the pooled chance, that holds `level` of the
+    worlds, regions weighted by their share of the calibration texts at even odds. The engine widens the chance's
+    range by it on each side (SPEC.md, Chance of AI).
+    """
+    # labels: (n,); sources: (n,) names
+    labels = np.asarray(labels).astype(np.int64)  # (n,)
+    sources = np.asarray(sources).astype(str)  # (n,)
+    if sources.shape != labels.shape or labels.shape != readings.tokens.shape:
+        raise ValueError("one label and one source per reading")
+    log_odds = chance_log_odds(table, readings)  # (n,)
+    edges = np.log(np.asarray(CHANCE_REGIONS) / (1.0 - np.asarray(CHANCE_REGIONS)))  # (regions - 1,)
+    region = np.searchsorted(edges, log_odds, side="right")  # (n,)
+    regions = len(CHANCE_REGIONS) + 1
+    probability_groups = [entry["bins"] for entry in table["probability"]]
+    group = group_of_bins(probability_groups, len(table["length_edges"]))[length_bins(readings.tokens)]  # (n,)
+    human = labels == HUMAN  # (n,)
+    fitted: dict[str, list[tuple[float, float] | None]] = {}
+    counts = {}
+    for side, keep in (("human", human), ("not_human", ~human)):
+        shift, variance, usable, names = source_shifts(region[keep], group[keep], sources[keep], regions, len(probability_groups))
+        counts[side] = len(names)
+        fitted[side] = [_random_effects(shift[usable[:, r], r], variance[usable[:, r], r]) if usable[:, r].sum() >= SOURCE_MIN_COUNT else None
+                        for r in range(regions)]
+        if all(entry is None for entry in fitted[side]):
+            raise ValueError(f"too few {side} sources with {SOURCE_MIN_TEXTS} texts to fit a spread between sources")
+    weights = 0.5 * np.bincount(region[human], minlength=regions) / human.sum() + 0.5 * np.bincount(region[~human], minlength=regions) / (~human).sum()  # (regions,)
+    centers, spreads = np.zeros(regions), np.zeros(regions)  # (regions,) each
+    entries = []
+    bounds = [0.0, *CHANCE_REGIONS, 1.0]
+    for r in range(regions):
+        sides = {}
+        for side in ("human", "not_human"):
+            own = fitted[side][r]
+            if own is None:  # the nearest fitted region's spread, and no mean
+                nearest = min((other for other in range(regions) if fitted[side][other] is not None), key=lambda other: (abs(other - r), other))
+                own = (0.0, fitted[side][nearest][1])
+            sides[side] = own
+        centers[r] = sides["not_human"][0] - sides["human"][0]
+        spreads[r] = float(np.hypot(sides["not_human"][1], sides["human"][1]))
+        entries.append({"chance": [bounds[r], bounds[r + 1]], "weight": float(weights[r]), "center": float(centers[r]), "spread": float(spreads[r]),
+                        "human": {"mean": sides["human"][0], "spread": sides["human"][1], "fitted": fitted["human"][r] is not None},
+                        "not_human": {"mean": sides["not_human"][0], "spread": sides["not_human"][1], "fitted": fitted["not_human"][r] is not None}})
+    low, high = 0.0, 20.0
+    for _ in range(60):
+        middle = (low + high) / 2.0
+        if _held_share(middle, centers, spreads, weights) < level:
+            low = middle
+        else:
+            high = middle
+
+    return _rounded({"level": level, "log_odds": (low + high) / 2.0, "sources": counts, "min_texts": SOURCE_MIN_TEXTS,
+                     "min_expected": SOURCE_MIN_EXPECTED, "regions": entries})
 
 
 def section_uncertainty(table: dict[str, Any], sections: Readings, level: float = 0.05) -> SectionUncertainty:

@@ -150,7 +150,7 @@ so. The cost figure plots TPR at 1% FPR against this cost and marks measured and
 | Window context gap | <!--litmus:t:test_window_gap-->mean position gap 0.012 (95th percentile 0.059), mean pooled gap 0.112, on interior windows<!--/litmus--> |
 | Every benchmark, every detector | <!--litmus:t:benchmarks_pointer-->6 other detectors on 14 benchmarks: the tables of [DEVELOPING.md](../DEVELOPING.md#results-in-full)<!--/litmus--> |
 | RAID leaderboard: TPR at 5% and 1% FPR, all attacks and none | <!--litmus:record.evaluation.raid_leaderboard-->Not submitted: RAID's test labels are hidden, and a submission is made only on the maintainer's word<!--/litmus--> |
-| Cost: ms per 1,000 words, peak memory, size on disk | <!--litmus:t:cost_row-->349 ms per 1,000 words on one core (Arm Neoverse-V2), a process peak of 65.1 MB, 18.5 MB on disk<!--/litmus--> |
+| Cost: ms per 1,000 words, peak memory, size on disk | <!--litmus:t:cost_row-->349 ms per 1,000 words on one core (Arm Neoverse-V2), a process peak of 63.1 MB, 18.5 MB on disk<!--/litmus--> |
 
 ## Where in the code
 

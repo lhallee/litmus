@@ -585,6 +585,12 @@ fn run_set(set: &str) {
         for piece in [1, 7, block - 1, block, block + 1] {
             assert_eq!(engine.score_ids(&ids, piece).unwrap(), reading, "{label}: pieces of {piece}");
         }
+        // So does a chunk held whole with each layer's blocks spread over threads (fewer than, as many as, and more
+        // than a short text has blocks), and the text path on threads equals the text path on one.
+        for threads in [1, 2, 3, 8] {
+            assert_eq!(engine.score_ids_threads(&ids, threads).unwrap(), reading, "{label}: {threads} threads");
+        }
+        assert_eq!(engine.score_threads(text, 3, &mut |_| litmus_engine::Flow::Continue).unwrap(), engine.score(text).unwrap(), "{label}: score(text) on 3 threads");
         // The surprise reading (SPEC.md, Surprise): the mean log probability within 2e-3 (scaled for a short text),
         // percentiles within 1e-2, and the text path equal to the id path.
         assert_eq!(engine.info().surprise, record.get("surprise").is_some(), "{label}: a surprise reading with the head");

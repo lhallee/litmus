@@ -103,7 +103,8 @@ python tools/verify_model.py path/to/release --sums release/SHA256SUMS
 
 - The Python training, corpus, and benchmark code runs on the trainer's machine with network access by design; the
   capability check lists what it downloads and uploads, and nothing here constrains it further.
-- The macOS and Linux paths of quick check (`app/src/quick/unix.rs`) have not been compiled or run.
+- Quick check outside Windows (`app/src/quick/unix.rs`): the Linux path was run on X11 under a virtual display,
+  and the macOS path is compiled and tested by the release workflow and has never been run on a Mac.
 - Reproducibility is verified on Windows x86-64 only (see [DEVELOPING.md](DEVELOPING.md#verify-the-build) for what is
   measured). Other platforms are untested.
 - What the model computes: a hash check proves which file you have, not what it does.

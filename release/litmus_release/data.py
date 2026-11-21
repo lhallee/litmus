@@ -18,7 +18,7 @@ from typing import Any
 
 from .commands import StageError
 from .stages import Context
-from .values import comparison_counts
+from .values import chance_ranges, comparison_counts
 
 
 class StaleDocument(StageError):
@@ -96,6 +96,9 @@ def model_facts(folder: Path) -> dict[str, Any]:
         "bank": bank,
         "bank_total": sum(bank.values()),
         "calibration_rows": config["calibration"]["calibration_rows"],
+        # The calibration texts the table was fitted on, by origin: the conformal table's own counts, which the split's
+        # counts exceed by its long documents (the export fits on texts of one chunk).
+        "calibration": {origin: sum(entry["n"] for entry in groups) for origin, groups in config["calibration"].get("conformal", {}).items()},
         "length_groups": len(config["calibration"]["length_bins"]),
     }
 
@@ -155,6 +158,9 @@ def documents(context: Context, targets_path: Path) -> Documents:
     if (work / "model" / "config.json").is_file():
         loaders["config"] = lambda: json.loads((work / "model" / "config.json").read_text(encoding="utf-8"))
         loaders["model"] = lambda: model_facts(work / "model")
+        if "between_sources" in loaders["config"]()["calibration"]:
+            # The range of the chance of AI as the programs print it, for a release whose table carries the shift between sources.
+            loaders["ranges"] = lambda: chance_ranges(loaders["config"]()["calibration"]["between_sources"])
     record = work / "record"
     if record.is_dir():
         for path in sorted(record.iterdir()):

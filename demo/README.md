@@ -86,22 +86,23 @@ Every number is measured and stored with its basis. The values below are the cur
 | Shown | Value | Basis |
 | --- | --- | --- |
 | The reading of each text in the footage | `data/ad/readings.json` | `litmus score --json` on the text, with the release named in the file |
-| Documents read | 120 (60 written by people, 60 written by AI), 595,890 tokens | `data/ad/hype_run.json`, `totals` |
+| Documents read | 120 (60 written by people, 60 written by AI), 727,357 tokens | `data/ad/hype_run.json`, `totals` |
 | One core | Every `litmus` process is launched with `start /affinity 40` (core 6 only), so it never runs on another core | the operating system's affinity mask, set at launch |
-| Tokens a second | 23,549, one process reading all 120 documents in 25.3 s; 13,786 when each document is read by a new process (0.133 s to start one, median of 7 runs on a one-word text); the engine's own benchmark says 24,229 | `data/ad/hype_run.json`, `totals`; the command line prints its readings only when it has read them all, so a per-document time needs a process per document, and the speed with the model loaded once needs the second pass |
-| Memory | 66 MB shown: the largest working set (physical memory held) of any `litmus` process in the run, 65.1 MB; the private part peaked at 49.1 MB; the engine reports 57.2 MB | Windows' process counters read every 50 ms or so by `tools/sample_process.ps1`; the shown figure is rounded up |
-| Processing share | `litmus` used 4.7% of the whole machine on average over the per-document run (0.75 of one core's worth, because starting a process is not processing); 5% to 6% at an instant while reading | the processor seconds of the `litmus` processes over the wall seconds and the machine's 16 logical cores; the machine's utilization (17% on average, so the "Other tools" row, the rest of the machine during the run, is about 13%) is `os.cpus()` every 100 ms, on an AMD Ryzen 7 3800X under Windows 10 that was doing other work; the ad names no other process |
-| Desktop app memory | 156 MB resident with the model loaded and idle, 172 MB at its peak while checking a 39,763-character text, 80 MB of it private; not shown in the ad | `data/ad/app_memory.json`: the Linux build on a virtual display with software rendering, from `/proc`; the figure includes the graphics stack the app loads, so a machine with a graphics card differs |
-| Playback | 43.2 s of recorded time shown in 8.1 s, "shown at ×5"; at the end the figures are the run's average processing and peak memory, not the last instant's | the factor is the recorded duration over the seconds the ad spends on it, computed from the data |
-| Tallies | written by people: 57 of 60 read as human, 2 mixed, 1 unlike reference (95%, 3%, 2%), 0 read as AI; written by AI: 60 of 60 read as AI (all five models, with and without formatting) | the verdict is the conformal set at the 10% level: one origin names itself, several read "uncertain"; counts in `data/ad/hype_run.json`, `tally`, `tally_by_model` and `tally_by_formatting` |
+| Tokens a second | 4,586, one process reading all 120 documents in 158.6 s; 4,096 when each document is read by a new process (0.156 s to start one, median of 7 runs on a one-word text); the engine's own benchmark says 4,744 | `data/ad/hype_run.json`, `totals`; the command line prints its readings only when it has read them all, so a per-document time needs a process per document, and the speed with the model loaded once needs the second pass |
+| Memory | 149 MB shown: the largest working set (physical memory held) of any `litmus` process in the run; the private part peaked at 129.9 MB; the engine reports 76.6 MB | Windows' process counters read every 50 ms or so by `tools/sample_process.ps1`; the shown figure is rounded up |
+| Processing share | `litmus` used 5.7% of the whole machine on average over the per-document run (0.92 of one core's worth, because starting a process is not processing) | the processor seconds of the `litmus` processes over the wall seconds and the machine's 16 logical cores; the machine's utilization (24% on average, so the "Other tools" row, the rest of the machine during the run, is about 18%) is `os.cpus()` every 100 ms, on an AMD Ryzen 7 3800X under Windows 10 that was doing other work; the ad names no other process |
+| Desktop app memory | 197 MB resident with the model loaded and idle, 279 MB at its peak while checking a 145,702-character text, 173 MB of it private; not shown in the ad | `data/ad/app_memory.json`: the Linux build on a virtual display with software rendering, from `/proc`; the figure includes the graphics stack the app loads, so a machine with a graphics card differs |
+| Playback | 177.6 s of recorded time shown in 8.1 s, "shown at ×22"; at the end the figures are the run's average processing and peak memory, not the last instant's | the factor is the recorded duration over the seconds the ad spends on it, computed from the data |
+| Tallies | written by people: 60 of 60 read as human; written by AI: 60 of 60 read as AI or mixed, with human ruled out (the 4 stories that keep Markdown and the 56 that do not) | the verdict is the conformal set at the 10% level: one origin names itself, several read "uncertain"; counts in `data/ad/hype_run.json`, `tally`, `tally_by_model` and `tally_by_formatting` |
 
-The model behind every number here is the interim release named in the data files; they are provisional until the
-final release replaces them (see the last section).
+The model behind every number here is the release named in the data files, 1.2.0's, measured on 2026-11-21 while
+other work used about a fifth of the machine. A quieter machine gives a lower "Other tools" row and a little more
+speed (see the last section).
 
 ## The GPU panel
 
 The speed shot adds one element when `data/ad/gpu_use.json` exists: a panel "GPU busy and GPU memory, by detector" with one row for Litmus
-and one for each of the five open detectors the benchmark results cover, each on the same 120 documents: Fast-DetectGPT, Desklib v1.01,
+and one for each of the five open detectors the benchmark results cover, each on the 120 documents the speed segment read on 2026-11-18: Fast-DetectGPT, Desklib v1.01,
 Binoculars, ModernBERT (Drayson), and e5-small-lora (named as the benchmark figures name them). A row is the detector's name over the GPU
 it was measured on ("A10" or "GH200"; Litmus's reads "CPU, one core"), a bar and a percentage for the share of time the GPU was busy while it
 read (`utilization.gpu` of `nvidia-smi`, averaged), and under the percentage its own process's peak GPU memory. Memory follows the ad's own
@@ -118,6 +119,12 @@ second or two (ModernBERT 1.4 s and 8 polls, e5-small-lora 0.9 s and 7 polls), s
 Binoculars read for 15 s and 5 s. Binoculars does not fit a 24 GB GPU (its worker ran out of memory loading on the A10 at 22.00 of 22.06 GiB), so its
 row was measured on a GH200, which is why every row names its GPU. RADAR, OpenAI RoBERTa-base, MAGE Longformer and RoBERTa (HC3) are not shown (not
 in the benchmark results; MAGE Longformer does not load under the image's transformers).
+
+The rows are 2026-11-18's and were not measured again when the speed segment's documents changed on 2026-11-21. The
+detectors read that day's sets, Federal Register rules and StoryScope stories (431,936 words), and the tiles beside
+the panel are now the short stories of the next section. The panel shows what hardware each detector occupied while
+it read long documents. It is not a reading of the same texts as the tiles, and a new measurement on the new sets
+needs a GPU machine (`python -m litmus_benchmarks gpu-use`).
 
 Layout. Tall: the panel sits under the two sets, which pushes the facts and the process list up and shortens the process list's two traces;
 wide: it sits under the facts at the left and the counts move under the sets.
@@ -138,22 +145,26 @@ both sets are drawn at random with the same fixed seed and kept to the same leng
 
 | Set | Source and provenance | License |
 | --- | --- | --- |
-| Written by people | Rules and proposed rules from the Federal Register published 2017 to 2019 (federalregister.gov API and the plain text of each), drawn from the same ten months of each year; their authorship is certain because they were published before any language model could write them, and the Federal Register is not among Litmus's training sources. Median 16,260 characters | Works of the U.S. government, public domain |
-| Written by AI | The test split of the StoryScope dataset (Hugging Face `jjrussell10/storyscope`, revision `befcb672`, published April 2026): stories each written in one generation by GPT-5.4, Claude Sonnet 4.6, DeepSeek V3.2, Kimi K2.5 or Gemini 3 Flash, 12 of each, one per prompt. It is a benchmark split, held out from Litmus's training (`corpus/sources.csv`: `storyscope_test`, `in_first_corpus` no). The text was fetched from the datasets server and checked identical to the pinned revision. Median 22,144 characters | MIT |
+| Written by people | Single short stories and novelettes from Project Gutenberg (ebooks whose subjects include "Short stories", one story to an ebook), mostly magazine fiction of the 1930s to 1960s. Each ebook's header names the story's original publication and year, so the authorship is certain: every one was printed decades before any language model. Only ebooks numbered 66143 to 79956 are drawn, because Litmus trained on `manu/project_gutenberg` at revision `164853d2`, whose English split ends at ebook 66142, so no story comes from that training source. What Gutenberg's volunteers added (transcriber's notes, illustration markers, the underscores that mark italics) is removed. Median 29,354 characters | Public domain in the United States |
+| Written by AI | Stories from LongStory (Hugging Face `THU-KEG/LongStory`, file `sft_premise.jsonl` at a pinned revision, checked by its SHA-256; StoryWriter, arXiv 2506.16445), each written by GPT-4o-mini through the StoryWriter multi-agent pipeline from a one-sentence premise. Neither LongStory nor StoryWriter is among Litmus's training sources. The pipeline's stop word is removed, a paragraph break is put back where it joins its sections, and unfinished stories, stories that hold the agents' messages to one another, and repeated texts are left out. Median 23,821 characters | MIT |
 
-How the sets were chosen: the human source is public-domain text with certain dates that is not a training source; the
-AI source is a public set of long, model-written documents with named generators and a held-out split, preferred over
-writing documents for the demo. Neither was picked by how its documents read, and no source was dropped. Two limits go with the data: the
-people-written documents are regulations and the AI-written ones are fiction, so a reading cannot be separated from
-genre; and 37 of the 60 AI stories keep the markdown headings or bold lines their generator wrote, which the
-regulations lack (the readings are the same, 100% AI, with and without them). The stories are also from the same
-generators Litmus's training split came from, so the AI reading is in-distribution. The final measurement should add
-a people-written set of the same genre (long fiction from before 2020) and an AI set from generators and a genre the
-training did not see.
+How the sets were chosen: both are whole works of popular genre fiction, so genre does not separate them, and
+neither source is among Litmus's training sources. The human source has certain dates; the AI source is a public set
+of long, model-written stories with a named generator, preferred over writing documents for the demo. Neither was
+picked by how its documents read, and `tools/fetch_sets.mjs` states every rule that leaves a document out. The limits
+that go with the data: the AI set has one generator, GPT-4o-mini, so the tally says nothing of other models; the
+human stories are decades older than the AI ones, so period is not matched; and 4 of the 60 AI stories keep Markdown
+their generator wrote, which the human stories lack (all 60 read the same way, with and without it).
+
+The cuts released with 1.0.0 and 1.1.0 read other sets: rules and proposed rules from the Federal Register (2017 to
+2019) and the test split of StoryScope (`jjrussell10/storyscope`, five generators). Regulations against fiction could
+not separate a reading from genre, which is why the sets changed. The GPU panel's rows were measured on those earlier
+sets (see The GPU panel).
 
 The ad shows only anonymous tiles and aggregates: no document is named and no named third party's document appears with
 a verdict. A reading is evidence about where a text came from, never proof of who wrote it, and the ad's words are about
-readings ("read as human", "read as AI", "uncertain or mixed"), not about authorship.
+readings ("read as human", "read as AI or mixed", "uncertain"; the cut released with 1.1.0 said "read as AI" and
+"uncertain or mixed"), not about authorship.
 
 Scientific papers from arXiv were tried in an earlier draw, and set aside: the interim model read 18 of 22 of them as
 "mixed", a limit of the interim model on equation-heavy PDF text.
@@ -211,10 +222,12 @@ README and the github.io site. `node render.mjs wide` (and `make.mjs`) also writ
 | `litmus_wide_site.mp4` | 1920 by 1080, H.264 high profile, CRF 21 capped at 6 Mbit/s, AAC 128 kbit/s, index at the front | 12.0 MB |
 | `litmus_wide_readme.mp4` | 1280 by 720, CRF 19 capped at 3 Mbit/s, AAC 96 kbit/s, the best quality that stays under 9.5 MB (the encoder steps CRF up until it does) | 8.1 MB |
 | `litmus_wide_poster.png` | 1920 by 1080, the last frame, the whole end card with the address `lhallee.github.io/litmus`: the poster of the site's video | 0.46 MB |
-| `litmus_wide_preview.webp` | The whole cut as a silent animated WebP, 800 pixels wide at 10 frames a second, quality 70 (stepped down by 10 until it fits 6 MB): the README's moving image, linked to the site | 4.7 MB |
+| `litmus_wide_preview.webp` | Three shots of the cut (the hook, quick check, and the end card, 18.5 seconds) as a silent animated WebP, 1,280 pixels wide at 12 frames a second, quality 80 (75, then 70, until it fits 8 MB, and never coarser): the README's moving image, linked to the site | 6.3 MB |
+| `litmus_wide_film.json` | The model the film's readings and speed were measured with (its weights' SHA-256), and the encodes' sizes | under 1 KB |
 
-`litmus_wide.mp4` itself is 18.2 MB (CRF 16, the master); `--web-only` remakes just these four from it. The release's
-`film` stage copies the preview from `<work>/media/` to `docs/images/`, so a new film reaches the README with the release.
+`litmus_wide.mp4` itself is 18.2 MB (CRF 16, the master); `--web-only` remakes just these five from it. The release's
+`film` stage copies the preview from `<work>/media/` to `docs/images/`, so a new film reaches the README with the release,
+and it refuses a film whose `litmus_wide_film.json` names other weights than the release's, or none.
 
 **What the research found (read 2026-11-18).**
 
@@ -228,13 +241,17 @@ README and the github.io site. `node render.mjs wide` (and `make.mjs`) also writ
 
 **Recommendation.**
 
-- **README: the animated preview (`litmus_wide_preview.webp`, 4.7 MB), linked to the site.** Decided 2026-11-19 after
+- **README: the animated preview (`litmus_wide_preview.webp`, 6.3 MB), linked to the site.** Decided 2026-11-19 after
   the README's linked poster was found not to render (it was never copied to `docs/images/`) and Logan asked for a GIF,
   something shorter, or a picture. An animated image plays on its own, loops, and needs no manual upload, so a release
   refreshes it with no step by hand. A GIF of the whole cut was 19 to 23 MB even at 640 to 800 pixels, over the 10 MB image
-  limit and slow to load, while animated WebP at 800 pixels is 4.7 MB with the captions sharp; current Chrome, Edge,
-  Firefox, and Safari play animated WebP. The sound plays on the site, which the image links to. The uploaded video
-  (`litmus_wide_readme.mp4`) stays available for a player with sound, but it needs the manual upload described below.
+  limit and slow to load; current Chrome, Edge, Firefox, and Safari play animated WebP. The first preview was the whole
+  cut at 800 pixels, 10 frames a second, and quality 70 in 4.7 MB, and on the README its text and dark grounds broke into
+  blocks (Logan, 2026-11-21: "extremely pixelated ... If we can't get it to look high quality, we should just get rid of
+  it"). The whole cut at 1,280 pixels and quality 80 is 13.8 MB, so since 2026-11-21 the preview is three shots at that
+  sharpness (the hook, quick check, and the end card) in 6.3 MB, and the encoder drops no further than quality 70. The
+  sound and the other shots play on the site, which the image links to. The uploaded video (`litmus_wide_readme.mp4`)
+  stays available for a player with sound, but it needs the manual upload described below.
 - **Site: a `<video>` element on the page, from the site's own files (`litmus_wide_site.mp4` and the poster).** The site
   makes no request to any other host (`site/README.md`), a release asset cannot serve a `<video>` reliably (the
   redirect, the forced download type, no CORS), and Pages allows far more than 12 MB. The files live in the `gh-pages`
@@ -361,41 +378,66 @@ bundled into Litmus itself; these tools render the ad.
 
 ## A new release's film
 
-The film released with 1.0.0 was never rendered from it. `data/ad/readings.json`, `data/ad/hype_run.json` and
-`data/ad/app_memory.json` are the interim model's (step 4,999, measured 2026-11-18), so the film shows 23,549 tokens a
-second and 66 MB where 1.0.0 measured 28,267 tokens a second in `litmus bench`. Logan asked on 2026-11-19 for the film to
-be rendered again for 1.1. In order:
+A film is a release's own. `render.mjs` writes `litmus_wide_film.json` with the weights its readings and its speed
+were measured with, and the release's `film` stage refuses a film that names other weights. The films released with
+1.0.0 and 1.1.0 were the interim model's (step 4,999) and showed its speed, 23,549 tokens a second, where 1.1.0 reads
+4,971 on one core, which Logan asked to have put right on 2026-11-19 and again on 2026-11-21. 1.2.0's film was
+captured, measured, and rendered on 2026-11-21 from builds of the 1.2 source with the release's model. In order, on
+the Windows desktop with Docker Desktop running (Logan allowed it for short Docker jobs on 2026-11-19; it runs the
+x86_64 Linux build natively, which the aarch64 GH200s cannot):
 
-1. Run the release through `verify` as usual. The builds take the film already in `<work>/media/`, the old one.
-2. On the Windows desktop with Docker Desktop running (Logan allowed it for short Docker jobs on 2026-11-19; it runs the
-   x86_64 Linux build natively, which the aarch64 GH200s cannot), capture from the release's Linux build:
-   `bash capture/run_linux.sh local <work>/ad/capture_stage <work>/build/linux/litmus-app <work>/measure/document.txt <work>/ad/clips`.
-   The image build and the three scenes take minutes. Over SSH, the same script runs on any x86_64 Linux machine with Docker.
-3. On the Windows desktop, with the machine otherwise quiet (the speed run is pinned to one core and counts the
-   machine's utilization): `npm ci` and `npx playwright install chromium` in `demo/` once, then
-   `py release/cut.py run --work <work> --only ad --ad-clips <clips folder>`. It reads the footage's texts again and
-   stops if the new model reads one differently from its caption (then replace the text and capture again), measures
-   speed and memory, recaptures the browser checker, and renders every cut into `<work>/ad/out/`.
-4. Review the stills in `<work>/ad/out/stills/wide/`, then copy `litmus_wide_site.mp4`, `litmus_wide_poster.png`, and
-   `litmus_wide_preview.webp` from `<work>/ad/out/` to `<work>/media/`.
-5. Run `film`, `build-windows`, and `verify` again, so the README's preview and the site's film are the new ones, before
-   `assemble`.
+1. Have the programs the film shows: the release's Windows and Linux builds, or trial builds of the same source and
+   model (`release/build_release.py --allow-dirty`, `release/build_linux.sh`) when the film must be ready before the
+   release commit. The screens are the same.
+2. Capture from the Linux build:
+   `bash capture/run_linux.sh local <stage folder> <litmus-app> <work>/measure/document.txt <clips folder>`
+   (`litmus bench --print-text` writes that document). Over SSH, the same script runs on any x86_64 Linux machine
+   with Docker. The capture finds the editor's lines on the screen before it selects them (`selections` in
+   `capture/linux_capture.py`) and stops if it does not see four paragraphs. Look at a frame of each popup before
+   going on: a selection that missed reads "No reading".
+3. `npm ci` and `npx playwright install chromium` in `demo/` once, then
+   `node make.mjs --work <dir> --litmus <litmus.exe> --site <built site> --manifest <manifest.json> --clips <clips folder> --cuts wide`.
+   It reads the footage's texts again and stops if the model reads one differently from its caption (then replace
+   the text and capture again), measures speed and memory, recaptures the browser checker, prepares the footage, and
+   renders. Keep the machine as quiet as it can be for the measurement: the run is pinned to one core, and the shot
+   draws the rest of the machine's utilization as "Other tools". `--cuts wide` renders the one cut a release ships;
+   without it the ad and the teaser follow.
+4. Review the stills in `<dir>/out/stills/wide/`, then copy `litmus_wide_site.mp4`, `litmus_wide_poster.png`,
+   `litmus_wide_preview.webp`, and `litmus_wide_film.json` from `<dir>/out/` to `<work>/media/`.
+5. Run the release's `film` stage, then its builds, so the README's preview and the site's film are the new ones.
 
-- TODO(film_render_1_1): render the film from the 1.1 release by the steps above; it waits on the 1.1 release.
+`py release/cut.py run --work <work> --only ad --ad-clips <clips folder>` does steps 3 and 4's render from a finished
+release's builds instead.
+
+**How long it takes.** On the 8-core desktop (AMD Ryzen 7 3800X) on 2026-11-21, while other work used about a fifth
+of the machine: the capture 1.5 minutes, the speed and memory measurement 5.8, the checker and the footage 1.0, and
+the wide cut 4.3, about 13 minutes in all. The wide cut's 1,247 frames were drawn and encoded in 95 s by 8 pages.
+`render.mjs` cuts a film into 2-second pieces, and each page takes the next piece when it finishes one, so a slow
+stretch of the film no longer holds up a page that drew a fast one; the sound and the web encodes take the rest.
 
 What else to know before rendering:
 
-- The GPU panel (`data/ad/gpu_use.json`) keeps its 2026-11-18 measurement unless `python -m litmus_benchmarks gpu-use`
-  is run again on a GPU machine; it measures the other detectors, which a new Litmus does not change.
-- The two document sets differ in genre and the AI set is in-distribution (see "The documents"); the final measurement
-  should use a genre-matched, people-written set and an AI set the training did not see.
-- The memory figure is the command line's. The desktop app holds more (156 to 172 MB on the Linux build with software
-  rendering), and a release with a different model or engine changes both.
-- The footage's texts were chosen so the interim model reads them clearly (the model-written essay as AI, a short sentence
-  as uncertain, a novel's narration as human); `tools/read_samples.mjs` stops the pipeline if the final model reads one
+- **No text reads "AI" alone with this model.** The pasted essay's set keeps AI and mixed and rules human out, beside
+  a chance of AI of over 99%, and so does every model-written document of the speed run. The app, the command line,
+  and the tools read that set "AI or mixed" (Logan, 2026-11-21), `tools/read_samples.mjs` accepts "AI" or "AI or
+  mixed" for the model-written texts, and the speed shot counts "read as AI or mixed" for every verdict that rules
+  human out and names what remains.
+- **The hook's strip is the app's.** Its mark is the chance of AI and its pale band that chance's range
+  (`src/ad/hook.ts`, from `chance` in `data/ad/readings.json`). For the hook's short sentence the chance is 64% and
+  the range 30% to 88%, so the band opens over most of the strip and the beat stands. Through 1.1.0 the band covered
+  the origins the reading could not rule out.
+- **The speed shot says "One CPU core".** The app and `litmus score` read on every processor, 6.8 times faster on
+  16 logical processors. `tools/measure_run.mjs` still pins one core, so the shot stays true as written and
+  undersells what a user sees.
+- The GPU panel (`data/ad/gpu_use.json`) keeps its 2026-11-18 measurement, on that day's documents, unless
+  `python -m litmus_benchmarks gpu-use` is run again on a GPU machine (see The GPU panel).
+- The memory figure is the command line's. The desktop app holds more (197 MB with the model loaded and 279 MB at
+  its peak on the Linux build with software rendering), and a release with a different model or engine changes both.
+- The footage's texts were chosen to read clearly (the model-written essay as AI or mixed, a short sentence as
+  uncertain, a novel's narration as human); `tools/read_samples.mjs` stops the pipeline if a model reads one
   differently, and the text is then replaced and `capture/run_linux.sh` run again.
+- The browser checker is given its text by a `paste` event, as Ctrl+V gives it. Typed text loses its paragraph
+  breaks in the page's text box, and the page then counts other tokens than the app does for the same essay.
 - The scenes anchor the footage's press of Check to the reading's arrival; a release that reads at another speed moves the
   `app_check` and `web_check` sound cues by the difference (`data/ad/timeline.json`).
-- The Linux footage is recorded from the Linux build; the final Windows and Linux programs are rebuilt from the release
-  folder, so record again from the final Linux build.
-- The tallies on screen are whatever the final model reads; nothing in the scene assumes 100% or 0%.
+- The tallies on screen are whatever the model reads; nothing in the scene assumes 100% or 0%.

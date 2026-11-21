@@ -1,6 +1,6 @@
-// The litmus strip as the site draws it (blue human, purple mixed, red AI, a dashed pale band over what the
-// reading cannot rule out, a dark mark at the position), plus the film's one addition: the color wicks into
-// unreacted paper from the left, as it does into a real strip of litmus paper.
+// The litmus strip as the site draws it (blue human through purple to red AI, a mark at the chance of AI, a dashed
+// pale band over that chance's range), plus the film's one addition: the color wicks into unreacted paper from the
+// left, as it does into a real strip of litmus paper.
 
 import { clamp, lerp } from '../motion';
 import { brand, fonts, type Ground } from '../palette';
@@ -21,9 +21,10 @@ export interface StripState {
   band: [number, number] | null;
   /** The band opening from the mark out to its ends, 0 to 1. */
   bandIn: number;
-  /** Opacity of the Human, Mixed, AI labels under the strip. */
+  /** Opacity of the labels under the strip's ends, Human and AI. */
   labels: number;
   labelSize?: number;
+  /** The words under the left end, the middle, and the right end; the middle is empty as in the app. */
   labelText?: [string, string, string];
 }
 
@@ -58,7 +59,7 @@ export const strip = (s: StripState): string => {
     return `<g transform="translate(0 ${drop.toFixed(2)})" opacity="${alpha.toFixed(3)}"><rect x="${mx.toFixed(2)}" y="${(pad - over).toFixed(2)}" width="${mw.toFixed(2)}" height="${(h + over * 2).toFixed(2)}" rx="${(mw / 2).toFixed(2)}" fill="${g.ink}" stroke="${g.markRing}" stroke-width="${Math.max(2, h * 0.09).toFixed(2)}" paint-order="stroke"/></g>`;
   })();
 
-  const labelText = s.labelText ?? ['Human', 'Mixed', 'AI'];
+  const labelText = s.labelText ?? ['Human', '', 'AI'];
   const labels =
     s.labels > 0
       ? `<g font-family="${fonts.body}" font-size="${labelSize}" font-weight="500" opacity="${s.labels.toFixed(3)}">` +

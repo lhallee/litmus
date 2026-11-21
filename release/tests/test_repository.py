@@ -10,14 +10,16 @@ from litmus_release import cli, registry, slots
 from litmus_release.data import documents as load
 from litmus_release.datapath import parse_path, split_key
 from litmus_release.documents import FALLBACK, markdown_files, read_text
-from litmus_release.values import FIELD, TABLES, Values, comparison_counts
+from litmus_release.values import FIELD, TABLES, Values, chance_ranges, comparison_counts
 from tests.conftest import RESULTS
 
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 # The data documents a slot may name: the driver's own, and the files of the record folder the documents read (release/RELEASING.md).
 DOCUMENTS = {"plan", "release", "target", "config", "model", "record", "results", "results_md", "counts", "links", "bench", "browser", "build", "linux_build",
-             "evaluation_test", "evaluation_test_full", "evaluation_validation", "teacher_metrics", "teacher_uncertainty", "lengths"}
+             "evaluation_test", "evaluation_test_full", "evaluation_validation", "teacher_metrics", "teacher_uncertainty", "lengths",
+             # The range of the chance of AI: what the programs print (`ranges`), and the record's file of the fit's checks.
+             "ranges", "chance_range"}
 
 
 def all_slots() -> list[tuple[str, str]]:
@@ -125,6 +127,11 @@ def test_every_slot_of_the_repository_renders_from_data_shaped_as_its_key_reads_
     made = fabricate(keys)
     available = load(context, REPOSITORY / "release" / "targets.toml")
     merged = {name: available[name] for name in available if name not in ("results", "counts")}
+    # The slots read a table with the conformal groups and the shift between sources, which a model before this release lacks.
+    between = {"level": 0.9, "log_odds": 1.431902, "sources": {"human": 37, "not_human": 75}}
+    merged["config"] = {**merged["config"], "calibration": {**merged["config"]["calibration"], "between_sources": between}}
+    merged["model"] = {**merged["model"], "calibration": {"human": 15, "ai": 15, "mixed": 15}}
+    merged["ranges"] = chance_ranges(between)
     results = dict(RESULTS)
     for name in ("rows", "costs"):
         results[name] = [dict(row) for row in results[name]]
@@ -140,7 +147,7 @@ def test_every_slot_of_the_repository_renders_from_data_shaped_as_its_key_reads_
     merged["results"] = results
     merged["counts"] = comparison_counts(results)
     merged["results_md"] = {"benchmarks": "table", "flag_rates": "table", "throughput": "table"}
-    for name in ("record", "bench", "browser", "evaluation_test", "teacher_metrics", "teacher_uncertainty", "lengths"):
+    for name in ("record", "bench", "browser", "evaluation_test", "teacher_metrics", "teacher_uncertainty", "lengths", "chance_range"):
         merged[name] = made.get(name, {})
     merged["bench"] = {**merged["bench"], "machine": {"name": "n", "processor": "p", "system": "s", "backend": "avx2"}}
     renderer = Values.with_templates(merged, REPOSITORY / "release" / "templates.toml")

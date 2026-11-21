@@ -1,25 +1,26 @@
 {
  "about": "Measured by capture/linux_capture.py (the memory scene) and summarized by tools/read_app_memory.mjs: the Linux desktop app with the model loaded, then checking one long text.",
  "basis": {
-  "measured_at": "2026-11-18T22:01:43.051Z",
+  "measured_at": "2026-11-21T19:12:33.362Z",
   "where": "the Linux build of the app in a container on a virtual display, software rendering, no GPU, six processor cores available to the container; the app is not pinned to one core, so the processor figure is what it used, not a limit",
   "counters": "/proc/<pid>/status VmRSS (resident now), VmHWM (resident at its peak), RssAnon (the private part), sampled every 100 ms; processor time from /proc/<pid>/stat",
-  "text_characters": 39763,
+  "text_characters": 145702,
   "model": {
-   "version": "sha256:2beea4431f731fb4",
-   "size": "d192 L4",
-   "checkpoint_step": 4999
+   "version": "sha256:537736c2bb33a839",
+   "weights_sha256": "5c3ac1685e72924073c18015d7ed9601359f47b4322932499d695f6f8df18cf8",
+   "size": "d512 L6",
+   "checkpoint_step": 43451
   }
  },
  "memory_mb": {
-  "idle_resident": 155.9,
-  "pasted_resident": 164.7,
-  "checking_peak_resident": 172.4,
-  "checking_peak_private": 79.8
+  "idle_resident": 197.4,
+  "pasted_resident": 223,
+  "checking_peak_resident": 278.6,
+  "checking_peak_private": 172.7
  },
  "processor": {
-  "window_wall_seconds": 12,
-  "window_cpu_seconds": 2.44,
+  "window_wall_seconds": 11.9,
+  "window_cpu_seconds": 15.82,
   "window": "the 12 s from pressing Check, which includes the seconds after the reading, when the app is idle"
  }
 }

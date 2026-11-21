@@ -6,17 +6,19 @@
 //   node render.mjs ad     --work <dir> --footage <dir>   the ad          -> <out>/litmus_ad.mp4
 //   node render.mjs teaser --work <dir> --footage <dir>   the teaser      -> <out>/litmus_teaser.mp4
 //   node render.mjs wide   --work <dir> --footage <dir>   the wide cut   -> <out>/litmus_wide.mp4, with its web encodes
-//   node render.mjs all    --work <dir> --stills          all three, with a still at each beat of review
+//   node render.mjs all    --work <dir> --stills          all three (the wide cut first), with a still at each beat of review
+//   node render.mjs wide,ad --work <dir>                  the cuts named, in that order
 //   node render.mjs ad     --work <dir> --preview         build only, and print an address that plays the cut live
 //   node render.mjs wide   --work <dir> --web-only        remake only the wide cut's web encodes from its finished file
 //
-// Options: --gpu-use <json> (the measured GPU figures; default data/ad/gpu_use.json, and the speed shot has no GPU panel without it), --footage <dir> (the output of tools/prepare_footage.mjs; default <work>/footage), --workers 3 (pages drawing
-// in parallel), --crf 16, --stills, --no-video, --no-audio, --from <s> --to <s> (a slice), --out <dir> (default
+// Options: --gpu-use <json> (the measured GPU figures; default data/ad/gpu_use.json, and the speed shot has no GPU panel without it), --footage <dir> (the output of tools/prepare_footage.mjs; default <work>/footage), --workers <n> (pages drawing
+// in parallel, each with its own encoder; default half the logical processors, between 2 and 12), --chunk <frames> (the frames a worker takes at a time; default two seconds of film), --crf 16, --stills, --no-video, --no-audio, --from <s> --to <s> (a slice), --out <dir> (default
 // <work>/out), --install (install the dependencies and stop). $LITMUS_DEMO_WORK sets --work.
 
 import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { availableParallelism } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -35,14 +37,20 @@ const parseArgs = (argv) => {
 
 const args = parseArgs(process.argv.slice(2));
 const which = args._[0] ?? 'ad';
-const cutNames = which === 'all' ? ['ad', 'teaser', 'wide'] : [which];
+// The wide cut goes first: a release needs it alone (the site's film and the README's preview), so its files are there
+// while the vertical cuts still draw.
+const cutNames = which === 'all' ? ['wide', 'ad', 'teaser'] : which.split(',');
 const workArg = args.work ?? process.env.LITMUS_DEMO_WORK;
 if (!workArg) throw new Error('give --work <dir> (or set LITMUS_DEMO_WORK): a folder outside the tree for node_modules, the build and the output');
 const work = resolve(workArg);
 const footage = resolve(args.footage ?? join(work, 'footage'));
 const outDir = resolve(args.out ?? join(work, 'out'));
-const workers = Number(args.workers ?? 3);
+// A worker is one page drawing frames and one encoder of two threads, so half the logical processors is the count
+// that keeps every one of them busy without queueing (measured on 16 logical processors; README.md, Rendering).
+const workers = Number(args.workers ?? Math.max(2, Math.min(12, Math.floor(availableParallelism() / 2))));
 const crf = String(args.crf ?? 16);
+/** Seconds of film in one piece of work: long enough that starting an encoder costs nothing, short enough that workers stay level. */
+const CHUNK_SECONDS = 2;
 
 /** Install the pinned dependencies into the work folder when its lock differs from ours. */
 const ensureDeps = () => {
@@ -146,17 +154,51 @@ const mux = async (ffmpegPath, silent, wav, final, seconds, target) => {
 
 /** GitHub takes a video of up to 10 MB into a README on a free plan (docs.github.com, "Attaching files"); stay under it with room to spare. */
 const README_BUDGET_BYTES = 9_500_000;
-// The README's animated preview: the whole wide cut at 800 pixels and 10 frames a second, about 4.7 MB at quality 70.
-const PREVIEW_WIDTH = 800;
-const PREVIEW_FPS = 10;
-const PREVIEW_BUDGET_BYTES = 6_000_000;
+// The README's animated preview: three shots of the wide cut (the hook, quick check, and the end card, about 18 seconds),
+// 1,280 pixels wide at 12 frames a second, about 6.3 MB at quality 80. The whole cut at 800 pixels, 10 frames a second and
+// quality 70 fit in 4.7 MB, and its text and dark grounds broke into blocks; the whole cut this sharp is about 14 MB. So the
+// preview is shorter, never coarser: over the budget, a shot leaves PREVIEW_SHOTS before the quality goes under 70.
+const PREVIEW_WIDTH = 1280;
+const PREVIEW_FPS = 12;
+const PREVIEW_SHOTS = ['hook', 'quick', 'end'];
+const PREVIEW_QUALITIES = [80, 75, 70];
+const PREVIEW_BUDGET_BYTES = 8_000_000;
+/** What the release's `film` stage reads beside the preview: the model the film's numbers were measured with. */
+const FILM_RECORD = 'litmus_wide_film.json';
+
+/** The seconds each of PREVIEW_SHOTS takes in the wide cut, from the timeline's bars. */
+const previewRanges = (timeline) => {
+  const bar = timeline.beats_per_bar * (60 / timeline.bpm);
+  const ranges = [];
+  let at = 0;
+  for (const shot of timeline.cuts[timeline.aliases.wide].shots) {
+    if (PREVIEW_SHOTS.includes(shot.name)) ranges.push([at, at + shot.bars * bar]);
+    at += shot.bars * bar;
+  }
+  if (ranges.length !== PREVIEW_SHOTS.length) throw new Error(`the wide cut has ${ranges.length} of the preview's shots ${PREVIEW_SHOTS.join(', ')}`);
+  return ranges;
+};
+
+/** The model the film's data was measured with: the readings' and the speed run's must be one release's. */
+const filmModel = () => {
+  const data = (name) => JSON.parse(readFileSync(join(here, 'data/ad', name), 'utf8'));
+  // tools/read_samples.mjs names the model at the top of its file, tools/measure_run.mjs under `basis`.
+  const readings = data('readings.json').model ?? null;
+  const speed = data('hype_run.json').basis?.model ?? null;
+  if (!readings?.weights_sha256) throw new Error('data/ad/readings.json names no model: measure it with --manifest <release manifest.json>');
+  if (readings?.weights_sha256 !== speed?.weights_sha256) {
+    throw new Error(`data/ad/readings.json was measured with weights ${readings?.weights_sha256} and data/ad/hype_run.json with ${speed?.weights_sha256}: measure both with one release`);
+  }
+  return readings;
+};
 
 /**
  * The wide cut's encodes for the web, made from the finished file: `litmus_wide_site.mp4` (1920 by 1080, for the site's own
  * video element), `litmus_wide_readme.mp4` (1280 by 720, the highest quality that fits README_BUDGET_BYTES, for the
- * README's upload), `litmus_wide_poster.png` (the last frame, the whole end card with the site's address, for the video element's poster), and
- * `litmus_wide_preview.webp` (the whole cut as a silent animated WebP within PREVIEW_BUDGET_BYTES, the README's moving image, which the release's
- * `film` stage copies to docs/images). The videos are H.264 high profile, yuv420p, BT.709, AAC, with the index at the front (faststart).
+ * README's upload), `litmus_wide_poster.png` (the last frame, the whole end card with the site's address, for the video element's poster),
+ * `litmus_wide_preview.webp` (PREVIEW_SHOTS as a silent animated WebP within PREVIEW_BUDGET_BYTES, the README's moving image, which the release's
+ * `film` stage copies to docs/images), and `litmus_wide_film.json` (the model the film's numbers were measured with, which that stage holds to
+ * the release's). The videos are H.264 high profile, yuv420p, BT.709, AAC, with the index at the front (faststart).
  */
 const webEncodes = async (ffmpegPath, final, timeline) => {
   const tags = ['-color_primaries', 'bt709', '-color_trc', 'bt709', '-colorspace', 'bt709', '-color_range', 'tv'];
@@ -178,15 +220,23 @@ const webEncodes = async (ffmpegPath, final, timeline) => {
   // The README's preview: GitHub plays no video stored in a repository, but an animated WebP autoplays, loops, and stays
   // silent like an image (the captions are burned in). A GIF of the whole cut is four to five times larger.
   const preview = join(outDir, 'litmus_wide_preview.webp');
-  let quality = 70;
-  for (; quality >= 40; quality -= 10) {
-    await run(ffmpegPath, ['-y', '-loglevel', 'error', '-i', final, '-an', '-vf', `fps=${PREVIEW_FPS},scale=${PREVIEW_WIDTH}:-2:flags=lanczos`,
+  // Frames inside the preview's shots, retimed to follow one another; each shot dips through dark at its ends, so they join.
+  const ranges = previewRanges(timeline);
+  const kept = ranges.map(([from, to]) => `gte(t,${from.toFixed(6)})*lt(t,${to.toFixed(6)})`).join('+');
+  let quality = PREVIEW_QUALITIES[0];
+  for (quality of PREVIEW_QUALITIES) {
+    await run(ffmpegPath, ['-y', '-loglevel', 'error', '-i', final, '-an', '-vf', `select='${kept}',setpts=N/FRAME_RATE/TB,fps=${PREVIEW_FPS},scale=${PREVIEW_WIDTH}:-2:flags=lanczos`,
       '-c:v', 'libwebp_anim', '-quality', String(quality), '-compression_level', '6', '-loop', '0', preview]);
     if (statSync(preview).size <= PREVIEW_BUDGET_BYTES) break;
   }
-  if (statSync(preview).size > PREVIEW_BUDGET_BYTES) throw new Error(`the README preview is over ${PREVIEW_BUDGET_BYTES} bytes even at quality 40`);
+  if (statSync(preview).size > PREVIEW_BUDGET_BYTES) {
+    throw new Error(`the README preview is over ${PREVIEW_BUDGET_BYTES} bytes at quality ${quality}: take a shot out of PREVIEW_SHOTS, a coarser preview is not wanted`);
+  }
   const sizes = { site_bytes: statSync(site).size, readme_bytes: statSync(readme).size, readme_crf: crf, poster_bytes: statSync(poster).size, poster_at_s: posterAt,
-    preview_bytes: statSync(preview).size, preview_quality: quality };
+    preview_bytes: statSync(preview).size, preview_quality: quality, preview_shots: PREVIEW_SHOTS, preview_seconds: Number(ranges.reduce((a, [from, to]) => a + to - from, 0).toFixed(2)) };
+  writeFileSync(join(outDir, FILM_RECORD), JSON.stringify({
+    about: 'Written by render.mjs beside the wide cut\'s web encodes: the model the film\'s readings and speed were measured with. The release\'s film stage refuses a film whose model is not the release\'s.',
+    model: filmModel(), rendered_at: new Date().toISOString(), encodes: sizes }, null, 1));
   console.log(`wide web encodes: ${JSON.stringify(sizes)}`);
   return sizes;
 };
@@ -220,37 +270,44 @@ const renderCut = async (browser, htmlPath, name, ffmpegPath) => {
   const segDir = join(work, 'segments', name);
   rmSync(segDir, { recursive: true, force: true });
   mkdirSync(segDir, { recursive: true });
-  const per = Math.ceil(total / workers);
+  // The frames are cut into pieces of `chunk` frames, each encoded to a segment of its own, and every worker takes the
+  // next piece when it finishes one. Shots cost very different amounts to draw (footage against plain type), so equal
+  // shares of the film, one a worker, leave most workers idle while the slowest share ends.
+  const chunk = Math.max(1, Number(args.chunk ?? CHUNK_SECONDS * fps));
+  const pieces = Math.ceil(total / chunk);
+  let next = 0;
   let done = 0;
   let reported = 0;
   const segs = [];
   await Promise.all(
-    Array.from({ length: workers }, async (_, w) => {
-      const a = first + w * per;
-      const b = Math.min(first + total, a + per);
-      if (a >= b) return;
-      const seg = join(segDir, `seg_${w}.mp4`);
-      segs[w] = seg;
-      const enc = spawn(ffmpegPath, ffmpegArgs(seg, fps), { stdio: ['pipe', 'inherit', 'inherit'] });
-      const finished = new Promise((ok, fail) => enc.on('exit', (code) => (code === 0 ? ok() : fail(new Error(`ffmpeg exited ${code}`)))));
+    Array.from({ length: Math.min(workers, pieces) }, async () => {
       const p = await openPage(browser, url, info.W, info.H);
-      for (let f = a; f < b; f++) {
-        const png = await p.shot(f / fps);
-        if (!enc.stdin.write(png)) await new Promise((ok) => enc.stdin.once('drain', ok));
-        done++;
-        const pct = Math.floor((done / total) * 20) * 5;
-        if (pct > reported) {
-          reported = pct;
-          console.log(`${name}: ${pct}% (${done} of ${total} frames, ${((Date.now() - started) / 1000).toFixed(0)} s)`);
+      for (let piece = next++; piece < pieces; piece = next++) {
+        const a = first + piece * chunk;
+        const b = Math.min(first + total, a + chunk);
+        const seg = join(segDir, `seg_${String(piece).padStart(5, '0')}.mp4`);
+        segs[piece] = seg;
+        const enc = spawn(ffmpegPath, ffmpegArgs(seg, fps), { stdio: ['pipe', 'inherit', 'inherit'] });
+        const finished = new Promise((ok, fail) => enc.on('exit', (code) => (code === 0 ? ok() : fail(new Error(`ffmpeg exited ${code}`)))));
+        for (let f = a; f < b; f++) {
+          const png = await p.shot(f / fps);
+          if (!enc.stdin.write(png)) await new Promise((ok) => enc.stdin.once('drain', ok));
+          done++;
+          const pct = Math.floor((done / total) * 20) * 5;
+          if (pct > reported) {
+            reported = pct;
+            console.log(`${name}: ${pct}% (${done} of ${total} frames, ${((Date.now() - started) / 1000).toFixed(0)} s)`);
+          }
         }
+        enc.stdin.end();
+        await finished;
       }
-      enc.stdin.end();
-      await finished;
       await p.close();
     }),
   );
+  if (segs.filter(Boolean).length !== pieces) throw new Error(`${name}: ${segs.filter(Boolean).length} of ${pieces} segments were written`);
   const list = join(segDir, 'list.txt');
-  writeFileSync(list, segs.filter(Boolean).map((s) => `file '${s.replaceAll('\\', '/')}'`).join('\n'));
+  writeFileSync(list, segs.map((s) => `file '${s.replaceAll('\\', '/')}'`).join('\n'));
   const slice = args.from || args.to ? `_${from}-${to}s` : '';
   const silent = join(outDir, `litmus_${name}${slice}_silent.mp4`);
   await run(ffmpegPath, ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', '-movflags', '+faststart', silent]);

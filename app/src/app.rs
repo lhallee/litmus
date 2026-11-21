@@ -26,7 +26,7 @@ pub enum Tab {
 
 pub enum ModelState {
     Loading,
-    Ready(ModelMeta),
+    Ready(Box<ModelMeta>),
     Failed(String),
 }
 
@@ -86,11 +86,11 @@ pub const SHORTCUTS: &[(&str, &str, bool)] = &[
     ("Esc", "Cancel a reading, or close Settings", false),
     ("Ctrl+E", "Edit the text again after a reading", true),
     ("Ctrl+O", "Open a file", true),
-    ("Ctrl+M", "Show more or less detail (Simple, Detailed, Full)", false),
+    ("Ctrl+M", "Show more or less detail (Simple or Full)", false),
     ("Ctrl+1, 2, 3", "Check, Batch, History", true),
     ("Ctrl+,", "Settings", false),
     ("Ctrl+Shift+L", "Switch between the light and dark theme", false),
-    ("Tab, Shift+Tab", "Move between controls; Enter or Space presses the one in focus", false),
+    ("Tab, Shift+Tab", "Move between controls (Enter or Space presses the one in focus)", false),
 ];
 
 /// One file of a batch.
@@ -233,7 +233,7 @@ impl LitmusApp {
         #[cfg(not(target_arch = "wasm32"))]
         let (history, history_error) = match crate::settings::disk::data_folder().map(|folder| History::open(&folder.join("history"))) {
             Some(Ok(history)) => (history, None),
-            Some(Err(error)) => (History::in_memory(), Some(format!("{error}. This session's readings are kept in memory only; move or delete that file to start a new history."))),
+            Some(Err(error)) => (History::in_memory(), Some(format!("{error}. This session's readings are kept in memory only. Move or delete that file to start a new history."))),
             None => (History::in_memory(), None),
         };
         #[cfg(target_arch = "wasm32")]
@@ -319,11 +319,11 @@ impl LitmusApp {
             title: title.to_owned(),
             source: source.to_owned(),
             hash: scored.hash.clone(),
-            headline: wording::verdict_headline(verdict),
+            headline: wording::verdict_headline(verdict).line(),
             probability: verdict.probability,
             interval: verdict.interval,
+            chance: self.chance(scored),
             position: verdict.strip.position,
-            band: Some([verdict.strip.band_lo, verdict.strip.band_hi]),
             unlike_reference: verdict.strip.unlike_reference,
             tokens: scored.reading.n_tokens,
             seconds: scored.seconds,
@@ -331,7 +331,7 @@ impl LitmusApp {
         };
         let body = history::Body { text: scored.text.as_str().to_owned(), reading: scored.reading.as_ref().clone() };
         if let Err(error) = self.history.add(entry, body) {
-            self.notice = Some(Notice::error("The reading was not saved to the history", format!("{error}. The reading is still on screen; check that the data folder in Settings can be written.")));
+            self.notice = Some(Notice::error("The reading was not saved to the history", format!("{error}. The reading is still on screen. Check that the data folder in Settings can be written.")));
         }
     }
 
@@ -340,6 +340,18 @@ impl LitmusApp {
             ModelState::Ready(meta) => Some(meta),
             _ => None,
         }
+    }
+
+    /// The chance of AI of a reading's verdict: as the contribute site sent it, else by the loaded release's table.
+    /// None while no table is at hand (a site that sends none, or no model).
+    pub fn chance(&self, scored: &Scored) -> Option<litmus_engine::Chance> {
+        scored.contribution.as_ref().and_then(|c| c.chance).or_else(|| self.meta().and_then(|meta| meta.chance(&scored.reading)))
+    }
+
+    /// The chance of AI of a history entry: the one kept with it, else its probability by the loaded release's
+    /// table (entries of 1.1.0 and earlier kept the probability alone).
+    pub fn entry_chance(&self, entry: &history::Entry) -> Option<litmus_engine::Chance> {
+        entry.chance.or_else(|| self.meta().and_then(|meta| meta.chance_from(entry.probability, entry.interval, entry.tokens)))
     }
 
     pub fn busy(&self) -> bool {
@@ -388,7 +400,7 @@ impl LitmusApp {
     /// Put a reading on screen and record it in the history.
     pub fn show(&mut self, scored: Scored, title: String, source: String) {
         if let Err(error) = crate::heatmap::check_places(&scored.reading, &scored.text) {
-            self.notice = Some(Notice::error("This reading does not fit its text", format!("{error}. It is not shown; check the text again, and report this if it repeats.")));
+            self.notice = Some(Notice::error("This reading does not fit its text", format!("{error}. It is not shown. Check the text again, and report this if it repeats.")));
             return;
         }
         self.record(&scored, &title, &source);
@@ -420,14 +432,14 @@ impl LitmusApp {
                 let scored = Scored { reading: Arc::new(body.reading), text: Arc::new(body.text), hash: entry.hash.clone(), seconds: entry.seconds, contribution: None };
                 self.open(Shown::new(entry.title, entry.source, scored, entry.at_ms, entry.model));
             }
-            Err(error) => self.notice = Some(Notice::error("That past reading could not be opened", format!("{error}. Its file may have been moved or damaged; delete the entry from the history."))),
+            Err(error) => self.notice = Some(Notice::error("That past reading could not be opened", format!("{error}. Its file may have been moved or damaged. Delete the entry from the history."))),
         }
     }
 
     fn handle(&mut self, event: Event) {
         match event {
             Event::Loaded(Ok(meta)) => {
-                self.model = ModelState::Ready(meta);
+                self.model = ModelState::Ready(Box::new(meta));
                 self.download = None;
                 #[cfg(not(target_arch = "wasm32"))]
                 for request in std::mem::take(&mut self.pending) {
@@ -491,13 +503,13 @@ impl LitmusApp {
                         };
                         self.show(scored, title, source);
                     }
-                    Err(error) if error == scoring::CANCELLED => self.notice = Some(Notice::Info("Cancelled; the text is unchanged.".into())),
+                    Err(error) if error == scoring::CANCELLED => self.notice = Some(Notice::Info("Cancelled. The text is unchanged.".into())),
                     #[cfg(feature = "contribute")]
                     Err(error) if error == crate::contribute::TERMS_CHANGED => self.contribute.terms_changed = true,
                     Err(error) if error == scoring::EMPTY => {
                         self.notice = Some(Notice::error("There is nothing to read", "The text has no words the model can read. Paste or type some sentences, then press Check."));
                     }
-                    Err(error) => self.notice = Some(Notice::error("The text could not be checked", format!("{error}. Try again; if it repeats, restart Litmus."))),
+                    Err(error) => self.notice = Some(Notice::error("The text could not be checked", format!("{error}. Try again, and if it repeats, restart Litmus."))),
                 }
             }
             #[cfg(not(target_arch = "wasm32"))]
@@ -521,7 +533,7 @@ impl LitmusApp {
                     self.batch.job = None;
                     self.batch.progress = Progress::default();
                     if cancelled {
-                        self.notice = Some(Notice::Info("Batch cancelled; the files not yet read are still waiting.".into()));
+                        self.notice = Some(Notice::Info("Batch cancelled. The files not yet read are still waiting.".into()));
                     }
                 }
             }
@@ -531,7 +543,7 @@ impl LitmusApp {
             Event::Terms(terms) => {
                 if let Ok(terms) = &terms {
                     self.scorer.set_terms_version(terms.version.clone());
-                    self.model = ModelState::Ready(ModelMeta::server());
+                    self.model = ModelState::Ready(Box::new(ModelMeta::server()));
                 }
                 self.contribute.set_terms(terms);
             }
@@ -551,7 +563,7 @@ impl LitmusApp {
                         Ok(annotation) => {
                             self.contribute.annotation = annotation;
                             self.contribute.annotation_note = Some(match annotation {
-                                Some(a) => format!("Thank you: your label \"{}\" is stored with the text.", a.button()),
+                                Some(a) => format!("Thank you. Your label \"{}\" is stored with the text.", a.button()),
                                 None => "Your label is cleared.".to_owned(),
                             });
                         }
@@ -722,7 +734,7 @@ impl LitmusApp {
             }
         }
         if added == 0 && self.notice.is_none() {
-            self.notice = Some(Notice::Info("No readable files there: Litmus reads .txt, .md, .html, .docx and .pdf.".into()));
+            self.notice = Some(Notice::Info("No readable files there. Litmus reads .txt, .md, .html, .docx, and .pdf.".into()));
         }
         self.tab = Tab::Batch;
     }
@@ -758,13 +770,7 @@ impl LitmusApp {
             )
         });
         if detail {
-            use crate::settings::Detail;
-            let next = match self.settings.detail {
-                Detail::Simple => Detail::Detailed,
-                Detail::Detailed => Detail::Full,
-                Detail::Full => Detail::Simple,
-            };
-            self.set_detail(next);
+            self.set_detail(self.settings.detail.other());
         }
         if settings {
             self.settings_open = !self.settings_open;
@@ -822,7 +828,7 @@ impl LitmusApp {
         {
             let paths: Vec<std::path::PathBuf> = dropped.iter().map(|file| file.path().to_owned()).collect();
             if self.busy() {
-                self.notice = Some(Notice::Info("A reading is running: wait for it, or cancel it with Esc, then drop the files again.".into()));
+                self.notice = Some(Notice::Info("A reading is running. Wait for it, or cancel it with Esc, then drop the files again.".into()));
             } else if paths.len() == 1 && paths[0].is_file() && self.tab == Tab::Check {
                 self.open_file(&paths[0]);
             } else {
@@ -877,7 +883,7 @@ impl LitmusApp {
                     Err(error) => {
                         self.notice = Some(Notice::error(
                             format!("{name} could not be read"),
-                            format!("{error}. The page reads text, Markdown, HTML, Word (.docx) and PDF files with a text layer; try another file, or paste the text."),
+                            format!("{error}. The page reads text, Markdown, HTML, Word (.docx), and PDF files with a text layer. Try another file, or paste the text."),
                         ))
                     }
                 }
@@ -906,7 +912,7 @@ impl LitmusApp {
 }
 
 /// What to do about a file that did not read.
-const FILE_KINDS: &str = "Litmus reads text, Markdown, HTML, Word (.docx) and PDF files with a text layer; try another file, or paste the text.";
+const FILE_KINDS: &str = "Litmus reads text, Markdown, HTML, Word (.docx), and PDF files with a text layer. Try another file, or paste the text.";
 
 /// The last part of a path, for titles.
 pub fn file_name(path: &str) -> String {

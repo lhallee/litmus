@@ -160,10 +160,11 @@ pub struct GridGroup {
     pub thresholds: Vec<Option<f64>>,
 }
 
-/// Inductive Venn-Abers blocks on the score.
+/// Inductive Venn-Abers blocks on the score, fitted on `n` calibration texts.
 #[derive(Clone, Debug, Deserialize)]
 pub struct VennAbersGroup {
     pub bins: Vec<usize>,
+    pub n: usize,
     pub edges: Vec<f64>,
     pub p0: Vec<f64>,
     pub p1: Vec<f64>,
@@ -192,6 +193,16 @@ pub struct ConformalTables {
     pub mixed: Vec<GridGroup>,
 }
 
+/// How far the chance of AI moves from one source of text to another (SPEC.md, Chance of AI): `log_odds` is the half
+/// width, in log odds about the chance, that holds a share `level` of the pairings of one human source with one
+/// not-human source of the calibration texts. The table's other fields (the sources counted, the fit by region of
+/// the chance) explain the number and are not read here.
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+pub struct BetweenSources {
+    pub level: f64,
+    pub log_odds: f64,
+}
+
 /// The teacher's calibration table (`litmus-calibration` version 1), embedded in `config.json`.
 #[derive(Clone, Debug, Deserialize)]
 pub struct CalibrationTable {
@@ -209,6 +220,9 @@ pub struct CalibrationTable {
     pub three_way: Vec<ThreeWayGroup>,
     pub spread: Vec<SpreadGroup>,
     pub closeness: Vec<GridGroup>,
+    /// Absent from the tables of Litmus 1.1.0 and earlier, whose chance carries the calibration's interval alone.
+    #[serde(default)]
+    pub between_sources: Option<BetweenSources>,
 }
 
 impl ReleaseConfig {
@@ -270,6 +284,13 @@ pub fn group<'a, T>(groups: &'a [T], bins: impl Fn(&T) -> &[usize], bin: usize) 
 }
 
 impl CalibrationTable {
+    /// The table of a release's `config.json` (its `calibration` object), checked as a release's is at load.
+    pub fn parse(table: serde_json::Value) -> Result<Self, Error> {
+        let table: CalibrationTable = serde_json::from_value(table).map_err(|error| Error::Load(format!("calibration: {error}")))?;
+        table.validate()?;
+        Ok(table)
+    }
+
     /// Length bins: bin `i` holds `[length_edges[i], length_edges[i + 1])`, the last open above.
     pub fn bins(&self) -> usize {
         self.length_edges.len()
@@ -317,7 +338,51 @@ impl CalibrationTable {
         if self.top_k == 0 || self.grid.is_empty() || !self.grid.windows(2).all(|pair| pair[0] < pair[1]) {
             return fail("top_k must be positive and the grid ascending".into());
         }
+        for bin in 0..bins {
+            let share = self.not_human_share(bin);
+            if !(share > 0.0 && share < 1.0) {
+                return fail(format!("length bin {bin}: the probability needs human and not-human calibration texts, and {share} of them are not human"));
+            }
+        }
+        if let Some(between) = self.between_sources {
+            if !(between.level > 0.0 && between.level < 1.0 && between.log_odds.is_finite() && between.log_odds >= 0.0) {
+                return fail(format!("between_sources: a level strictly between 0 and 1 and a half width of 0 or more, not {between:?}"));
+            }
+        }
         Ok(())
+    }
+
+    /// What the chance of AI reads from this table: the share of every length bin, and the between-source half width.
+    pub fn chance_rule(&self) -> crate::reading::ChanceRule {
+        crate::reading::ChanceRule {
+            not_human_shares: (0..self.bins()).map(|bin| self.not_human_share(bin)).collect(),
+            between_sources: self.between_sources.map_or(0.0, |between| between.log_odds),
+            level: self.between_sources.map(|between| between.level),
+        }
+    }
+
+    /// The share of not-human texts among the calibration texts behind the probability of a span in length bin
+    /// `bin` (SPEC.md, Chance of AI): one minus the human conformal groups' rows over the probability groups' rows.
+    /// Both are taken over the fewest bins around `bin` that the two groupings split at the same places, which is the
+    /// probability group itself whenever the human groups tile it.
+    pub fn not_human_share(&self, bin: usize) -> f64 {
+        let mut members = vec![false; self.bins()];
+        members[bin] = true;
+        let touches = |bins: &[usize], members: &[bool]| bins.iter().any(|&b| members[b]);
+        loop {
+            let before = members.iter().filter(|&&member| member).count();
+            for bins in self.probability.iter().map(|g| &g.bins).chain(self.conformal.human.iter().map(|g| &g.bins)) {
+                if touches(bins, &members) {
+                    bins.iter().for_each(|&b| members[b] = true);
+                }
+            }
+            if members.iter().filter(|&&member| member).count() == before {
+                break;
+            }
+        }
+        let all: usize = self.probability.iter().filter(|g| touches(&g.bins, &members)).map(|g| g.n).sum();
+        let human: usize = self.conformal.human.iter().filter(|g| touches(&g.bins, &members)).map(|g| g.n).sum();
+        1.0 - human as f64 / all as f64
     }
 
     /// The number of edges after the first that are at or under `n_tokens`.
@@ -504,6 +569,45 @@ mod tests {
             (4, Some("integer"), Some("int8")),
         ] {
             assert!(ReleaseConfig::parse(&config_with_output(version, attention, output)).is_err(), "format {version} with {attention:?} and output {output:?}");
+        }
+    }
+
+    /// A table of four length bins whose human conformal groups and probability groups hold these bins and rows.
+    fn table(human: &[(&[usize], usize)], probability: &[(&[usize], usize)]) -> Result<CalibrationTable, Error> {
+        let grid = |groups: &[(&[usize], usize)]| -> Vec<serde_json::Value> {
+            groups.iter().map(|(bins, n)| serde_json::json!({"bins": bins, "n": n, "thresholds": [0.1, 0.2]})).collect()
+        };
+        let whole = [([0, 1, 2, 3].as_slice(), 900)];
+        CalibrationTable::parse(serde_json::json!({
+            "format": CALIBRATION_FORMAT, "version": CALIBRATION_VERSION, "origins": ["human", "ai", "mixed"],
+            "length_edges": [0, 16, 32, 64], "levels": [0.05, 0.1], "grid": [0.05, 0.1], "spread_levels": [0.5], "top_k": 4,
+            "out_of_reference_level": 0.01,
+            "conformal": {"human": grid(human), "ai": grid(&whole), "mixed": grid(&whole)},
+            "probability": probability.iter().map(|(bins, n)| serde_json::json!({"bins": bins, "n": n, "edges": [0.5], "p0": [0.2, 0.7], "p1": [0.3, 0.8]})).collect::<Vec<_>>(),
+            "three_way": [{"bins": [0, 1, 2, 3], "slope": 1.0, "bias": [0.0, 0.0, 0.0]}],
+            "spread": [{"bins": [0, 1, 2, 3], "human": [0.1], "ai": [0.1], "mixed": [0.1]}],
+            "closeness": grid(&whole),
+        }))
+    }
+
+    #[test]
+    fn the_not_human_share_is_read_from_the_tables_rows() {
+        // Human groups that tile each probability group: the group's own share, as in every release so far.
+        let aligned = table(&[(&[0], 100), (&[1], 100), (&[2, 3], 60)], &[(&[0], 300), (&[1], 250), (&[2, 3], 120)]).unwrap();
+        let shares: Vec<f64> = (0..4).map(|bin| aligned.not_human_share(bin)).collect();
+        for (share, expected) in shares.iter().zip([2.0 / 3.0, 0.6, 0.5, 0.5]) {
+            assert!((share - expected).abs() < 1e-12, "{shares:?}");
+        }
+        // A human group across two probability groups: the share of the bins the two groupings split alike.
+        let straddling = table(&[(&[0], 100), (&[1, 2], 150), (&[3], 50)], &[(&[0, 1], 500), (&[2], 200), (&[3], 100)]).unwrap();
+        for bin in 0..3 {
+            assert!((straddling.not_human_share(bin) - (1.0 - 250.0 / 700.0)).abs() < 1e-12, "bin {bin}");
+        }
+        assert!((straddling.not_human_share(3) - 0.5).abs() < 1e-12);
+        // No not-human calibration text, or no human one, leaves no odds to divide by: the release does not load.
+        for (human, all) in [(300, 300), (0, 300)] {
+            let error = table(&[(&[0], human), (&[1, 2, 3], 100)], &[(&[0], all), (&[1, 2, 3], 300)]).unwrap_err();
+            assert!(error.to_string().contains("length bin 0"), "{error}");
         }
     }
 }

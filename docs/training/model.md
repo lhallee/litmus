@@ -401,9 +401,10 @@ on how calibration texts of its length score ([5. Calibration](calibration.md)).
   chunk's end if the last does not; a chunk of 8,192 tokens has 61 windows, and a chunk of 1,000 tokens has five
   (starting at 0, 128, 256, 384, and 488). Each window's vector comes from the running totals and is read through the
   head, the bank, and calibration as a text of its own length.
-- **Cells.** The heat map has one cell per 128 tokens. A cell's position on the strip is the mean of the positions of
-  the windows over it, weighted by how many of the cell's tokens each window holds; its band spans those windows'
-  bands.
+- **Cells.** The heat map has one cell per 128 tokens. A cell's position between human and AI
+  ([5. Calibration](calibration.md#three-way-probabilities-and-the-strip)) is the mean of the positions of the
+  windows over it, weighted by how many of the cell's tokens each window holds, and its span covers those windows'
+  spans.
 
 A window's tokens were computed with neighbors outside the window in view (attention reaches $`L \cdot B`$ positions),
 so its reading is close to, not the same as, the reading of those words alone; the evaluation measures the gap
@@ -449,10 +450,10 @@ on releases with random weights ([`engine/README.md`](../../engine/README.md), M
 | `s192_l6` | 192 | 6 | 2.68M | 8.0 MB | 15,231 |
 | `s256_l6` | 256 | 6 | 4.75M | 8.7 MB | 10,034 |
 | `s384_l8` | 384 | 8 | 14.20M | 11.3 MB | 4,214 |
-| `s512_l6` (1.1, trained weights) | 512 | 6 | 18.94M | 12.8 MB | <!--litmus:bench.rows[tokens=8192].text_tokens_per_second as int-->5,014<!--/litmus--> |
+| `s512_l6` (1.1, trained weights) | 512 | 6 | 18.94M | 12.8 MB | <!--litmus:bench.rows[tokens=8192].text_tokens_per_second as int-->4,920<!--/litmus--> |
 | `s512_l12` | 512 | 12 | 37.81M | 17.6 MB | <!--litmus:record.sizes.s512_l12_tokens_per_second as int-->1,870<!--/litmus--> |
 
-The release is <!--litmus:t:released_config-->`s512_l6`, with release files of 18.5 MB including its bank, reading 5,014 tokens a second on one core<!--/litmus-->.
+The release is <!--litmus:t:released_config-->`s512_l6`, with release files of 18.5 MB including its bank, reading 4,920 tokens a second on one core<!--/litmus-->.
 
 ## Where in the code
 

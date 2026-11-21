@@ -37,6 +37,8 @@ class Options:
     baselines: Path | None = None
     allow_dirty: bool = False
     force: bool = False
+    # `pages` only: publish the site although the release does not hold the macOS programs it links yet.
+    ahead_of_macos: bool = False
 
 
 @dataclass

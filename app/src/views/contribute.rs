@@ -109,7 +109,7 @@ pub fn notice(app: &mut LitmusApp, ui: &mut egui::Ui) {
         None => {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label("Loading the site's terms; checking starts once they are shown.");
+                ui.label("Loading the site's terms. Checking starts once they are shown.");
             });
             return;
         }
@@ -170,7 +170,7 @@ pub fn consent(app: &mut LitmusApp, ui: &mut egui::Ui) {
             if app.contribute.terms_changed {
                 // In place of the version line, so the page keeps its height: the site refused the text for new terms.
                 let p = theme::palette(dark(ui));
-                ui.label(RichText::new("New terms: nothing was sent; tick the box again.").small().color(p.caution_ink).background_color(p.caution))
+                ui.label(RichText::new("The terms are new, so nothing was sent. Tick the box again.").small().color(p.caution_ink).background_color(p.caution))
                     .on_hover_text(version);
             } else {
                 ui.label(RichText::new(version).small().weak());
@@ -235,7 +235,7 @@ pub fn removal(app: &mut LitmusApp, ctx: &egui::Context) {
             }
             Some(Err(error)) => {
                 ui.add_space(8.0);
-                views::caution(ui, "The request was not taken:", error);
+                views::caution(ui, "The request was not taken.", error);
             }
             None => {}
         }

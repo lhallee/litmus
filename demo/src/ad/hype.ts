@@ -13,7 +13,7 @@ import { gpuHeight, gpuPanel, gpuReveal, gpuUse, type GpuBox } from './gpu';
 import { G, flash, ground, line, safe, wrap } from './kit';
 import type { Layout, Scene } from '../stage';
 
-const VERDICT_COLOR: Record<Verdict, string> = { human: brand.human, uncertain: brand.band, mixed: brand.mixed, ai: brand.ai, unlike: '#8A8290' };
+const VERDICT_COLOR: Record<Verdict, string> = { human: brand.human, uncertain: brand.band, mixed: brand.mixed, ai: brand.ai, ai_or_mixed: brand.ai, unlike: '#8A8290' };
 const WINDOW_S = 12;
 const COLS = 15;
 const GAP = 6;
@@ -37,8 +37,9 @@ const column = (set: SetName, x: number, y: number, width: number, done: ReturnT
   }).join('');
   const chips: { value: number; label: string; color: string }[] = [
     { value: share(['human']), label: 'read as human', color: G.humanInk },
-    { value: share(['ai']), label: 'read as AI', color: G.aiInk },
-    { value: share(['uncertain', 'mixed']), label: 'uncertain or mixed', color: G.mixedInk },
+    // Every verdict that rules human out and names what remains: "AI", "Mixed", and "AI or mixed".
+    { value: share(['ai', 'mixed', 'ai_or_mixed']), label: 'read as AI or mixed', color: G.aiInk },
+    { value: share(['uncertain']), label: 'uncertain', color: G.mixedInk },
   ];
   if (hype.tally[set].unlike > 0) chips.push({ value: share(['unlike']), label: 'unlike reference', color: G.faint });
   const chip = (c: (typeof chips)[number]): string =>

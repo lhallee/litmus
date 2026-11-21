@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>Reading a Litmus result</title>
-<meta name="description" content="How to read a Litmus reading: the verdict, the strip and its band, Uncertain, Unlike reference, the probability and its interval, the heat map, and our recommendations.">
+<meta name="description" content="How to read a Litmus reading: the verdict, the strip, the chance of AI and its range, Uncertain, Unlike reference, the heat map, and our recommendations.">
 <link rel="icon" href="litmus_mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css">
 <script src="site.js"></script>
@@ -32,7 +32,7 @@
 <main id="main">
   <div class="wrap page-head">
     <h1>Reading a result</h1>
-    <p class="lead">A reading is evidence about where a text came from, never proof of who wrote it. Every reading says what it cannot rule out and how wide its probability is, so that nobody has to take one number on faith.</p>
+    <p class="lead">A reading is evidence about where a text came from, never proof of who wrote it. Every reading says what it cannot rule out and gives its chance of AI with a range, so that nobody has to take one number on faith.</p>
     <div class="callout" style="max-width:44rem">
       <p>If a reading will affect a person, a grade, a job, or a publication, we recommend reading <a href="#recommendations">our recommendations</a> first.</p>
     </div>
@@ -41,7 +41,7 @@
   <section class="section" aria-labelledby="verdict">
     <div class="wrap prose">
       <h2 id="verdict">The verdict</h2>
-      <p>The verdict is one word, taken from the origins the reading cannot rule out at the 10% level (<a href="how.html#sure">how</a>).</p>
+      <p>The verdict names the origins the reading cannot rule out at the 10% level (<a href="how.html#sure">how</a>).</p>
     </div>
     <div class="wrap">
       <div class="table-wrap" style="max-width:56rem">
@@ -51,7 +51,8 @@
             <tr><td><strong class="word-human">Human</strong></td><td>human only</td><td>AI and mixed are both ruled out; the text reads like the human reference texts.</td></tr>
             <tr><td><strong class="word-ai">AI</strong></td><td>AI only</td><td>Human and mixed are both ruled out; the text reads like text a language model wrote.</td></tr>
             <tr><td><strong class="word-mixed">Mixed</strong></td><td>mixed only</td><td>Human and AI are both ruled out; the text reads like text a person and a model both wrote or edited.</td></tr>
-            <tr><td><strong>Uncertain</strong></td><td>two or three origins</td><td>The evidence cannot separate the origins it names. The band on the strip shows which remain.</td></tr>
+            <tr><td><strong class="word-ai">AI or mixed</strong></td><td>AI and mixed</td><td>Human is ruled out; the text reads like text a language model wrote or edited, and the reading cannot tell whether the model wrote all of it or part.</td></tr>
+            <tr><td><strong>Uncertain</strong></td><td>human and one or both of the others</td><td>The evidence cannot rule human out, nor separate it from the origins named beside the word.</td></tr>
             <tr><td><strong>Unlike reference</strong></td><td>none</td><td>The text resembles none of the reference texts closely enough for a call, so the verdict names no origin.</td></tr>
           </tbody>
         </table>
@@ -65,46 +66,58 @@
   <section class="section" aria-labelledby="strip">
     <div class="wrap prose">
       <h2 id="strip">The strip, the mark, and the band</h2>
-      <p>The strip runs from human (blue, at the left) through mixed (purple) to AI (red, at the right). The <strong>mark</strong> is the reading's position, the probability of AI plus half the probability of mixed, so a mark in the middle can mean mixed or an even balance of human and AI. The verdict and the band say which.</p>
-      <p>The pale, dashed <strong>band</strong> covers what the reading cannot rule out. A narrow band at one end is a confident reading, and a band across the whole strip says no origin could be ruled out.</p>
+      <p>The strip runs from human (blue, at the left) to AI (red, at the right). The <strong>mark</strong> sits at the reading's <a href="#probability">chance of AI</a>, so the picture and the number say the same thing. A mark near an end is a confident reading, and a mark in the middle means the reading cannot tell.</p>
+      <p>The pale, dashed <strong>band</strong> is the chance's range, which is how far that chance moves from one kind of text to another. The same reading means a somewhat different chance in a forum post, a news story, or a program, and the band covers that. It is short near either end, where another kind of text changes little, and wide in the middle, where it changes the most. A long document read in several sections has a wider band still when its sections disagree.</p>
     </div>
     <div class="wrap">
       <div class="examples" role="list">
         <div class="card" role="listitem">
           <div class="verdict"><span class="verdict-word word-human">Human</span></div>
-          <div class="strip" role="img" aria-label="Mark near the human end; the band runs from the mark to the human end."><div class="strip-bar"></div><div class="strip-band" style="--lo: 0; --hi: 0.12"></div><div class="strip-mark" style="--x: 0.12"></div></div>
-          <div class="strip-scale" aria-hidden="true"><span>Human</span><span>Mixed</span><span>AI</span></div>
-          <p>Only human remains, so the band runs from the mark to the human end.</p>
+          <div class="strip" data-chance="0.05" role="img" aria-label="Mark near the human end, inside a short band."><div class="strip-bar"></div><div class="strip-band" style="--lo: 0.012; --hi: 0.181"></div><div class="strip-mark" style="--x: 0.05"></div></div>
+          <div class="strip-scale" aria-hidden="true"><span>Human</span><span>AI</span></div>
+          <p>Only human remains. The chance of AI is low, so the mark sits near the human end and its band stays there.</p>
         </div>
         <div class="card" role="listitem">
           <div class="verdict"><span class="verdict-word word-ai">AI</span></div>
-          <div class="strip" role="img" aria-label="Mark near the AI end; the band runs from the mark to the AI end."><div class="strip-bar"></div><div class="strip-band" style="--lo: 0.9; --hi: 1"></div><div class="strip-mark" style="--x: 0.9"></div></div>
-          <div class="strip-scale" aria-hidden="true"><span>Human</span><span>Mixed</span><span>AI</span></div>
-          <p>Only AI remains, so the band runs from the mark to the AI end.</p>
+          <div class="strip" data-chance="0.96" role="img" aria-label="Mark near the AI end, inside a short band."><div class="strip-bar"></div><div class="strip-band" style="--lo: 0.851; --hi: 0.990"></div><div class="strip-mark" style="--x: 0.96"></div></div>
+          <div class="strip-scale" aria-hidden="true"><span>Human</span><span>AI</span></div>
+          <p>Only AI remains. The chance of AI is high, so the mark sits near the AI end.</p>
         </div>
         <div class="card" role="listitem">
           <div class="verdict"><span class="verdict-word word-mixed">Mixed</span></div>
-          <div class="strip" role="img" aria-label="Mark just left of the middle; the band runs from the mark to the middle."><div class="strip-bar"></div><div class="strip-band" style="--lo: 0.46; --hi: 0.5"></div><div class="strip-mark" style="--x: 0.46"></div></div>
-          <div class="strip-scale" aria-hidden="true"><span>Human</span><span>Mixed</span><span>AI</span></div>
-          <p>Only mixed remains, so the band runs from the mark to the middle.</p>
+          <div class="strip" data-chance="0.88" role="img" aria-label="Mark toward the AI end, inside a band that stays on the AI side."><div class="strip-bar"></div><div class="strip-band" style="--lo: 0.637; --hi: 0.968"></div><div class="strip-mark" style="--x: 0.88"></div></div>
+          <div class="strip-scale" aria-hidden="true"><span>Human</span><span>AI</span></div>
+          <p>Only mixed remains. A model writing or editing part of a text counts toward the chance of AI, so the mark of a mixed text usually sits toward the AI end, and the word says which.</p>
+        </div>
+        <div class="card" role="listitem">
+          <div class="verdict"><span class="verdict-word word-ai">AI or mixed</span></div>
+          <div class="strip" data-chance="0.93" role="img" aria-label="Mark near the AI end, inside a band that stays on the AI side."><div class="strip-bar"></div><div class="strip-band" style="--lo: 0.760; --hi: 0.982"></div><div class="strip-mark" style="--x: 0.93"></div></div>
+          <div class="strip-scale" aria-hidden="true"><span>Human</span><span>AI</span></div>
+          <p>Human is ruled out, and AI and mixed both remain. A model wrote or edited the text as far as the reading can tell, and it cannot say whether all of it or part.</p>
         </div>
         <div class="card" role="listitem">
           <div class="verdict"><span class="verdict-word">Uncertain</span> <span class="soft">human or mixed</span></div>
-          <div class="strip" role="img" aria-label="Mark between human and mixed; the band covers the left half."><div class="strip-bar"></div><div class="strip-band" style="--lo: 0; --hi: 0.5"></div><div class="strip-mark" style="--x: 0.3"></div></div>
-          <div class="strip-scale" aria-hidden="true"><span>Human</span><span>Mixed</span><span>AI</span></div>
-          <p>AI is ruled out, but human and mixed are not, so the band covers the left half.</p>
+          <div class="strip" data-chance="0.38" role="img" aria-label="Mark left of the middle, inside a wide band that crosses it."><div class="strip-bar"></div><div class="strip-band" style="--lo: 0.128; --hi: 0.720"></div><div class="strip-mark" style="--x: 0.38"></div></div>
+          <div class="strip-scale" aria-hidden="true"><span>Human</span><span>AI</span></div>
+          <p>AI is ruled out, but human and mixed are not. The mark sits between the ends, and the band crosses the middle: in another kind of text the same reading could lean either way.</p>
         </div>
         <div class="card" role="listitem">
-          <div class="verdict"><span class="verdict-word">Uncertain</span> <span class="soft">any origin</span></div>
-          <div class="strip" role="img" aria-label="Mark slightly right of the middle; the band covers the whole strip."><div class="strip-bar"></div><div class="strip-band" style="--lo: 0; --hi: 1"></div><div class="strip-mark" style="--x: 0.55"></div></div>
-          <div class="strip-scale" aria-hidden="true"><span>Human</span><span>Mixed</span><span>AI</span></div>
-          <p>Nothing is ruled out, so the band covers the whole strip. A short text can read this way, because a few words carry little evidence.</p>
+          <div class="verdict"><span class="verdict-word">Uncertain</span> <span class="soft">human, mixed, or AI</span></div>
+          <div class="strip" data-chance="0.55" role="img" aria-label="Mark slightly right of the middle, inside a wide band that crosses it."><div class="strip-bar"></div><div class="strip-band" style="--lo: 0.226; --hi: 0.837"></div><div class="strip-mark" style="--x: 0.55"></div></div>
+          <div class="strip-scale" aria-hidden="true"><span>Human</span><span>AI</span></div>
+          <p>Nothing is ruled out, and the mark sits near the middle. A short text can read this way, because a few words carry little evidence.</p>
+        </div>
+        <div class="card" role="listitem">
+          <div class="verdict"><span class="verdict-word">Uncertain</span> <span class="soft">human, mixed, or AI</span></div>
+          <div class="strip" data-chance="0.63" data-interval="0.42,0.83" role="img" aria-label="Mark right of the middle, inside a band that covers most of the strip."><div class="strip-bar"></div><div class="strip-band" style="--lo: 0.147; --hi: 0.953"></div><div class="strip-mark" style="--x: 0.63"></div></div>
+          <div class="strip-scale" aria-hidden="true"><span>Human</span><span>AI</span></div>
+          <p>A long document whose sections disagree. Its range is wider than one text's, and the band shows how far the chance could reasonably move.</p>
         </div>
         <div class="card" role="listitem">
           <div class="verdict"><span class="verdict-word">Unlike reference</span></div>
           <div class="strip unlike" role="img" aria-label="The strip is washed out and the mark is a question mark."><div class="strip-bar"></div><div class="strip-mark" style="--x: 0.62">?</div></div>
-          <div class="strip-scale" aria-hidden="true"><span>Human</span><span>Mixed</span><span>AI</span></div>
-          <p>Every origin is ruled out, so there is no band, and the strip is washed out with a question mark.</p>
+          <div class="strip-scale" aria-hidden="true"><span>Human</span><span>AI</span></div>
+          <p>Every origin is ruled out, so the strip is washed out with a question mark and has no band.</p>
         </div>
       </div>
     </div>
@@ -120,13 +133,39 @@
 
   <section class="section" aria-labelledby="probability">
     <div class="wrap prose">
-      <h2 id="probability">The probability and its interval</h2>
-      <p>A reading gives the <strong>probability that the text is not human</strong>, calibrated on texts of about the same length, with an <strong>interval</strong> around it. We recommend reading the interval before the number. A narrow interval means many calibration texts scored like this one and their origins agree; a wide one means the calibration data say less about texts like it.</p>
+      <h2 id="probability">The chance of AI and its range</h2>
+      <p>A reading gives the <strong>chance of AI</strong>, which is how likely it is that a language model wrote or edited some of the text, taking a text to be as likely human as not before it is read. It is calibrated on texts of about the same length and comes with a <strong>range</strong> in parentheses, as in 50% (<span data-value="results.release.chance_range.at_50_low" data-format="int">19</span>-<span data-value="results.release.chance_range.at_50_high" data-format="int">81</span>%).</p>
+      <p>The range is there because the same reading does not mean the same chance in every kind of text. Human forum posts, news stories, and programs score differently from one another, and so does the text of one model and another. We measured how far the chance moves from source to source across <span data-value="results.release.chance_range.human_sources" data-format="int">37</span> human sources and <span data-value="results.release.chance_range.not_human_sources" data-format="int">75</span> AI and mixed sources of calibration text. The range is wide enough to hold the chance for <span data-value="results.release.chance_range.level_percent" data-format="int">90</span>% of the pairings of one human source with one AI or mixed source, which comes to <span data-value="results.release.chance_range.odds" data-format="f1">4.2</span> times the odds in either direction. It also holds the smaller uncertainty of the calibration itself, and it widens when the sections of a long document disagree.</p>
+      <p>Because the range is a distance in odds, it is short near the ends and wide in the middle.</p>
+    </div>
+    <div class="wrap">
+      <div class="table-wrap" style="max-width:26rem">
+        <table>
+          <thead><tr><th>Chance of AI</th><th>Its range</th></tr></thead>
+          <tbody>
+            <tr><td>5%</td><td><span data-value="results.release.chance_range.at_5_low" data-format="int">1</span>% to <span data-value="results.release.chance_range.at_5_high" data-format="int">18</span>%</td></tr>
+            <tr><td>20%</td><td><span data-value="results.release.chance_range.at_20_low" data-format="int">6</span>% to <span data-value="results.release.chance_range.at_20_high" data-format="int">51</span>%</td></tr>
+            <tr><td>50%</td><td><span data-value="results.release.chance_range.at_50_low" data-format="int">19</span>% to <span data-value="results.release.chance_range.at_50_high" data-format="int">81</span>%</td></tr>
+            <tr><td>80%</td><td><span data-value="results.release.chance_range.at_80_low" data-format="int">49</span>% to <span data-value="results.release.chance_range.at_80_high" data-format="int">94</span>%</td></tr>
+            <tr><td>95%</td><td><span data-value="results.release.chance_range.at_95_low" data-format="int">82</span>% to <span data-value="results.release.chance_range.at_95_high" data-format="int">99</span>%</td></tr>
+            <tr><td>99%</td><td><span data-value="results.release.chance_range.at_99_low" data-format="int">96</span>% to <span data-value="results.release.chance_range.at_99_high" data-format="int">99</span>%</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="wrap prose">
+      <p>We recommend reading the range before the number. A chance of 80% (<span data-value="results.release.chance_range.at_80_low" data-format="int">49</span>-<span data-value="results.release.chance_range.at_80_high" data-format="int">94</span>%) leans toward AI and could still sit near even odds in another kind of text. A chance of 99% (<span data-value="results.release.chance_range.at_99_low" data-format="int">96</span>-<span data-value="results.release.chance_range.at_99_high" data-format="int">99</span>%) leaves little room to move. The range holds for sources like the ones in the calibration set, so a kind of writing or a model unlike all of them can fall outside it.</p>
+      <details class="more">
+        <summary>More detail: why even odds</summary>
+        <div class="body">
+          <p>The calibration texts are not an even mix of human and other texts, so the probability the calibration gives leans toward whatever most of them are. The chance of AI divides that lean out. It is what the same evidence says about a text that was as likely human as not beforehand, so a reading that learned nothing sits at one half. If you know more about your own texts, for example that nearly all of them are written by people, the chance for them is lower than the one shown.</p>
+        </div>
+      </details>
       <h3 id="levels" style="margin-top:2rem">What the levels promise</h3>
       <p>Among human texts like the calibration texts, at most 5% are called not human at the 5% level, and at most 10% at the 10% level. If you check 100 human essays of the kind Litmus was calibrated on, on average up to 5 can be called not human at the 5% level, by design. That is the price of making any call at all, and the main reason a call is evidence rather than proof.</p>
       <p>The promise holds for texts drawn like the calibration texts, from the same kinds of sources, formats, languages, and models, so a text far from that mix can be flagged more often. It bounds false flags and says nothing about how much AI text is caught. Nor does it say how likely a flagged text is to be AI: where nearly everything checked is human, a large share of the texts flagged can still be human.</p>
       <h3 id="weaker" style="margin-top:2rem">Short texts, and languages other than English</h3>
-      <p>Short texts are less reliable. A sentence or two carries little evidence, so the band and the interval stay wide, and a short text can read Uncertain where a longer one would not.</p>
+      <p>Short texts are less reliable. A sentence or two carries little evidence, so the chance stays nearer the middle, and a short text can read Uncertain where a longer one would not.</p>
       <p>This release is an English detector. Almost all of the text it learned from was English, it was tested mainly on English text, and other languages are not supported yet, so a reading of text in another language says little about where it came from.</p>
     </div>
   </section>
@@ -134,7 +173,7 @@
   <section class="section" aria-labelledby="heat">
     <div class="wrap prose">
       <h2 id="heat">Long texts and the heat map</h2>
-      <p>The tint over your text shows where the reading changes. Each cell covers 128 tokens and takes its color from the same scale as the strip, from blue through purple to red. The map shows where to look, and the verdict decides: a document's verdict comes from its chunks, never from its most extreme passage, because the most extreme of many looks at one text is extreme partly by chance.</p>
+      <p>The tint over your text shows where the reading changes. Each cell covers 128 tokens and takes its color from the strip's scale, blue where that part reads human, red where it reads AI, and purple where it reads mixed or in between. The map shows where to look, and the verdict decides: a document's verdict comes from its chunks, never from its most extreme passage, because the most extreme of many looks at one text is extreme partly by chance.</p>
       <p>When one part of a long document reads clearly as AI and another clearly as human, the reading also reports a <strong>mixed document</strong> and says which parts.</p>
     </div>
   </section>
@@ -159,7 +198,7 @@
       <ul class="checks">
         <li>We recommend not using a reading alone to accuse anyone or to make a decision about a person.</li>
         <li>We recommend weighing a reading beside what it cannot see, such as drafts, version history, the writer's other work, and a conversation with the writer.</li>
-        <li>We recommend reading the band and the interval, not just the word or the mark, treating an Unlike reference reading as no evidence either way, and treating an Uncertain one as evidence only about the origins it rules out.</li>
+        <li>We recommend reading the verdict and the chance of AI together, and the chance's range before its number, treating an Unlike reference reading as no evidence either way, and treating an Uncertain one as evidence only about the origins it rules out.</li>
         <li>We recommend the 5% call over the 10% call when a false flag would be costly, remembering that even the 5% call flags some human text.</li>
         <li>We recommend extra caution with a short text and with text in a language other than English, where a reading is less reliable.</li>
         <li>If you act on a reading, we recommend showing the person what it said and the numbers behind it, which every reading can display.</li>

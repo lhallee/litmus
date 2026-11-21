@@ -1,5 +1,8 @@
 // The first two seconds: the question, slammed in on the first beat, then the answer that is Litmus's difference, a strip
-// whose pale band opens when it cannot tell. The strip is drawn from the engine's reading of a short sentence.
+// whose mark lands on the chance of AI and whose pale band opens over that chance's range, as the app draws it, with the
+// verdict under it. The strip is drawn from the engine's reading of a short sentence. Through 1.1.0 the band covered the
+// origins the reading could not rule out, the whole strip for this sentence; the range of one short text is narrow, so
+// review this shot's stills when the film is rendered.
 
 import { easeInOut, easeOutQuint, spring, span } from '../motion';
 import { fonts } from '../palette';
@@ -34,9 +37,9 @@ export const hook: Scene = (t, dur, L, ctx) => {
     ...bar,
     g: G,
     wick,
-    position: reading.strip.position,
+    position: reading.chance.value,
     markIn,
-    band: [reading.strip.band_lo, reading.strip.band_hi],
+    band: reading.strip.unlike_reference ? null : reading.chance.interval,
     bandIn,
     labels,
   });

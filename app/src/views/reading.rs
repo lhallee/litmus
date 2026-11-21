@@ -1,10 +1,11 @@
-//! A reading, at the level of detail the user chose: Simple by default, more detail on request.
+//! A reading, at the level of detail the user chose: Simple by default, Full on request.
 //!
-//! - The hero, at every level: the verdict word with its marker, one plain sentence, the strip with its band, and
-//!   the cautions that keep it honest (unlike the reference, a few words, a mixed document).
-//! - Detailed adds the headline numbers (P(not human) with its interval, the set at 10%, tokens, time), what a
-//!   reading is with our recommendation for using one, and the reading of a clicked part of the text.
-//! - Full adds every other number, how the reading was made, the model, and the exports.
+//! - The hero, at both levels: the verdict word with its marker, one plain sentence, the strip with its mark at the
+//!   chance of AI and its band over the chance's range, and the cautions that keep it honest (unlike the reference,
+//!   a few words, a mixed document).
+//! - Full adds the numbers (the chance of AI with its range, the set at 10%, tokens, time), the text's surprise,
+//!   what a reading is with our recommendation for using one, the reading of a clicked part of the text, every
+//!   other number, how the reading was made, the model, and the exports.
 
 use eframe::egui::{self, RichText};
 use litmus_engine::{Origin, STRIP_LEVEL};
@@ -22,23 +23,21 @@ pub fn hero(app: &mut LitmusApp, ui: &mut egui::Ui) {
     let Some(shown) = &app.shown else { return };
     let reading = shown.scored.reading.clone();
     let counts_line = shown.counts.line();
+    let chance = app.chance(&shown.scored);
     let verdict = &reading.verdict;
     let set = verdict.set(STRIP_LEVEL);
     let call = wording::call(set);
+    let headline = wording::verdict_headline(verdict);
     let p = theme::palette(dark(ui));
-    let word_color = match call {
-        Call::One(origin) => p.origin_ink(origin),
-        Call::Uncertain | Call::UnlikeReference => p.ink,
-    };
     let narrow = ui.available_width() < 520.0;
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing.x = 12.0;
         verdict_marker(ui, call, verdict.strip.position, if narrow { 24.0 } else { 30.0 });
-        ui.label(RichText::new(wording::verdict_headline(verdict)).font(theme::strong(if narrow { 26.0 } else { 34.0 })).color(word_color));
+        ui.label(views::headline_job(&headline, if narrow { 26.0 } else { 34.0 }, views::headline_ink(&headline, &p), p.muted));
         if verdict.out_of_reference && call != Call::UnlikeReference {
             egui::Frame::new().fill(p.caution).corner_radius(egui::CornerRadius::same(theme::RADIUS)).inner_margin(egui::Margin::symmetric(8, 3)).show(ui, |ui| {
                 ui.label(RichText::new("? unlike reference").color(p.caution_ink).font(theme::strong(13.0)))
-                    .on_hover_text("The text sits farther from the reference bank than the calibration texts of its length; we recommend reading this verdict with caution.");
+                    .on_hover_text("The text sits farther from the reference bank than the calibration texts of its length, so we recommend reading this verdict with caution.");
             });
         }
     });
@@ -52,8 +51,8 @@ pub fn hero(app: &mut LitmusApp, ui: &mut egui::Ui) {
     }
     ui.label(RichText::new(counts_line).size(14.0).color(p.muted));
     ui.add_space(12.0);
-    strip::show(ui, &verdict.strip, if narrow { 20.0 } else { 26.0 });
-    for (title, body) in wording::flags(&reading) {
+    strip::show(ui, &strip::Drawn::of(chance.as_ref(), verdict.strip.unlike_reference), if narrow { 20.0 } else { 26.0 });
+    for (title, body) in wording::flags(&reading, None) {
         // At the simple level only the finding that changes the reading is shown; its absence is a detail.
         if title == "Mixed document" {
             ui.add_space(4.0);
@@ -63,7 +62,7 @@ pub fn hero(app: &mut LitmusApp, ui: &mut egui::Ui) {
     if app.settings.detail == Detail::Simple {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
             if controls::link(ui, "More detail").on_hover_text("Ctrl+M").clicked() {
-                app.set_detail(Detail::Detailed);
+                app.set_detail(Detail::Full);
             }
         });
     }
@@ -71,7 +70,8 @@ pub fn hero(app: &mut LitmusApp, ui: &mut egui::Ui) {
     views::contribute::labels(app, ui);
 }
 
-/// The detail level's switch, the headline numbers, and at Full every number, the explanation and the exports.
+/// The Full level's panel: the detail switch, the numbers, the text's surprise, the reading of a clicked part, every
+/// other number, how the reading was made, and the exports.
 pub fn details(app: &mut LitmusApp, ui: &mut egui::Ui) {
     let options: Vec<(Detail, &str)> = Detail::ALL.iter().map(|d| (*d, d.name())).collect();
     ui.horizontal(|ui| {
@@ -87,13 +87,13 @@ pub fn details(app: &mut LitmusApp, ui: &mut egui::Ui) {
     let Some(shown) = &app.shown else { return };
     let reading = shown.scored.reading.clone();
     let v = &reading.verdict;
+    let chance = app.chance(&shown.scored);
     controls::section(ui, "The numbers");
     egui::Grid::new("headline_numbers").num_columns(2).spacing([16.0, 2.0]).show(ui, |ui| {
-        controls::fact(ui, "P(not human)", wording::probability(v.probability, v.interval), Some("The calibrated probability that the text is not purely human-written, with its interval. We recommend reading the interval before the number."));
-        let set = v.set(STRIP_LEVEL);
-        let words: Vec<&str> = [Origin::Human, Origin::Mixed, Origin::Ai].into_iter().filter(|o| set.is_some_and(|s| s.contains(o))).map(wording::origin_word).collect();
-        let kept = if words.is_empty() { "none".to_owned() } else { wording::join_and(&words) };
-        controls::fact(ui, "Not ruled out", format!("{kept} (at 10%)"), Some("The origins the reading cannot rule out at the 10% level: the verdict."));
+        if let Some(chance) = &chance {
+            controls::fact(ui, wording::CHANCE, chance.words(), Some(wording::CHANCE_MEANING));
+        }
+        controls::fact(ui, "Not ruled out", format!("{} (at 10%)", wording::kept(v.set(STRIP_LEVEL))), Some("The origins the reading cannot rule out at the 10% level. The verdict names them."));
         controls::fact(
             ui,
             "Tokens",
@@ -113,7 +113,7 @@ pub fn details(app: &mut LitmusApp, ui: &mut egui::Ui) {
         };
         controls::fact(ui, "Time", time, None);
     });
-    if let Some((_, body)) = wording::flags(&reading).into_iter().find(|(title, _)| *title == "No mixed-document signal") {
+    if let Some((_, body)) = wording::flags(&reading, chance.as_ref()).into_iter().find(|(title, _)| *title == "No mixed-document signal") {
         ui.add_space(4.0);
         ui.label(RichText::new(body).small().weak());
     }
@@ -122,9 +122,6 @@ pub fn details(app: &mut LitmusApp, ui: &mut egui::Ui) {
     ui.label(RichText::new(wording::RECOMMENDATION).small().color(theme::palette(dark(ui)).muted));
     ui.add_space(16.0);
     views::heat::cell_detail(app, ui);
-    if !app.settings.detail.at_least(Detail::Full) {
-        return;
-    }
     ui.add_space(16.0);
     full_numbers(app, ui);
     ui.add_space(16.0);
@@ -163,7 +160,7 @@ fn surprise(app: &LitmusApp, ui: &mut egui::Ui) {
                     format!("{:.2} nats per token", -surprise.mean_log_probability),
                     Some("Minus the log probability the model gives each token, seeing the rest of the text, averaged over the text's tokens. Higher is more surprising."),
                 );
-                controls::fact(ui, "Perplexity", format!("{:.1}", surprise.perplexity), Some("e to the surprise: about how many tokens the model finds as likely as each actual one."));
+                controls::fact(ui, "Perplexity", format!("{:.1}", surprise.perplexity), Some("e to the surprise, about how many tokens the model finds as likely as each actual one."));
             });
             if let Some(percentile) = surprise.percentile {
                 ui.label(RichText::new(wording::surprise_sentence(percentile)).size(14.0));
@@ -171,20 +168,20 @@ fn surprise(app: &LitmusApp, ui: &mut egui::Ui) {
             ui.label(RichText::new(wording::SURPRISE_CAUTION).small().color(p.muted));
         }
         SurpriseState::Failed(error) => {
-            ui.label(RichText::new(format!("The surprise could not be read: {}.", error.trim_end_matches('.'))).small().color(p.muted));
+            ui.label(RichText::new(format!("The surprise could not be read. {}.", error.trim_end_matches('.'))).small().color(p.muted));
         }
     }
 }
 
-/// A swatch beside the headline: the strip color at the position, shaped by the call (a disc for one origin, a
-/// ring for uncertain, a question mark for unlike reference).
+/// A swatch beside the headline: the strip color at the position, shaped by the call (a disc for a call, one origin
+/// or "AI or mixed", a ring for uncertain, a question mark for unlike reference).
 fn verdict_marker(ui: &mut egui::Ui, call: Call, position: f64, size: f32) {
     let (rect, _) = ui.allocate_exact_size(egui::Vec2::splat(size), egui::Sense::hover());
     let ink = ui.visuals().text_color();
     let fill = theme::rgb(brand::litmus(position));
     let painter = ui.painter();
     match call {
-        Call::One(_) => {
+        Call::One(_) | Call::AiOrMixed => {
             painter.circle(rect.center(), size * 0.42, fill, egui::Stroke::new(1.5, ink));
         }
         Call::Uncertain => {
@@ -206,7 +203,7 @@ fn full_numbers(app: &LitmusApp, ui: &mut egui::Ui) {
     controls::section(ui, "Every number");
     egui::Grid::new("full_numbers").num_columns(2).spacing([16.0, 6.0]).show(ui, |ui| {
         let p = theme::palette(dark(ui));
-        ui.label(RichText::new("Three-way").color(p.muted)).on_hover_text("Calibrated probabilities of human, mixed and AI; they sum to one.");
+        ui.label(RichText::new("Three-way").color(p.muted)).on_hover_text("Calibrated probabilities of human, mixed, and AI, which sum to one.");
         ui.horizontal(|ui| {
             for origin in [Origin::Human, Origin::Mixed, Origin::Ai] {
                 views::origin_marker(ui, origin);
@@ -218,9 +215,9 @@ fn full_numbers(app: &LitmusApp, ui: &mut egui::Ui) {
             ui,
             "Conformal p",
             format!("human {:.3}, mixed {:.3}, AI {:.3}", v.p_values[0], v.p_values[2], v.p_values[1]),
-            Some("Per origin: how typical the text is of that origin's calibration texts. An origin with p at or under 0.10 is ruled out at the 10% level."),
+            Some("How typical the text is of each origin's calibration texts. An origin with p at or under 0.10 is ruled out at the 10% level."),
         );
-        controls::fact(ui, "Not ruled out", format!("at 10% {}, at 5% {}", export::set_words(v.set(0.1)), export::set_words(v.set(0.05))), None);
+        controls::fact(ui, "Not ruled out at 5%", wording::kept(v.set(0.05)), Some("The stricter level keeps more origins, so it makes fewer false calls and catches less."));
         if !v.set(STRIP_LEVEL).is_none_or(|set| set.is_empty()) {
             controls::fact(
                 ui,
@@ -233,7 +230,7 @@ fn full_numbers(app: &LitmusApp, ui: &mut egui::Ui) {
             ui,
             "Closeness p",
             format!("{:.3}{}", v.closeness_p, if v.out_of_reference { ", out of reference" } else { "" }),
-            Some("How close the text sits to the reference bank, against calibration texts of its length; very low means out of reference."),
+            Some("How close the text sits to the reference bank, against calibration texts of its length. A very low value means out of reference."),
         );
         controls::fact(ui, "Model", shown.model.clone(), None);
         controls::fact(ui, "Read at", crate::clock::format_utc(shown.at_ms), None);
@@ -243,7 +240,7 @@ fn full_numbers(app: &LitmusApp, ui: &mut egui::Ui) {
 fn exports(app: &mut LitmusApp, ui: &mut egui::Ui) {
     let Some(shown) = &app.shown else { return };
     let (json, csv) = {
-        let row = views::reading_row(shown);
+        let row = views::reading_row(shown, app.chance(&shown.scored));
         (serde_json::to_string_pretty(&export::json_value(&row)).unwrap_or_default(), export::csv(&[row]))
     };
     let verb = if cfg!(target_arch = "wasm32") { "Copy" } else { "Export" };

@@ -47,6 +47,7 @@ def test_spell_formats() -> None:
     assert spell(11_288_265, "mb1") == "11.3 MB"
     assert spell(1_790_000, "m2") == "1.79M"
     assert spell(0.1321, "ms0") == "132"
+    assert spell(1.431902, "odds1") == "4.2" and spell(0.0, "odds1") == "1.0"
     assert spell(30.0, "f0") == "30"
     assert spell(["a", "b", "c"]) == "a, b, and c"
     assert spell("text") == "text"

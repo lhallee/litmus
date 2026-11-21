@@ -1,6 +1,6 @@
 [package]
 name = "litmus-engine"
-description = "Litmus inference: a ternary (BitNet b1.58) encoder that reads a document of any length on one CPU core"
+description = "Litmus inference: a ternary (BitNet b1.58) encoder that reads a document of any length on the CPU"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

@@ -2,8 +2,8 @@
 the server's limits, errors, and threads.
 
 The reading must equal what `litmus score --json` prints for the same text and release, field for field and bit for
-bit: both serialize the engine's `DocumentReading` with serde_json, and the binding adds only `label`, which the
-command line prints beside the reading.
+bit: both serialize the engine's `DocumentReading` with serde_json, and the binding adds only `label` and `chance`
+(the chance of AI), which the command line prints beside the reading.
 """
 
 from __future__ import annotations
@@ -118,7 +118,10 @@ def test_contribute_surface(model: litmus_engine.Model, release: Path) -> None:
         assert model.version == f"sha256:{digest.hexdigest()[:16]}"
     assert isinstance(model.count_tokens("Hello there."), int)
     reading = model.score("Hello there.")
-    assert isinstance(reading, dict) and set(reading) >= {"n_tokens", "chunk_tokens", "verdict", "chunks", "windows", "cells", "label"}
+    assert isinstance(reading, dict) and set(reading) >= {"n_tokens", "chunk_tokens", "verdict", "chunks", "windows", "cells", "label", "chance"}
+    chance = reading["chance"]
+    assert set(chance) == {"value", "interval", "reference_share"} and 0.0 < chance["reference_share"] < 1.0
+    assert chance["interval"][0] <= chance["value"] <= chance["interval"][1]
 
 
 def test_score_equals_command_line(model: litmus_engine.Model, release: Path, cli: Path, texts: dict[str, str], tmp_path: Path) -> None:
@@ -132,6 +135,7 @@ def test_score_equals_command_line(model: litmus_engine.Model, release: Path, cl
             continue
         reading = model.score(text)
         assert reading.pop("label") == row["label"], name
+        assert reading.pop("chance") == row["chance"], name
         assert reading == row["reading"], name
         assert reading["n_tokens"] == model.count_tokens(text), name
         chunk_counts.append(len(reading["chunks"]))

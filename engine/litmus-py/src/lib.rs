@@ -131,7 +131,8 @@ impl Engine {
     }
 
     /// Score a text: the document's reading as a dict (`n_tokens`, `chunk_tokens`, `verdict`, `chunks`, `windows`,
-    /// `cells`, plus `label`, the verdict in one word). Releases the GIL while it runs, serialization included.
+    /// `cells`, plus `label`, the verdict in one word, and `chance`, the verdict's chance of AI: `value`, `interval`
+    /// and `reference_share`, SPEC.md, Chance of AI). Releases the GIL while it runs, serialization included.
     /// Raises `ValueError` for a text with no tokens or with more than `max_tokens` tokens, `TimeoutError` past
     /// `timeout_seconds`, and `KeyboardInterrupt` on Ctrl-C; each is checked about every 8 KB of text.
     #[pyo3(signature = (text, *, timeout_seconds = None, max_tokens = None))]
@@ -155,9 +156,9 @@ impl Engine {
                 // Checking for Ctrl-C takes the GIL for a moment; it is a no-op off the main thread.
                 if Python::with_gil(|py| py.check_signals()).is_err() { Flow::Cancel } else { Flow::Continue }
             })?;
-            Ok::<_, Error>((json_text(&document), document.label().word()))
+            Ok::<_, Error>((json_text(&document), document.label().word(), json_text(&self.core.chance(&document))))
         });
-        let (json, label) = match (outcome, stop) {
+        let (json, label, chance) = match (outcome, stop) {
             (Err(Error::Cancelled), Some(Stop::Timeout)) => {
                 return Err(PyTimeoutError::new_err("scoring took longer than timeout_seconds"));
             }
@@ -168,6 +169,7 @@ impl Engine {
         };
         let value = from_json(py, json?)?;
         value.set_item("label", label)?;
+        value.set_item("chance", from_json(py, chance?)?)?;
         Ok(value)
     }
 

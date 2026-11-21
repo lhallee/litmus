@@ -169,7 +169,7 @@ impl Opened {
                 return Ok(Self);
             }
             if started.elapsed() > Duration::from_millis(500) {
-                return Err("another app holds the clipboard".into());
+                return Err("Another app holds the clipboard.".into());
             }
             std::thread::sleep(Duration::from_millis(10));
         }
@@ -321,7 +321,7 @@ fn copy_selection() -> Result<String, String> {
     }
     // SAFETY: a read of the foreground window's handle.
     if target.is_invalid() || unsafe { GetForegroundWindow() } != target {
-        return Err("Another window came in front before the selection could be copied; press the hotkey again.".into());
+        return Err("Another window came in front before the selection could be copied. Press the hotkey again.".into());
     }
     let saved = save_clipboard()?;
     // SAFETY: reading a counter.
@@ -336,7 +336,7 @@ fn copy_selection() -> Result<String, String> {
     // SAFETY: reading a counter.
     while unsafe { GetClipboardSequenceNumber() } == before {
         if started.elapsed() > Duration::from_millis(700) {
-            return Err("Nothing was copied: no text seems to be selected in the app in front.".into());
+            return Err("Nothing was copied. No text seems to be selected in the app in front.".into());
         }
         std::thread::sleep(Duration::from_millis(15));
     }
@@ -345,7 +345,7 @@ fn copy_selection() -> Result<String, String> {
         let _open = Opened::new(None)?;
         unicode_text().unwrap_or_default()
     };
-    restore_clipboard_privately(&saved).map_err(|e| format!("the text was read, but the clipboard could not be put back: {e}"))?;
+    restore_clipboard_privately(&saved).map_err(|e| format!("The text was read, but the clipboard could not be put back ({e})."))?;
     Ok(text)
 }
 

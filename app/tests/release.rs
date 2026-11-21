@@ -48,9 +48,10 @@ fn cells_map_onto_the_text() {
         for (range, index) in heatmap::sections(&reading.cells, page) {
             assert!(local.is_char_boundary(range.start) && local.is_char_boundary(range.end), "cell {index} cuts a character");
         }
-        assert!(!litmus_app::wording::verdict_headline(&reading.verdict).is_empty());
+        assert!(!litmus_app::wording::verdict_headline(&reading.verdict).word.is_empty());
         if reading.verdict.chunks > 1 {
-            assert!(litmus_app::wording::flags(&reading).iter().any(|(title, _)| title.contains("ixed")), "a long text says whether it reads as mixed");
+            let chance = engine.chance(&reading);
+            assert!(litmus_app::wording::flags(&reading, Some(&chance)).iter().any(|(title, _)| title.contains("ixed")), "a long text says whether it reads as mixed");
         }
     }
     assert!(engine.count_tokens(&long_text()) > 8192, "the long text spans two sections");

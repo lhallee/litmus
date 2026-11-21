@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>Download Litmus for Windows</title>
-<meta name="description" content="Download Litmus for Windows: one file, no installer, no account, and it works offline. Faster than the browser page, with quick check in any application.">
+<title>Download Litmus for Windows, macOS, or Linux</title>
+<meta name="description" content="Download Litmus for Windows, macOS, or Linux: one file, no installer, no account, and it works offline. Faster than the browser page, with quick check in any application.">
 <link rel="icon" href="litmus_mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css">
 <script src="site.js"></script>
@@ -40,11 +40,12 @@
       <dl class="facts">
         <div><dt>For</dt><dd>Windows, 64-bit (x86-64)</dd></div>
         <div class="needs-js"><dt>Size</dt><dd><span class="tbd" data-value="results.release.app_exe_bytes" data-format="mb">being finalized</span></dd></div>
-        <div class="needs-js"><dt>Version</dt><dd><span class="tbd" data-value="results.release.version">1.1.0</span></dd></div>
+        <div class="needs-js"><dt>Version</dt><dd><span class="tbd" data-value="results.release.version">1.2.0</span></dd></div>
       </dl>
+      <p class="small soft">On a Mac or on Linux? <a href="#other">The macOS and Linux programs</a> are further down this page.</p>
     </div>
     <figure class="shot">
-      <img class="on-dark" src="assets/screens/reading_dark.png" width="1200" height="800" alt="The Litmus program after a check, showing the verdict AI, the strip, and the tinted text.">
+      <img class="on-dark" src="assets/screens/reading_dark.png" width="1200" height="800" alt="The Litmus program after a check, showing the verdict AI or mixed, the strip with its mark at the AI end, and the tinted text.">
       <img class="on-light" src="assets/screens/reading_light.png" width="1200" height="800" loading="lazy" alt="The Litmus program after a check, in the light look.">
     </figure>
   </div>
@@ -59,10 +60,11 @@
         <div>
           <h3>Faster, though both are fast</h3>
           <div class="stats" style="margin-top:0.9rem">
-            <div class="stat accent"><span class="value"><span data-value="results.release.app_tokens_per_second" data-format="int">4,971</span></span><span class="label">tokens a second in the program</span></div>
-            <div class="stat"><span class="value"><span data-value="results.release.browser_tokens_per_second" data-format="int">879</span></span><span class="label">tokens a second in the browser</span></div>
+            <div class="stat accent"><span class="value"><span data-value="results.release.app_tokens_per_second" data-format="int">4,896</span></span><span class="label">tokens a second in the program</span></div>
+            <div class="stat"><span class="value"><span data-value="results.release.browser_tokens_per_second" data-format="int">894</span></span><span class="label">tokens a second in the browser</span></div>
           </div>
-          <p class="small soft" style="margin-top:1rem">Measured on one processor core (<span data-value="results.release.speed_machine" data-format="text">AMD Ryzen 7 3800X 8-Core Processor</span>) with a <span data-value="results.release.speed_document_tokens" data-format="int">28,920</span>-token document, which took about <span data-value="results.release.app_document_seconds" data-format="f1">5.8</span> seconds in the program and <span data-value="results.release.browser_document_seconds" data-format="f1">32.9</span> in the browser. A token is a word or a piece of one.</p>
+          <p class="small soft" style="margin-top:1rem">Measured on one processor core (<span data-value="results.release.speed_machine" data-format="text">AMD Ryzen 7 3800X 8-Core Processor</span>) with a <span data-value="results.release.speed_document_tokens" data-format="int">28,920</span>-token document, which took about <span data-value="results.release.app_document_seconds" data-format="f1">5.9</span> seconds in the program and <span data-value="results.release.browser_document_seconds" data-format="f1">32.4</span> in the browser. A token is a word or a piece of one.</p>
+          <p class="small soft" data-show="results.release.app_tokens_per_second_all_processors" hidden>The program reads a text on every processor at once. On the <span data-value="results.release.app_processors" data-format="int">16</span> logical processors of that machine it read the same document at about <span data-value="results.release.app_tokens_per_second_all_processors" data-format="int">33,269</span> tokens a second, in about <span data-value="results.release.app_document_seconds_all_processors" data-format="f1">0.9</span> seconds.</p>
         </div>
         <div>
           <h3>Quick check, in any application</h3>
@@ -75,7 +77,7 @@
             <div class="keys"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>L</kbd></div>
             <div class="pop">
               <div class="verdict"><span class="dot" style="--c: var(--ai)"></span><span class="verdict-word word-ai">AI</span></div>
-              <div class="strip"><div class="strip-bar"></div><div class="strip-band" style="--lo: 0.86; --hi: 1"></div><div class="strip-mark" style="--x: 0.86"></div></div>
+              <div class="strip" data-chance="0.97"><div class="strip-bar"></div><div class="strip-band" style="--lo: 0.885; --hi: 0.993"></div><div class="strip-mark" style="--x: 0.97"></div></div>
             </div>
           </div>
         </div>
@@ -131,9 +133,11 @@
         <div class="card">
           <h3>macOS and Linux programs</h3>
           <p data-hide="links.download_macos_app">The macOS program is not available yet.</p>
-          <p data-show="links.download_macos_app" hidden><a data-link="links.download_macos_app">Download for macOS</a></p>
+          <p data-show="links.download_macos_app" hidden><a data-link="links.download_macos_app">Download for macOS, Apple silicon</a></p>
+          <p data-show="links.download_macos_intel_app" hidden><a data-link="links.download_macos_intel_app">Download for macOS, Intel</a></p>
           <p data-hide="links.download_linux_app">The Linux program is not available yet.</p>
-          <p data-show="links.download_linux_app" hidden><a data-link="links.download_linux_app">Download for Linux</a></p>
+          <p data-show="links.download_linux_app" hidden><a data-link="links.download_linux_app">Download for Linux, 64-bit x86</a></p>
+          <p class="small soft">Each is one file with nothing to install. <a href="#first-run-unix">Opening it the first time</a> takes two commands.</p>
         </div>
         <div class="card">
           <h3>The command line</h3>
@@ -142,6 +146,20 @@
 .\litmus.exe score --json report.pdf</code></div>
         </div>
       </div>
+      <details class="more" id="first-run-unix" style="margin-top:1.5rem">
+        <summary>The first run on macOS and Linux</summary>
+        <div class="body">
+          <p>A browser saves the file without permission to run, so give it that in a terminal, in the folder that holds the file. On Linux:</p>
+          <div class="code"><code>chmod +x litmus-app-linux-x86_64
+./litmus-app-linux-x86_64</code></div>
+          <p>It runs on a 64-bit x86 desktop with glibc 2.17 or later. Quick check on Linux needs <code>xclip</code> and an X11 desktop, and it works while the program's window is open.</p>
+          <p>On macOS, the file is not code-signed yet, so macOS also marks it as a download it will not open. Remove the mark, then run it. The file for an Intel Mac ends in <code>x86_64</code> instead.</p>
+          <div class="code"><code>chmod +x litmus-app-macos-arm64
+xattr -d com.apple.quarantine litmus-app-macos-arm64
+./litmus-app-macos-arm64</code></div>
+          <p>The macOS programs are built and tested for each release on Apple silicon and on Intel. Quick check on macOS needs the Accessibility permission and has not been tried on a Mac yet. To be sure a file is the one published here, compare <code>shasum -a 256</code> of it (<code>sha256sum</code> on Linux) with its line of the release's <a href="https://github.com/lhallee/litmus/releases/latest/download/SHA256SUMS">SHA256SUMS</a>.</p>
+        </div>
+      </details>
       <p class="small soft" style="margin-top:1.5rem">Building Litmus from its code, the Python module, and the tests are in the <a href="https://github.com/lhallee/litmus/blob/main/docs/DEVELOPING.md">developer guide</a>.</p>
     </div>
   </section>

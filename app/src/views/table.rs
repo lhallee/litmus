@@ -2,7 +2,7 @@
 //! rows 36 points tall with a quiet stripe and a hover fill, numbers right-aligned in the mono face, and a click (or
 //! Enter on a row in focus) that opens the row's reading.
 
-use eframe::egui::{self, Align, CornerRadius, Layout, Pos2, Rect, Response, RichText, Sense, Stroke, UiBuilder, Vec2, Role, WidgetInfo};
+use eframe::egui::{self, Align, CornerRadius, Layout, Pos2, Rect, Response, Sense, Stroke, UiBuilder, Vec2, Role, WidgetInfo};
 
 use crate::sorting::Sort;
 use crate::theme;
@@ -125,30 +125,36 @@ pub fn row(ui: &mut egui::Ui, id: egui::Id, widths: &[f32], stripe: bool, label:
     response.on_hover_cursor(egui::CursorIcon::PointingHand)
 }
 
-/// A verdict in a row: a small marker shaped by the call (a disc for one origin, a ring for uncertain, a question
-/// mark for unlike reference) and the headline, a single origin in its ink.
-pub fn verdict(ui: &mut egui::Ui, headline: &str, position: f64) {
+/// A verdict in a row: a small marker shaped by the call (a disc for a call, one origin or "AI or mixed", a ring for
+/// uncertain, a question mark for unlike reference) and the headline, a call in its ink and an uncertain one's
+/// origins muted after the word.
+pub fn verdict(ui: &mut egui::Ui, headline: &crate::wording::Headline, position: f64) {
+    use crate::wording::Call;
     let p = controls::palette(ui);
     let (rect, _) = ui.allocate_exact_size(Vec2::splat(14.0), Sense::hover());
     let c = rect.center();
     let fill = theme::rgb(crate::brand::litmus(position));
     let ink = p.ink;
-    let color = match headline {
-        "Human" => p.human_ink,
-        "Mixed" => p.mixed_ink,
-        "AI" => p.ai_ink,
-        _ => p.ink,
-    };
-    if headline == "Unlike reference" {
-        ui.painter().circle_stroke(c, 6.0, Stroke::new(1.2, ink));
-        ui.painter().text(c, egui::Align2::CENTER_CENTER, "?", theme::strong(10.0), ink);
-    } else if headline.starts_with("Uncertain") {
-        ui.painter().circle_stroke(c, 4.5, Stroke::new(2.5, fill));
-        ui.painter().circle_stroke(c, 6.5, Stroke::new(1.0, ink));
-    } else {
-        ui.painter().circle(c, 5.5, fill, Stroke::new(1.0, ink));
+    match headline.call() {
+        Call::UnlikeReference => {
+            ui.painter().circle_stroke(c, 6.0, Stroke::new(1.2, ink));
+            ui.painter().text(c, egui::Align2::CENTER_CENTER, "?", theme::strong(10.0), ink);
+        }
+        Call::Uncertain => {
+            ui.painter().circle_stroke(c, 4.5, Stroke::new(2.5, fill));
+            ui.painter().circle_stroke(c, 6.5, Stroke::new(1.0, ink));
+        }
+        Call::One(_) | Call::AiOrMixed => {
+            ui.painter().circle(c, 5.5, fill, Stroke::new(1.0, ink));
+        }
     }
-    ui.add(egui::Label::new(RichText::new(headline).color(color)).truncate());
+    let mut job = egui::text::LayoutJob::default();
+    let font = egui::FontId::proportional(15.0);
+    job.append(&headline.word, 0.0, egui::TextFormat { font_id: font.clone(), color: crate::views::headline_ink(headline, &p), ..Default::default() });
+    if !headline.among.is_empty() {
+        job.append(&headline.among, 6.0, egui::TextFormat { font_id: font, color: p.muted, ..Default::default() });
+    }
+    ui.add(egui::Label::new(job).truncate());
 }
 
 /// A number in the mono face, right-aligned in its cell.

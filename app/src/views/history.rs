@@ -1,6 +1,6 @@
 //! The History screen: past readings, newest first, searchable and sortable; a row opens its reading, and each can
-//! be deleted. The simple level shows the first words, the verdict and a small strip; higher levels add when, the
-//! numbers, the source and the model.
+//! be deleted. The simple level shows the first words, the verdict and a small strip; the Full level adds when, the
+//! numbers and the model.
 
 use eframe::egui::{self, RichText};
 use litmus_files::export;
@@ -17,29 +17,27 @@ const TEXT: &str = "Text";
 const VERDICT: &str = "Verdict";
 const STRIP: &str = "Strip";
 const WHEN: &str = "When (UTC)";
-const PROBABILITY: &str = "P(not human)";
+const PROBABILITY: &str = wording::CHANCE;
 const TOKENS: &str = "Tokens";
 const MODEL: &str = "Model";
 const DELETE: &str = "";
 
 fn columns(detail: Detail) -> Vec<Column> {
-    let mut columns = vec![Column::text(TEXT, 0.0), Column::text(VERDICT, 210.0), Column::number(STRIP, 150.0)];
-    if detail.at_least(Detail::Detailed) {
-        columns.extend([Column::number(WHEN, 164.0), Column::number(PROBABILITY, 180.0), Column::number(TOKENS, 90.0)]);
-    }
-    if detail.at_least(Detail::Full) {
-        columns.push(Column::text(MODEL, 130.0));
+    let mut columns = vec![Column::text(TEXT, 0.0), Column::text(VERDICT, 250.0), Column::number(STRIP, 150.0)];
+    if detail.full() {
+        columns.extend([Column::number(WHEN, 164.0), Column::number(PROBABILITY, 150.0), Column::number(TOKENS, 90.0), Column::text(MODEL, 130.0)]);
     }
     columns.push(Column::plain(DELETE, 84.0));
     columns
 }
 
-fn value(entry: &Entry, key: &str) -> Value {
+fn value(app: &LitmusApp, entry: &Entry, key: &str) -> Value {
     match key {
         TEXT => Value::Text(entry.title.clone()),
-        VERDICT | STRIP => Value::Number(entry.position),
+        VERDICT => Value::Number(entry.position),
         WHEN => Value::Number(entry.at_ms as f64),
-        PROBABILITY => Value::Number(entry.probability),
+        // The strip marks the chance of AI, so both columns sort by it.
+        STRIP | PROBABILITY => app.entry_chance(entry).map_or(Value::Missing, |chance| Value::Number(chance.value)),
         TOKENS => Value::Number(entry.tokens as f64),
         MODEL => Value::Text(entry.model.clone()),
         _ => Value::Missing,
@@ -98,7 +96,7 @@ pub fn show(app: &mut LitmusApp, ui: &mut egui::Ui) {
         table::header(ui, &columns, &widths, &mut sort);
         app.history_sort = sort;
         let order: Vec<usize> = match sort {
-            Some(sort) => sorting::order(&entries.iter().map(|e| value(e, sort.key)).collect::<Vec<_>>(), sort.descending),
+            Some(sort) => sorting::order(&entries.iter().map(|e| value(app, e, sort.key)).collect::<Vec<_>>(), sort.descending),
             None => (0..entries.len()).collect(),
         };
         let ids: Vec<u64> = order.iter().map(|&i| entries[i].id).collect();
@@ -110,12 +108,12 @@ pub fn show(app: &mut LitmusApp, ui: &mut egui::Ui) {
                 let Some(entry) = app.history.entries().iter().find(|e| e.id == id) else { continue };
                 let response = table::row(ui, ui.scope_id().with(("history_row", id)), &widths, (range.start + position) % 2 == 1, &format!("Open the reading of {}", entry.title), |ui, column| match columns[column].title {
                     TEXT => table::text(ui, entry.title.clone()),
-                    VERDICT => table::verdict(ui, &entry.headline, entry.position),
+                    VERDICT => table::verdict(ui, &wording::Headline::from_line(&entry.headline), entry.position),
                     STRIP => {
-                        strip::mini(ui, &entry.strip(), 126.0, 20.0);
+                        strip::mini(ui, &strip::Drawn::of(app.entry_chance(entry).as_ref(), entry.unlike_reference), 126.0, 20.0);
                     }
                     WHEN => table::number(ui, clock::format_utc(entry.at_ms).trim_end_matches(" UTC").to_owned()),
-                    PROBABILITY => table::number(ui, wording::probability(entry.probability, entry.interval)),
+                    PROBABILITY => table::number(ui, app.entry_chance(entry).map_or_else(String::new, |chance| chance.words())),
                     TOKENS => table::number(ui, export::thousands(entry.tokens)),
                     MODEL => table::text(ui, RichText::new(&entry.model).monospace().color(p.muted)),
                     _ => {

@@ -1,6 +1,6 @@
 [project]
 name = "litmus-teacher"
-version = "1.1.0"
+version = "1.2.0"
 description = "Litmus's teacher: frozen-encoder embeddings, e-means splits, the pair head, the reference bank and calibration"
 requires-python = ">=3.11"
 # Exact pins at the tested stack, since this runs as an application in Docker.

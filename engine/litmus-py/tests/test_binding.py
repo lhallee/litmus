@@ -46,7 +46,7 @@ def test_reading_matches_reference(engine: litmus_engine.Engine, fixtures: dict)
             assert abs(cell["position"] - want_cell["position"]) <= 2e-3
         text = record["text"]
         assert document["cells"][0]["start_char"] == 0 and document["cells"][-1]["end_char"] == len(text)
-        assert document["label"] in {"human", "AI", "mixed", "uncertain", "unlike reference"}
+        assert document["label"] in {"human", "AI", "mixed", "AI or mixed", "uncertain", "unlike reference"}
         # The surprise reading (SPEC.md, Surprise), within SPEC.md's tolerance scaled for a short text.
         surprise, want_surprise = engine.surprise(text), record["surprise"]
         scale = max(1.0, (512 / len(record["ids"])) ** 0.5)

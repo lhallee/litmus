@@ -10,7 +10,7 @@ from that model, every program is rebuilt with it, and each artifact is ready fo
 
 ## Rules
 
-- **Publishing is the person's word.** `publish`, `pages`, and `macos` change things outside this machine and run only with
+- **Publishing is the person's word.** `publish`, `macos`, and `pages` change things outside this machine and run only with
   `--confirm`. Run `--dry-run`, show what it printed, and wait for a yes in this conversation. A yes for one stage is not
   a yes for the next. Do not commit, push, tag, or create a release on your own either.
 - **No typed numbers.** A number in a document is a slot (a `litmus:KEY` comment opening and a `/litmus` comment closing it) filled by the `docs` stage
@@ -40,8 +40,9 @@ from that model, every program is rebuilt with it, and each artifact is ready fo
 4. Before the release commit: `python release/cut.py version check X.Y.Z` is clean and `slots check` passes.
 5. After the person commits and pushes the release commit and builds are made at it: `run --from verify`, then
    `publish --dry-run`, and ask.
-6. After yes: `publish --confirm`, ask the person to review and publish the GitHub draft, then `pages --dry-run`, ask,
-   `pages --confirm`; `macos --dry-run`, ask, `macos --confirm` when the person wants the macOS programs.
+6. After yes: `publish --confirm`, ask the person to review and publish the GitHub draft, then `macos --dry-run`, ask,
+   `macos --confirm`; then `pages --dry-run`, ask, `pages --confirm`. The site links the macOS programs, so `pages`
+   refuses until they are attached; `--ahead-of-macos` is the person's choice when the macOS build cannot be had.
 7. Finish with the report: the release's version, the model commit, the stages done, the files and where they went, the
    warnings the receipts recorded (such as a machine different from the baselines' for the cost row), and what the person
    still has to do (the contribute deployment, the ad).

@@ -103,7 +103,14 @@ await glide(195, 400, 0.9);
 await page.mouse.click(195, 400);
 log.push({ what: 'click_box', t: now(), at: [195, 400] });
 await hold(0.5);
-await page.keyboard.insertText(text);
+// A paste as the page receives one from Ctrl+V: a `paste` event on the document that carries the text. Typed text
+// (`keyboard.insertText`) goes through the page's one-line text agent, which turns every paragraph break into spaces,
+// and the page then counts other tokens than the app does for the same text.
+await page.evaluate((pasted) => {
+  const data = new DataTransfer();
+  data.setData('text/plain', pasted);
+  document.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+}, text);
 log.push({ what: 'paste', t: now() });
 await hold(1.4);
 await glide(76, 765, 0.9);

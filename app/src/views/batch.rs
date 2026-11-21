@@ -1,6 +1,6 @@
 //! The Batch screen (desktop): files and folders in a sortable table, scored one after another with progress and
 //! cancel, exported as CSV or JSON. A row opens its reading. The simple level shows the file, the verdict and a
-//! small strip, so a list can be scanned by color and position; higher levels add the numbers.
+//! small strip, so a list can be scanned by color and position; the Full level adds the numbers.
 
 use eframe::egui::{self, RichText};
 use litmus_files::counts::TextCounts;
@@ -16,32 +16,30 @@ use crate::{strip, theme, wording};
 const FILE: &str = "File";
 const VERDICT: &str = "Verdict";
 const STRIP: &str = "Strip";
-const PROBABILITY: &str = "P(not human)";
+const PROBABILITY: &str = wording::CHANCE;
 const TOKENS: &str = "Tokens";
 const TIME: &str = "Time";
 const HASH: &str = "SHA-256";
 
 fn columns(detail: Detail) -> Vec<Column> {
-    let mut columns = vec![Column::text(FILE, 0.0), Column::text(VERDICT, 230.0), Column::number(STRIP, 150.0)];
-    if detail.at_least(Detail::Detailed) {
-        columns.extend([Column::number(PROBABILITY, 190.0), Column::number(TOKENS, 90.0), Column::number(TIME, 90.0)]);
-    }
-    if detail.at_least(Detail::Full) {
-        columns.push(Column::text(HASH, 130.0));
+    let mut columns = vec![Column::text(FILE, 0.0), Column::text(VERDICT, 250.0), Column::number(STRIP, 150.0)];
+    if detail.full() {
+        columns.extend([Column::number(PROBABILITY, 150.0), Column::number(TOKENS, 90.0), Column::number(TIME, 90.0), Column::text(HASH, 130.0)]);
     }
     columns
 }
 
 /// A row's value in a column, for sorting.
-fn value(state: &BatchState, path: &std::path::Path, key: &str) -> Value {
+fn value(app: &LitmusApp, state: &BatchState, path: &std::path::Path, key: &str) -> Value {
     if key == FILE {
         return Value::Text(crate::app::file_name(&path.display().to_string()));
     }
     let BatchState::Done(scored) = state else { return Value::Missing };
     let v = &scored.reading.verdict;
     match key {
-        VERDICT | STRIP => Value::Number(v.strip.position),
-        PROBABILITY => Value::Number(v.probability),
+        VERDICT => Value::Number(v.strip.position),
+        // The strip marks the chance of AI, so both columns sort by it.
+        STRIP | PROBABILITY => app.chance(scored).map_or(Value::Missing, |chance| Value::Number(chance.value)),
         TOKENS => Value::Number(scored.reading.n_tokens as f64),
         TIME => scored.seconds.map_or(Value::Number(0.0), Value::Number),
         HASH => Value::Text(scored.hash.clone()),
@@ -64,8 +62,8 @@ pub fn show(app: &mut LitmusApp, ui: &mut egui::Ui) {
             ui.add_space(48.0);
             ui.vertical_centered(|ui| {
                 ui.label(RichText::new("Check many files at once").font(theme::strong(22.0)));
-                ui.label(RichText::new("Add files or a folder, or drop them on the window. Text, Markdown, HTML, Word and PDF files are read, and folders are walked.").size(16.0).color(p.muted));
-                ui.label(RichText::new("An unchanged file is not read twice: readings are kept by each file's contents.").color(p.muted));
+                ui.label(RichText::new("Add files or a folder, or drop them on the window. Text, Markdown, HTML, Word, and PDF files are read, and folders are walked.").size(16.0).color(p.muted));
+                ui.label(RichText::new("An unchanged file is not read twice, because readings are kept by each file's contents.").color(p.muted));
             });
             return;
         }
@@ -86,7 +84,7 @@ fn toolbar(app: &mut LitmusApp, ui: &mut egui::Ui) {
             app.cancel();
         }
         if controls::quiet(ui, "Add files", None, idle).clicked()
-            && let Some(paths) = rfd::FileDialog::new().add_filter("Text, Markdown, HTML, Word, PDF", &["txt", "text", "md", "markdown", "html", "htm", "docx", "pdf"]).pick_files()
+            && let Some(paths) = rfd::FileDialog::new().add_filter(views::FILE_FILTER, &["txt", "text", "md", "markdown", "html", "htm", "docx", "pdf"]).pick_files()
         {
             app.add_to_batch(&paths);
         }
@@ -124,7 +122,7 @@ fn rows(app: &mut LitmusApp, ui: &mut egui::Ui) {
     app.batch_sort = sort;
     let order: Vec<usize> = match sort {
         Some(sort) => {
-            let values: Vec<Value> = app.batch.rows.iter().map(|row| value(&row.state, &row.path, sort.key)).collect();
+            let values: Vec<Value> = app.batch.rows.iter().map(|row| value(app, &row.state, &row.path, sort.key)).collect();
             sorting::order(&values, sort.descending)
         }
         None => (0..app.batch.rows.len()).collect(),
@@ -144,14 +142,14 @@ fn rows(app: &mut LitmusApp, ui: &mut egui::Ui) {
                         ui.label(RichText::new("waiting").color(p.muted));
                     }
                     (VERDICT, BatchState::Failed(error)) => {
-                        let words = if error == crate::scoring::EMPTY { "No words to read".to_owned() } else { format!("Not read: {error}") };
+                        let words = if error == crate::scoring::EMPTY { "No words to read".to_owned() } else { format!("Not read ({})", error.trim_end_matches('.')) };
                         ui.add(egui::Label::new(RichText::new(words).color(p.error)).truncate()).on_hover_text(error);
                     }
                     (VERDICT, BatchState::Done(scored)) => table::verdict(ui, &wording::verdict_headline(&scored.reading.verdict), scored.reading.verdict.strip.position),
                     (STRIP, BatchState::Done(scored)) => {
-                        strip::mini(ui, &scored.reading.verdict.strip, 126.0, 20.0);
+                        strip::mini(ui, &strip::Drawn::of(app.chance(scored).as_ref(), scored.reading.verdict.strip.unlike_reference), 126.0, 20.0);
                     }
-                    (PROBABILITY, BatchState::Done(scored)) => table::number(ui, wording::probability(scored.reading.verdict.probability, scored.reading.verdict.interval)),
+                    (PROBABILITY, BatchState::Done(scored)) => table::number(ui, app.chance(scored).map_or_else(String::new, |chance| chance.words())),
                     (TOKENS, BatchState::Done(scored)) => table::number(ui, export::thousands(scored.reading.n_tokens)),
                     (TIME, BatchState::Done(scored)) => table::number(ui, scored.seconds.map_or("cached".to_owned(), wording::duration)),
                     (HASH, BatchState::Done(scored)) => {
@@ -178,8 +176,9 @@ fn rows(app: &mut LitmusApp, ui: &mut egui::Ui) {
     }
 }
 
-/// A finished row for export: its name, hash, whether it came from the cache, its reading or error, and its counts.
-type OutRow<'a> = (String, String, bool, Result<&'a litmus_engine::DocumentReading, &'a str>, Option<TextCounts>);
+/// A finished row for export: its name, hash, whether it came from the cache, its reading or error, its counts, and
+/// its chance of AI.
+type OutRow<'a> = (String, String, bool, Result<&'a litmus_engine::DocumentReading, &'a str>, Option<TextCounts>, Option<litmus_engine::Chance>);
 
 fn rows_out(app: &LitmusApp) -> Vec<OutRow<'_>> {
     app.batch
@@ -189,24 +188,26 @@ fn rows_out(app: &LitmusApp) -> Vec<OutRow<'_>> {
             BatchState::Waiting => None,
             BatchState::Done(scored) => {
                 let counts = TextCounts::of(&scored.text, scored.reading.n_tokens);
-                Some((row.path.display().to_string(), scored.hash.clone(), scored.seconds.is_none(), Ok(scored.reading.as_ref()), Some(counts)))
+                Some((row.path.display().to_string(), scored.hash.clone(), scored.seconds.is_none(), Ok(scored.reading.as_ref()), Some(counts), app.chance(scored)))
             }
-            BatchState::Failed(error) => Some((row.path.display().to_string(), String::new(), false, Err(error.as_str()), None)),
+            BatchState::Failed(error) => Some((row.path.display().to_string(), String::new(), false, Err(error.as_str()), None, None)),
         })
         .collect()
+}
+
+fn export_row<'a>((name, hash, cached, outcome, counts, chance): &'a OutRow<'a>) -> export::Row<'a> {
+    export::Row { name, hash, cached: *cached, outcome: *outcome, counts: counts.as_ref(), chance: *chance }
 }
 
 /// The batch's finished rows in the command line's CSV columns.
 pub fn batch_csv(app: &LitmusApp) -> String {
     let rows = rows_out(app);
-    let rows: Vec<export::Row> = rows.iter().map(|(name, hash, cached, outcome, counts)| export::Row { name, hash, cached: *cached, outcome: *outcome, counts: counts.as_ref() }).collect();
-    export::csv(&rows)
+    export::csv(&rows.iter().map(export_row).collect::<Vec<_>>())
 }
 
 /// The batch's finished rows as one JSON array of the command line's objects.
 pub fn batch_json(app: &LitmusApp) -> String {
     let rows = rows_out(app);
-    let values: Vec<serde_json::Value> =
-        rows.iter().map(|(name, hash, cached, outcome, counts)| export::json_value(&export::Row { name, hash, cached: *cached, outcome: *outcome, counts: counts.as_ref() })).collect();
+    let values: Vec<serde_json::Value> = rows.iter().map(|row| export::json_value(&export_row(row))).collect();
     serde_json::to_string_pretty(&values).expect("readings serialize")
 }

@@ -130,7 +130,7 @@
   "app/src/quick/unix.rs": {
    "component": "app",
    "capabilities": {
-    "process": "quick check on macOS and Linux (Linux run on X11, macOS never compiled): runs pbpaste, pbcopy, osascript, wl-paste, or xclip to read the selected text, saving and restoring the clipboard on macOS"
+    "process": "quick check on macOS and Linux (Linux run on X11; macOS type-checked for both Apple targets and never run): runs pbpaste, pbcopy, osascript, wl-paste, or xclip to read the selected text, saving and restoring the clipboard on macOS"
    }
   },
   "app/src/quick/windows.rs": {
@@ -532,6 +532,12 @@
    "component": "release",
    "capabilities": {
     "filesystem_write": "test fixtures in pytest's temporary folder"
+   }
+  },
+  "release/tests/test_benchmarking.py": {
+   "component": "release",
+   "capabilities": {
+    "filesystem_write": "test fixtures in pytest's temporary folder: an earlier release's work folder to adopt scores and cost from"
    }
   },
   "release/tests/test_documents.py": {

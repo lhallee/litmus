@@ -24,10 +24,10 @@ LICENSING.md and LICENSE.
 Litmus is a free detector of AI written text that says how sure it is.
 
 Litmus reads a text and says whether it looks written by a person, by a language model (AI), or by both (mixed), and
-every reading carries its own uncertainty: the set of origins it cannot rule out at the 5% and 10% levels, and a
-calibrated probability that the text is not human, with an interval. The model is a ternary (BitNet b1.58) encoder
-with a pair head, trained on the true origins of its training texts, that scores a text against a bank of reference
-texts and runs on one CPU core.
+every reading carries its own uncertainty: the set of origins it cannot rule out at the 5% and 10% levels, and the
+chance of AI, a calibrated probability with a range. The model is a ternary (BitNet b1.58) encoder with a pair head,
+trained on the true origins of its training texts, that scores a text against a bank of reference texts and runs on a
+CPU, with no graphics card.
 
 This release is an English detector: almost all of its training text is English, its held-out test text is English
 or of undetermined language, and other languages are not supported yet. Short texts are less reliable than long ones.
@@ -51,7 +51,7 @@ one reads more into a single number than it can carry.
 | Required notice | `Required Notice: Copyright Logan Hallee (https://github.com/lhallee/litmus)` |
 | Code | https://github.com/lhallee/litmus |
 | Predecessor | [lhallee/ai-vs-human-checker](https://huggingface.co/lhallee/ai-vs-human-checker) |
-| Version | <!--litmus:release.version-->1.1.0<!--/litmus--> |
+| Version | <!--litmus:release.version-->1.2.0<!--/litmus--> |
 
 ## Uses
 
@@ -66,7 +66,7 @@ and sends the text nowhere.
 
 - not making a decision about a person on a reading alone, and weighing it as one piece of evidence beside drafts,
   version history, and the writer's account;
-- not treating the strip position or the probability as a share of the text a model wrote;
+- not treating the chance of AI, the strip, or the probability as a share of the text a model wrote;
 - not relying on readings flagged as unlike the reference, or on text far from the calibration mix (languages,
   formats, or generators the reference holds little of), where the guarantees below do not hold.
 
@@ -90,17 +90,39 @@ and sends the text nowhere.
    metadata (source, generator, domain, era, format, language), never text.
 4. **Calibration**, fitted on the `calibration` split alone, by origin and length group:
    split conformal p-values per origin and the sets at 0.05 and 0.10; an inductive Venn-Abers probability of not
-   human with its interval; three-way probabilities; spread percentiles; and an out-of-reference flag when the
-   closeness p-value is at or under 0.01. The tables ship in `config.json`.
+   human with its interval; three-way probabilities; spread percentiles; an out-of-reference flag when the
+   closeness p-value is at or under 0.01; and how far the chance of AI moves between sources of text, which widens
+   its range (below). The tables ship in `config.json`.
 5. **Long documents.** A text over 8,192 tokens is read in `ceil(n / 8192)` equal chunks, each a text of its own.
    The verdict merges the chunks: p-values as `min(1, 2 * mean)`, valid under any dependence (Vovk and Wang,
    Biometrika 2020, arXiv 1212.4966); the probability as the mean, its interval widened by the chunks' disagreement;
    a mixed-document signal at `0.05 / C` per chunk. A heat map of 128-token cells comes from windows of 512 tokens
    every 128, computed from running sums without a second pass. The map describes; the verdict decides.
 
-The verdict's one word is taken from the set at 0.10: one origin names it, several read `uncertain`, none reads
-`unlike reference`. The litmus strip places the reading at `P_ai + P_mixed / 2` from 0 (human) to 1 (AI), with a band
-over what the 0.10 set cannot rule out.
+The verdict is taken from the set at 0.10: one origin names it, AI and mixed together read `AI or mixed` (human is
+ruled out), human beside another origin reads `uncertain`, none reads `unlike reference`. The reading's place (`strip`) is `P_ai + P_mixed / 2` from 0 (human) to 1 (AI), with the span of
+what the 0.10 set cannot rule out. The engine, the app, and the page lead with one number, the chance of AI: the
+probability of not human restated at even odds of human and not human, since the calibration texts of a length group
+are not an even mix. The litmus strip is drawn from it, a mark at the chance and a pale band over its range.
+
+The chance's range is the Venn-Abers interval restated the same way, then widened on each side by how far the chance
+moves from one source of text to another: <!--litmus:t:chance_range_log_odds-->1.43 log odds, 4.2 times the odds<!--/litmus-->, the half width that holds
+<!--litmus:t:chance_range_rule-->90% of the pairings of one human source with one AI or mixed source, which is 4.2 times the odds in either direction<!--/litmus-->. The interval alone says how well the calibration texts pin the number down and is under a point wide
+for most single texts; the shift between sources is the larger uncertainty. It is fitted on the calibration texts by
+their source, across <!--litmus:t:chance_range_sources-->37 human sources and 75 AI and mixed sources<!--/litmus-->: in each region of the chance, each source's texts are compared with the
+other sources' texts of the same lengths, and the spread of those shifts is taken with the part a source's sample size
+explains set apart (DerSimonian and Laird, Controlled Clinical Trials, 1986). <!--litmus:t:chance_range_left_out-->With each source left out of the fit in turn, 90% of the human sources' shifts and 93% of the AI and mixed sources' shifts fell inside the half width fitted without them, which stayed between 1.37 and 1.49 log odds<!--/litmus-->. <!--litmus:t:chance_range_test-->On the 6,000 test passages, read once after the rule was fixed, 89% of the pairings of test sources fell inside the range<!--/litmus-->.
+
+<!--litmus:t:chance_range_table-->
+| Chance of AI | Its range |
+| --- | --- |
+| 5% | 1% to 18% |
+| 20% | 6% to 51% |
+| 50% | 19% to 81% |
+| 80% | 49% to 94% |
+| 95% | 82% to 99% |
+| 99% | 96% to 99% |
+<!--/litmus-->
 
 ## Training data
 
@@ -370,12 +392,17 @@ a machine 40 to 45% busy with other work. A whole scoring call ran at 4,214 (d38
 second on 8,192 tokens, flat from 1,024 to 131,072 tokens, with a process peak of 56 to 70 MB. In WebAssembly (Node 22,
 one thread) d192 L4 scored 3,400 to 4,000 tokens per second.
 
-<!--litmus:t:speed_paragraph-->The released size (`s512_l6`) reads 5,014 tokens per second on an 8,192-token text with a process peak of 65.1 MB, on AMD Ryzen 7 3800X 8-Core Processor under Windows 10 (one core, avx2 kernels). Its release files are 18.5 MB, and its single-core cost is 349 ms per 1,000 words on one core of Arm Neoverse-V2, beside the other detectors in the benchmark tables (timed on one core of Intel(R) Xeon(R) Platinum 8358 CPU @ 2.60GHz).<!--/litmus-->
+<!--litmus:t:speed_paragraph-->The released size (`s512_l6`) reads 4,920 tokens per second on an 8,192-token text with a process peak of 63.1 MB, on AMD Ryzen 7 3800X 8-Core Processor under Windows 10 (one core, avx2 kernels). Its release files are 18.5 MB, and its single-core cost is 349 ms per 1,000 words on one core of Arm Neoverse-V2, beside the other detectors in the benchmark tables (timed on one core of Intel(R) Xeon(R) Platinum 8358 CPU @ 2.60GHz).<!--/litmus-->
 
 ## Bias, risks and limitations
 
 - **False flags happen by design.** At the 5% level, up to 5% of human text like the calibration texts is called
   not human. How likely a flagged text is to be AI depends on how much AI text is among the texts checked.
+- **The chance's range holds for sources like the calibration's.** It is fitted on the sources the calibration texts
+  came from, so a kind of writing or a model unlike all of them can sit outside it. The calibration also pools its
+  texts, so a source weighs in it by its number of texts: DroidCollection's model-written and model-rewritten code is
+  <!--litmus:t:chance_range_largest_source-->16,068 of the 57,960 calibration texts (28%), and 42% of its AI and mixed texts<!--/litmus-->. Typical AI and mixed sources therefore sit below the pooled calibration in the middle of the
+  scale, which the range covers and a calibration balanced by source would remove.
 - **Human text predates 2022.** Every human training and reference text is dated before 2022, so text about later
   events, or in later styles, has no human counterpart in the reference; whether that biases readings of recent human text is <!--litmus:record.findings.recent_human_text-->unmeasured: no held-out set holds human text written after 2021<!--/litmus-->.
 - **Long model text is scarce** in public data and nothing was generated to fill it, so readings of long model text
@@ -397,7 +424,8 @@ import litmus_engine
 
 model = litmus_engine.Model.from_path("path/to/release")
 reading = model.score(text)
-reading["label"]                                   # "human", "AI", "mixed", "uncertain" or "unlike reference"
+reading["label"]                                   # "human", "AI", "mixed", "AI or mixed", "uncertain" or "unlike reference"
+reading["chance"]["value"], reading["chance"]["interval"]  # the chance of AI and its range, widened between sources
 reading["verdict"]["probability"], reading["verdict"]["interval"], reading["verdict"]["strip"]
 surprise = model.surprise(text)                    # a second pass, through the masked language head
 surprise["mean_log_probability"], surprise["perplexity"], surprise["percentile"]  # percentile: human, AI, mixed

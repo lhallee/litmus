@@ -51,11 +51,21 @@ pub struct ScoreRequest<'a> {
     pub annotation: Option<Annotation>,
 }
 
+/// The reading as the server's engine binding returns it: the engine's document reading with `label`, which the app
+/// works out again from the set, and the verdict's `chance` of AI, which only the server's release can give (a
+/// server of 1.1.0 or earlier sends none, and the page then shows no chance).
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct ServerReading {
+    #[serde(flatten)]
+    pub document: DocumentReading,
+    #[serde(default)]
+    pub chance: Option<litmus_engine::Chance>,
+}
+
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct ScoreResponse {
     pub id: String,
-    /// The engine's document reading (the server adds `label`, which the app recomputes from the set).
-    pub reading: DocumentReading,
+    pub reading: ServerReading,
     pub model_version: String,
     pub terms_version: String,
     pub annotation: Option<Annotation>,
@@ -228,12 +238,12 @@ pub fn removal_body(text: &str) -> String {
 pub fn error_message(status: u16, body: &str) -> String {
     let said = serde_json::from_str::<ErrorBody>(body).map(|e| e.error).ok();
     let fallback = match status {
-        400 => "The site needs your agreement first: tick the box above the Check button.",
-        409 => "The terms have changed since the page loaded: read the new ones and tick the box again.",
+        400 => "The site needs your agreement first. Tick the box above the Check button.",
+        409 => "The terms have changed since the page loaded. Read the new ones and tick the box again.",
         410 => "The time to label this text has passed.",
         413 => "The text is too long for the site.",
-        429 => "Too many requests from here; wait a minute.",
-        503 => "The site has reached today's limit; try again tomorrow, or use the private page.",
+        429 => "Too many requests from here. Wait a minute.",
+        503 => "The site has reached today's limit. Try again tomorrow, or use the private page.",
         _ => "The site could not answer.",
     };
     format!("{} (HTTP {status})", said.unwrap_or_else(|| fallback.to_owned()))
@@ -340,15 +350,23 @@ mod tests {
             "terms_version": "v1", "annotation": null, "annotation_window_seconds": 1800}).to_string();
         let response = parse_score(200, &body).unwrap();
         assert_eq!(response.id, id);
-        assert_eq!(response.reading.n_tokens, 14);
+        assert_eq!(response.reading.document.n_tokens, 14);
+        assert_eq!(response.reading.chance, None, "a server of 1.1.0 sends no chance");
         assert_eq!(response.annotation, None);
         assert_eq!(response.annotation_window_seconds, 1800);
+        // The binding of later releases adds the verdict's chance of AI beside the label.
+        reading["chance"] = serde_json::json!({"value": 0.41, "interval": [0.4, 0.42], "reference_share": 0.6667});
+        let body = serde_json::json!({"id": id, "reading": reading, "model_version": "sha256:0123456789abcdef",
+            "terms_version": "v1", "annotation": null, "annotation_window_seconds": 1800}).to_string();
+        let response = parse_score(200, &body).unwrap();
+        assert_eq!(response.reading.document.n_tokens, 14);
+        assert_eq!(response.reading.chance.map(|chance| chance.words()), Some("41% (40-42%)".to_owned()));
     }
 
     #[test]
     fn errors_carry_the_servers_words() {
         assert_eq!(error_message(409, r#"{"error": "The terms have changed."}"#), "The terms have changed. (HTTP 409)");
-        assert!(parse_score(400, "").unwrap_err().contains("tick the box"));
+        assert!(parse_score(400, "").unwrap_err().contains("Tick the box"));
         assert!(parse_score(413, "not json").unwrap_err().contains("too long"));
         assert!(parse_score(200, "{}").unwrap_err().contains("could not be read"));
     }

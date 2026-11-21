@@ -76,6 +76,11 @@ or when its license is not one the project accepts. Both run with `python tools/
   - adds a "Check with Litmus" entry to Explorer's right-click menu only if you ask for it in Settings, under
     `HKEY_CURRENT_USER\Software\Classes\SystemFileAssociations\.<ext>\shell\LitmusCheck`, removed again from Settings.
     No other registry key is written.
+  - on Linux and macOS, takes the place of the Windows route above with the platform's own command-line tools
+    (`app/src/quick/unix.rs`). On Linux, `wl-paste` or `xclip` reads the primary selection, which is the selected text
+    itself, so nothing is copied and the clipboard is left alone. On macOS, `osascript` presses Copy through System
+    Events, which needs the Accessibility permission, and `pbpaste` and `pbcopy` save the clipboard's text and put it
+    back, while any other kind of clipboard content is not saved.
   The selected text is scored on the machine like any other text.
 - **`unsafe` Rust:** the Win32 calls of quick check, one call that lets the running app take the focus, and two that
   place the window on an existing screen.

@@ -23,34 +23,42 @@ impl ThemeChoice {
     }
 }
 
-/// How much of a reading the screens show: Simple by default, with more detail a click away. The exports always
-/// carry every field; the level is about the
-/// screen only, and no level hides uncertainty: an uncertain reading says so and shows its band at every level.
+/// How much of a reading the screens show: Simple by default, Full a click away. The exports always carry every
+/// field; the level is about the screen only, and neither level hides uncertainty: an uncertain reading says so and
+/// shows its band at both. There were three levels through 1.1.0; Logan, 2026-11-21: "simple and full are the only
+/// detail levels we need", so a saved `detailed` now reads as Full.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Detail {
     /// The verdict word, one plain sentence, the strip with its band, and the text tinted.
     #[default]
     Simple,
-    /// Adds the headline numbers, the minimap of a long document, and the reading of a clicked part of the text.
-    Detailed,
-    /// Adds every number, the explanation of how the reading was made, the model, and the exports.
+    /// Adds the numbers, the minimap of a long document, the reading of a clicked part of the text, how the reading
+    /// was made, the model, and the exports.
+    #[serde(alias = "detailed")]
     Full,
 }
 
 impl Detail {
-    pub const ALL: [Detail; 3] = [Detail::Simple, Detail::Detailed, Detail::Full];
+    pub const ALL: [Detail; 2] = [Detail::Simple, Detail::Full];
 
     pub fn name(self) -> &'static str {
         match self {
             Detail::Simple => "Simple",
-            Detail::Detailed => "Detailed",
             Detail::Full => "Full",
         }
     }
 
-    pub fn at_least(self, other: Detail) -> bool {
-        self as u8 >= other as u8
+    /// The other level, for the shortcut that switches between the two.
+    pub fn other(self) -> Detail {
+        match self {
+            Detail::Simple => Detail::Full,
+            Detail::Full => Detail::Simple,
+        }
+    }
+
+    pub fn full(self) -> bool {
+        self == Detail::Full
     }
 }
 
@@ -164,9 +172,13 @@ mod tests {
     }
 
     #[test]
-    fn detail_levels_are_ordered() {
-        assert!(Detail::Full.at_least(Detail::Detailed) && Detail::Detailed.at_least(Detail::Detailed));
-        assert!(!Detail::Simple.at_least(Detail::Detailed));
-        assert_eq!(Detail::ALL.map(Detail::name), ["Simple", "Detailed", "Full"]);
+    fn there_are_two_detail_levels_and_an_old_choice_still_loads() {
+        assert!(Detail::Full.full() && !Detail::Simple.full());
+        assert_eq!(Detail::ALL.map(Detail::name), ["Simple", "Full"]);
+        assert_eq!((Detail::Simple.other(), Detail::Full.other()), (Detail::Full, Detail::Simple));
+        // Settings saved by 1.1.0 and earlier may hold the middle level that no longer exists.
+        let settings: Settings = serde_json::from_str(r#"{"detail": "detailed"}"#).unwrap();
+        assert_eq!(settings.detail, Detail::Full);
+        assert_eq!(serde_json::to_string(&Detail::Full).unwrap(), r#""full""#);
     }
 }

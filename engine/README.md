@@ -1,7 +1,7 @@
 # Litmus engine
 
-The inference engine of Litmus, a detector of model-written text: a ternary (BitNet b1.58) encoder that runs on one
-CPU core by integer addition, scored against a reference bank with calibrated uncertainty, as a Rust library, a
+The inference engine of Litmus, a detector of model-written text: a ternary (BitNet b1.58) encoder that runs on a
+CPU by integer addition, on one core or spread over several, scored against a reference bank with calibrated uncertainty, as a Rust library, a
 command line (`litmus`), a WebAssembly build and a Python module (`litmus_engine`). The contract it implements is
 [`../student/SPEC.md`](../student/SPEC.md) and [`../student/reference.py`](../student/reference.py) (the reference
 wins where the two disagree).
@@ -15,7 +15,7 @@ production sizes, except the column path's, which come from a trained release.
 
 | Crate | What |
 | --- | --- |
-| `litmus-engine` | The library: kernels, tokenizer, streaming encoder, head, bank, calibration, the document reading. No file system, threads or clock |
+| `litmus-engine` | The library: kernels, tokenizer, streaming encoder, head, bank, calibration, the document reading. No file system or clock, and no threads but the scoped ones `score_threads` is asked for |
 | `litmus-cli` | The `litmus` binary: score files, folders or standard input; benchmark; serve AI agents over the Model Context Protocol |
 | `litmus-py` | The Python module `litmus_engine` (PyO3, built with maturin) |
 
@@ -27,10 +27,16 @@ compiled in are listed with their licenses in [THIRD_PARTY.md](THIRD_PARTY.md), 
 `score(text)` returns a `DocumentReading` (SPEC.md, Fields):
 
 - **`verdict`**: the document's call. Conformal p-values per origin (human, ai, mixed) and the sets at levels 0.05
-  and 0.10 (the origins not ruled out; one origin is a call, several are uncertain, none is unlike the reference),
+  and 0.10 (the origins not ruled out; one origin is a call, AI and mixed together are the call "AI or mixed", human
+  beside another is uncertain, none is unlike the reference; `label` names the 0.10 set),
   the Venn-Abers probability of not human with its interval, three-way probabilities, the closeness p-value and the
-  out-of-reference flag, the **litmus strip** (position 0 human, 0.5 mixed, 1 AI, and a band over what the 0.10 set
-  cannot rule out), and the mixed-document signal. `document.label()` is the verdict in one word.
+  out-of-reference flag, the reading's place between the origins (`strip`: position 0 human, 0.5 mixed, 1 AI, and the
+  span of what the 0.10 set cannot rule out), and the mixed-document signal. `document.label()` is the verdict in one
+  word.
+- **The chance of AI** (`engine.chance(&document)`, a `Chance`; SPEC.md, Chance of AI): the verdict's probability and
+  interval restated at even odds, since the calibration texts are not an even mix. It is the number every surface
+  leads with, written `69% (62-75%)` by `Chance::words()`. **The litmus strip** is drawn from it (`Drawn`): the mark
+  at the chance, the band over its range, and no band for a text unlike the reference.
 - **`chunks`**: a text of more than `chunk_tokens` (8,192) tokens is read as `ceil(n / 8192)` equal chunks, each a
   text of its own with a fresh encoder state; each chunk carries the full reading and its explanation (`explain`:
   the calibration counts behind each p-value and the five nearest bank texts with their metadata). The verdict merges
@@ -38,8 +44,8 @@ compiled in are listed with their licenses in [THIRD_PARTY.md](THIRD_PARTY.md), 
   widened by the chunks' disagreement; the mixed-document signal at 0.05 / C per chunk. One chunk is its own verdict.
 - **`windows`**: inside each chunk, windows of 512 tokens every 128 (and one ending at the chunk's end), each read as
   a text of its own length from differences of the chunk's running float64 sums, without a second encoder pass.
-- **`cells`**: the heat map, one cell per 128 tokens: the overlap-weighted mean strip position of the windows over it,
-  their spread, and the widest band.
+- **`cells`**: the heat map, one cell per 128 tokens: the overlap-weighted mean position of the windows over it
+  (0 human, 0.5 mixed, 1 AI), their spread, and the widest span of origins they keep.
 
 Every chunk, window and cell carries its place: token positions `start`, `end`, and `start_byte`, `end_byte`,
 `start_char`, `end_char` into the original text (characters are Unicode scalar values; the cells and the chunks tile
@@ -55,9 +61,7 @@ let document = engine.score_with(text, &mut |progress| {
     eprintln!("{} of {} chunks", progress.chunks_done, progress.chunks_total);
     if cancelled() { Flow::Cancel } else { Flow::Continue }
 })?;
-let verdict = &document.verdict;
-println!("{} P(not human) {:.2} [{:.2}, {:.2}], strip at {:.2}", document.label().word(),
-         verdict.probability, verdict.interval[0], verdict.interval[1], verdict.strip.position);
+println!("{}, chance of AI {}", document.label().word(), engine.chance(&document).words());
 for cell in &document.cells {
     println!("characters {}..{}: {:.2}", cell.place.start_char, cell.place.end_char, cell.position);
 }
@@ -67,6 +71,8 @@ for cell in &document.cells {
 | --- | --- |
 | `Engine::load(model, config, tokenizer)` | Load a release from bytes, with the fastest backend this processor has |
 | `score(text)`, `score_with(text, progress)` | The `DocumentReading`; `progress` is called every ~8 KB of text and may return `Flow::Cancel` (`Error::Cancelled`) |
+| `score_threads(text, threads, progress)` | The same reading, bit for bit, on up to `threads` threads: a chunk's token states are held whole and each layer's 256-token blocks are spread over scoped threads of the standard library ([Threads](#threads)). One thread is `score_with`. Not on WebAssembly |
+| `chance(&document)`, `document.drawn(rule)` | The verdict's chance of AI (`Chance`: `value`, `interval`, `reference_share`, `between_sources`, `words()`), and the strip drawn from it (`Drawn`: `mark`, `band`, `unlike_reference`, `range()`); `Reading::chance` and `Reading::drawn` give a chunk's or a window's. `rule` is `info().chance_rule` (`ChanceRule`: the not-human share of each length bin, and the half width the release's table widens the range by between sources of text, 0 for a table without it) |
 | `count_tokens(text)`, `tokenize(text)` | Tokens of the standard reading; `Token { id, start, end }` with byte offsets into the original text |
 | `score_ids(ids, piece)` | Score token ids directly, fed in pieces (the contract's level) |
 | `surprise(text)`, `surprise_with(text, progress)` | The text's `Surprise` (SPEC.md, Surprise): its mean token log probability under the release's masked language head, the perplexity, and its percentile among each origin's calibration texts. A pass of its own, read only when asked; `Error::Load` for a release without the head (`info().surprise` says) |
@@ -88,8 +94,9 @@ import litmus_engine
 model = litmus_engine.Model.from_path("path/to/release")       # Model is Engine; tokenizer.json in the folder
 model = litmus_engine.Engine(model_bytes, config_bytes, tokenizer_bytes, backend=None)
 reading = model.score(text, timeout_seconds=None, max_tokens=None)  # dict, JSON-ready
-reading["label"]                       # "human", "AI", "mixed", "uncertain" or "unlike reference"
-reading["verdict"]["probability"], reading["verdict"]["interval"], reading["verdict"]["strip"]
+reading["label"]                       # "human", "AI", "mixed", "AI or mixed", "uncertain" or "unlike reference"
+reading["chance"]["value"], reading["chance"]["interval"]      # the chance of AI and its range
+reading["verdict"]["sets"]["0.1"]      # the origins not ruled out at the 10% level
 reading["chunks"], reading["windows"], reading["cells"]        # as in "What a reading is"
 model.count_tokens(text)               # int, the tokens score reads
 model.surprise(text)                   # dict: n_tokens, mean_log_probability, perplexity, percentile (human, AI, mixed)
@@ -103,12 +110,14 @@ litmus_engine.Engine.standard_reading(text)
 | Call | Detail |
 | --- | --- |
 | `Engine.from_path(path, tokenizer=None, backend=None)` | `path` is the release folder or its `model.safetensors`; reads `model.safetensors`, `config.json` and `tokenizer.json` (or the `tokenizer` path), and refuses a tokenizer whose SHA-256 differs from the one `config.json` pins, as the command line does. No `LITMUS_TOKENIZER` or Hugging Face cache fallback: the folder is the whole release |
-| `score(text, *, timeout_seconds=None, max_tokens=None)` | The reading `litmus score --json` prints under `reading`, bit for bit, plus `label`. Releases the GIL while it scores and serializes; raises `ValueError` for a text with no tokens or more than `max_tokens` (stopped during the counting pass), `TimeoutError` past the timeout, `KeyboardInterrupt` on Ctrl-C (each checked every ~8 KB) |
+| `score(text, *, timeout_seconds=None, max_tokens=None)` | The reading `litmus score --json` prints under `reading`, bit for bit, plus `label` and `chance` as that line carries them. Releases the GIL while it scores and serializes; raises `ValueError` for a text with no tokens or more than `max_tokens` (stopped during the counting pass), `TimeoutError` past the timeout, `KeyboardInterrupt` on Ctrl-C (each checked every ~8 KB) |
 | Errors | `FileNotFoundError` for a missing folder or file, naming it; `ValueError` for a release or tokenizer that does not load or an unknown backend. A Rust panic surfaces as `pyo3_runtime.PanicException`, never an abort |
 
 **Threads.** `Engine` is immutable once loaded, so one instance is shared by every thread. Concurrent `score` calls
 run in parallel, each with its own buffers, and give the same readings as serial calls; they contend only on the
 tokenizer's word-cache lock. On one core they share the core, so each takes about as long as all of them in turn.
+The module's `score` reads on its calling thread and does not spread one text over several
+([Threads](#threads) is the command line's and the app's), which suits a server that reads many texts at once.
 
 **Files.** The module reads the release's three files when it loads and writes nothing: it calls the engine
 directly and does not use `litmus-files`, so neither the reading cache nor the PDF reader is in the wheel.
@@ -137,8 +146,8 @@ The reading of a 131,072-token text is 1.15 MB of JSON.
 ## Command line
 
 ```text
-litmus score [--json | --csv] [--map] [--explain] [--no-cache] [--no-color] <file | folder | ->...
-litmus bench [--tokens 128,1024,8192,131072] [--repeat 3] [--json] [--text FILE] [--column-percent N] [--print-text]
+litmus score [--json | --csv] [--map] [--explain] [--no-cache] [--no-color] [--threads N] <file | folder | ->...
+litmus bench [--tokens 128,1024,8192,131072] [--repeat 3] [--threads N] [--json] [--text FILE] [--column-percent N] [--print-text]
 litmus info
 litmus mcp
   --model DIR (or $LITMUS_MODEL)   --tokenizer FILE (or DIR/tokenizer.json, $LITMUS_TOKENIZER, the Hugging Face cache)
@@ -150,10 +159,12 @@ throughout, as on a processor without SIMD); every backend gives the same bits. 
 products take AVX2, SIMD128 or NEON whenever the processor or the build has it, and an int8 bank's dot products take
 AVX2 where the processor has it and the portable loops elsewhere.
 
-The default table prints the verdict word, P(not human) with its interval, the set at 0.10, the strip and the token
-count; the strip is drawn in color (blue `#2F6FDB` human, purple `#8E5BC9` mixed, red `#D9483B` AI, pale band `#C9B8E6`)
-where the terminal supports it and always with characters too (`=` band, `|` position, `?` unlike the reference),
-never by color alone. Under each row a line gives the text's counts, such as `1,234 words, 7,890 characters, 1,650
+The default table prints the verdict word, the chance of AI with its range, the set at 0.10, the strip and the token
+count; the strip is drawn in color (blue `#2F6FDB` human through purple `#8E5BC9` to red `#D9483B` AI, pale band
+`#C9B8E6`) where the terminal supports it and always with characters too (`|` the mark at the chance of AI, `=` the
+band over its range, `?` unlike the reference), never by color alone. A cell of the strip is 5 points of chance wide,
+so the range of a single chunk shows as the mark's cell alone. `score` spreads a text's blocks over one thread per
+logical processor unless `--threads N` says otherwise, and `bench` measures one thread unless told more. Under each row a line gives the text's counts, such as `1,234 words, 7,890 characters, 1,650
 tokens`. `--map` adds each chunk of a long text and the heat map, one row per cell with its characters;
 `--explain` says how the chunks combine and, per chunk, the bank evidence, the conformal counts and the nearest bank
 texts. `--json` prints every field, and beside `reading` a `counts` object of the text read (`words`, `characters`,
@@ -250,6 +261,39 @@ Each layer holds only its open block (256 rows, offset by half a block on odd la
 streams through the encoder; the chunk's running float64 sums are recorded at every window boundary (at most 66
 marks of 2d values per chunk) and dropped when the chunk is read. Beyond the input text, scoring holds the weights,
 the block buffers, one chunk's marks and the readings it returns (one per chunk, window and cell).
+
+## Threads
+
+`score_with` reads on the calling thread. `score_threads(text, threads, progress)` spreads one text over several
+(`model::run_chunk`): it holds a chunk's token states whole (`4 d` bytes a token, 16.8 MB for 8,192 tokens at
+`d = 512`, where the stream holds one block a layer) and runs each layer's blocks, which never read one another, on
+scoped threads of the standard library, each with a scratch of its own. The bank's pass over the chunk and its
+windows is cut into as many runs of vectors, a run a thread (`Reader::bank_readings`). There is no thread pool, no
+new dependency and no `unsafe`; the embedding batches and the pooling keep their order, and WebAssembly keeps
+`score_with`.
+
+A block is computed by the stream's own code on the same rows whichever thread takes it, and a vector's bank sums
+add up in the bank's order whichever run holds it, so the reading is `score_with`'s bit for bit.
+`tests/fixture_parity.rs` holds 1, 2, 3 and 8 threads to the single-thread reading on every text of every fixture
+set, and on the 1.1 release `litmus score --json` prints the same bytes for 16 texts of 1 to 33,000 tokens on 1, 2,
+3, 8 and 16 threads.
+
+Measured with the 1.1 release (`d = 512`, 6 layers, integer attention, int8 output) on an AMD Ryzen 7 3800X (8 cores,
+16 logical processors), Windows 10, AVX2, the process not pinned, `litmus bench --threads N`, the fastest of 3 runs
+(131,072 tokens: one run), from the text:
+
+| Tokens | 1 thread | 2 | 4 | 8 | 16 |
+| --- | --- | --- | --- | --- | --- |
+| 512 | 0.106 s (4,837/s) | 0.057 s (8,945/s) | 0.060 s | 0.058 s | 0.057 s (8,943/s) |
+| 2,048 | 0.408 s (5,022/s) | 0.217 s (9,446/s) | 0.120 s (17,071/s) | 0.099 s (20,645/s) | 0.087 s (23,624/s) |
+| 8,192 | 1.637 s (5,005/s) | 0.887 s (9,232/s) | 0.459 s (17,831/s) | 0.305 s (26,858/s) | 0.241 s (34,019/s) |
+| 131,072 (16 chunks) | 27.2 s (4,814/s) | | | 4.90 s (26,767/s) | 3.82 s (34,345/s) |
+
+A text of one block (256 tokens) has nothing to spread, and one of 512 tokens two blocks, so the gain grows with the
+text: 1.8 times at 512 tokens, 4.7 at 2,048 and 6.8 at 8,192 on 16 logical processors. The scoring heap at 8,192
+tokens grows from 9.5 MB on one thread to 47 MB on 8 and 76 MB on 16 (the chunk's states and a scratch a thread).
+`litmus score` and the app use one thread per logical processor, and `litmus bench` one thread unless told more, so
+the one-core numbers below are measured as before. The surprise reading still takes one thread.
 
 ## Measurements
 
@@ -535,7 +579,11 @@ folder holding ModernBERT's `tokenizer.json`, `LITMUS_RELEASE` to a trained rele
 | Linux x86-64, wheel | `bash litmus-py/build_wheel.sh <project folder> <output folder>` (Docker) | Built in the pinned manylinux2014 image and smoke-tested with `litmus-py/smoke_test.py` |
 | Linux x86-64 | `cargo build --release --locked`; the released programs with `release/build_linux.sh` (Docker, glibc 2.17) | Built and tested: every suite above; `litmus` reads the same words, sets, labels and counts as the Windows program, with floats up to 3.5e-8 apart (the platforms' math libraries differ in `exp`, `tanh` and `ln`) |
 
-Not tested: macOS, a browser page (only Node's V8), NEON at run time (the ternary products, attention, the
-float64 products, and the column path), parity against `reference.py` on a trained release (a trained release is
+macOS is built and tested only by the release workflow (`.github/workflows/release-build.yml`), on GitHub's Apple
+silicon and Intel runners: the suites above, the programs with the model built in, and the app's reading against the
+command line's. Nobody has run it on a Mac by hand.
+
+Not tested: a browser page (only Node's V8), NEON at run time outside that workflow's Apple silicon runner (the
+ternary products, attention, the float64 products, and the column path), parity against `reference.py` on a trained release (a trained release is
 measured for speed, and its readings are byte-identical with and without the column path), integer attention and int8
 output on a trained release, and the int8 dot products on WebAssembly and NEON, which take the portable loops.

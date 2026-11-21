@@ -1,16 +1,19 @@
-//! `litmus bench`: tokens per second and memory for documents of given lengths, on the calling thread only. Pin the
-//! process to one core from outside (`start /affinity 4` on Windows, `taskset -c 2` on Linux) for single-core numbers.
+//! `litmus bench`: tokens per second and memory for documents of given lengths, on the calling thread only unless
+//! `--threads` asks for more. Pin the process to one core from outside (`start /affinity 4` on Windows, `taskset -c 2`
+//! on Linux) for single-core numbers.
 
 use std::time::Instant;
 
 use litmus_engine::model::ColumnChoice;
-use litmus_engine::{Backend, Engine};
+use litmus_engine::{Backend, Engine, Flow};
 
 use crate::memory;
 
 pub struct BenchOptions {
     pub tokens: Vec<usize>,
     pub repeat: usize,
+    /// Threads a scoring call spreads a chunk's blocks over (`Engine::score_threads`); 1 is the calling thread alone.
+    pub threads: usize,
     pub json: bool,
     /// A UTF-8 file whose first tokens are read instead of the generated text.
     pub text: Option<std::path::PathBuf>,
@@ -139,15 +142,17 @@ pub fn run(options: &BenchOptions, model: &[u8], config: &[u8], tokenizer: &[u8]
         }
         return Ok(true);
     }
+    let threads = options.threads.max(1);
     if !options.json {
         println!(
-            "model d={} L={} f={} W={} bank={:?}; backend {}; load {:.0} ms; engine heap {:.1} MB (weights, head, bank {:.1} MB; tokenizer the rest)",
+            "model d={} L={} f={} W={} bank={:?}; backend {}; {}; load {:.0} ms; engine heap {:.1} MB (weights, head, bank {:.1} MB; tokenizer the rest)",
             info.width,
             info.depth,
             info.ffn_width,
             info.block_size,
             info.bank,
             engine.backend().name(),
+            if threads == 1 { "one thread".to_owned() } else { format!("{threads} threads") },
             load_seconds * 1e3,
             engine_heap as f64 / 1e6,
             info.bytes as f64 / 1e6
@@ -176,7 +181,7 @@ pub fn run(options: &BenchOptions, model: &[u8], config: &[u8], tokenizer: &[u8]
             memory::reset_peak();
             let base = memory::heap_now();
             let started = Instant::now();
-            let reading = engine.score(&text).map_err(|e| e.to_string())?;
+            let reading = engine.score_threads(&text, threads, &mut |_| Flow::Continue).map_err(|e| e.to_string())?;
             best_text = best_text.min(started.elapsed().as_secs_f64());
             heap = heap.max(memory::heap_peak() - base);
             assert_eq!(reading.n_tokens, count, "the reading counts the text's tokens");
@@ -184,7 +189,7 @@ pub fn run(options: &BenchOptions, model: &[u8], config: &[u8], tokenizer: &[u8]
             chunk_lengths = reading.chunks.iter().map(|chunk| chunk.reading.n_tokens).collect();
             drop(reading);
             let started = Instant::now();
-            let reading = engine.score_ids(&ids, 4096).map_err(|e| e.to_string())?;
+            let reading = if threads == 1 { engine.score_ids(&ids, 4096) } else { engine.score_ids_threads(&ids, threads) }.map_err(|e| e.to_string())?;
             best_ids = best_ids.min(started.elapsed().as_secs_f64());
             drop(reading);
         }
@@ -205,7 +210,7 @@ pub fn run(options: &BenchOptions, model: &[u8], config: &[u8], tokenizer: &[u8]
         if options.json {
             println!(
                 "{}",
-                serde_json::json!({"width": info.width, "depth": info.depth, "backend": engine.backend().name(), "tokens": count,
+                serde_json::json!({"width": info.width, "depth": info.depth, "backend": engine.backend().name(), "threads": threads, "tokens": count,
                     "text_tokens_per_second": text_rate, "ids_tokens_per_second": ids_rate, "ternary_adds_per_second": adds,
                     "scoring_heap_bytes": heap, "engine_heap_bytes": engine_heap, "seconds": best_text,
                     "chunks": chunk_lengths.len(), "windows": windows, "read_pass_seconds": read_pass, "bank": info.bank,

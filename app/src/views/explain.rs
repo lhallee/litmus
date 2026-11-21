@@ -3,7 +3,7 @@
 //! the closeness to the reference, and the nearest reference texts with their origin and cosine.
 
 use eframe::egui::{self, RichText};
-use litmus_engine::{DocumentReading, Origin, Reading};
+use litmus_engine::{Chance, DocumentReading, Origin, Reading};
 use litmus_files::export::thousands;
 
 use crate::app::LitmusApp;
@@ -15,8 +15,9 @@ pub fn show(app: &mut LitmusApp, ui: &mut egui::Ui) {
     let Some(shown) = &app.shown else { return };
     let reading = shown.scored.reading.clone();
     let meta = app.meta().cloned();
+    let chance = app.chance(&shown.scored);
     ui.scope(|ui| {
-        combine(ui, &reading);
+        combine(ui, &reading, chance.as_ref());
         if reading.chunks.len() > 1 {
             ui.horizontal(|ui| {
                 ui.label("Section");
@@ -25,11 +26,11 @@ pub fn show(app: &mut LitmusApp, ui: &mut egui::Ui) {
                     .show_ui(ui, |ui| {
                         for (index, chunk) in reading.chunks.iter().enumerate() {
                             let label = format!(
-                                "{}: characters {} to {}, {}",
+                                "{} (characters {} to {}), {}",
                                 index + 1,
                                 thousands(chunk.place.start_char),
                                 thousands(chunk.place.end_char),
-                                wording::reading_headline(&chunk.reading)
+                                wording::reading_headline(&chunk.reading).line()
                             );
                             ui.selectable_value(&mut app.explain_chunk, index, label);
                         }
@@ -43,8 +44,28 @@ pub fn show(app: &mut LitmusApp, ui: &mut egui::Ui) {
     });
 }
 
+/// How a chance of AI came from a probability of not human: the share of not-human calibration texts it divides out,
+/// and what its range holds when the release's table carries the shift between sources.
+fn at_even_odds(chance: Option<&Chance>) -> String {
+    chance.map_or_else(String::new, |chance| {
+        let range = if chance.between_sources > 0.0 {
+            format!(
+                " The range is the calibration's own interval widened by how far the chance moves from one source of text to another, {:.1} times the odds either way.",
+                chance.between_sources.exp()
+            )
+        } else {
+            String::new()
+        };
+        format!(
+            " Of the calibration texts of this length, {} are not human to begin with, so for a text as likely human as not the chance of AI is {}.{range} The strip marks that chance and its pale band covers that range.",
+            wording::percent_fine(chance.reference_share),
+            chance.sentence()
+        )
+    })
+}
+
 /// How several sections make one verdict (one section is its own verdict).
-fn combine(ui: &mut egui::Ui, document: &DocumentReading) {
+fn combine(ui: &mut egui::Ui, document: &DocumentReading, chance: Option<&Chance>) {
     let v = &document.verdict;
     if v.chunks <= 1 {
         ui.label(format!(
@@ -64,15 +85,21 @@ fn combine(ui: &mut egui::Ui, document: &DocumentReading) {
         thousands(document.chunk_tokens)
     ));
     ui.label(format!(
-        "Merged p-values are twice the sections' mean, valid however the sections depend on each other: human {:.3}, mixed {:.3}, AI {:.3}.",
+        "Merged p-values are twice the sections' mean, valid however the sections depend on each other. They are human {:.3}, mixed {:.3}, and AI {:.3}.",
         v.p_values[0], v.p_values[2], v.p_values[1]
     ));
     ui.label(format!(
-        "P(not human) {:.3} is the sections' mean; its interval [{:.3}, {:.3}] is their mean interval widened by their disagreement ({:.3}). The sections range from {:.2} to {:.2}.",
-        v.probability, v.interval[0], v.interval[1], v.disagreement, v.lowest, v.highest
+        "The probability of not human, {}, is the sections' mean. Its range, {} to {}, is their mean range widened by their disagreement ({:.3}). The sections run from {} to {}.{}",
+        wording::percent_fine(v.probability),
+        wording::percent_fine(v.interval[0]),
+        wording::percent_fine(v.interval[1]),
+        v.disagreement,
+        wording::percent_fine(v.lowest),
+        wording::percent_fine(v.highest),
+        at_even_odds(chance)
     ));
     ui.label(format!(
-        "Mixed-document test at {} per section ({} over {} sections): {} section{} read as model-written and {} as human, so {}.",
+        "The mixed-document test at {} per section ({} over {} sections) finds {} section{} read as model-written and {} as human, so {}.",
         wording::format_percent(v.chunk_level),
         wording::format_percent(v.level),
         v.chunks,
@@ -89,7 +116,7 @@ fn chunk_account(ui: &mut egui::Ui, r: &Reading, meta: Option<&ModelMeta>) {
     let bins = |bins: &[usize]| meta.map_or_else(|| format!("length bins {bins:?}"), |m| m.bins_words(bins));
     ui.label(RichText::new("Against the reference bank").font(crate::theme::strong(14.0)));
     ui.label(format!(
-        "The head scores the text against every reference text; for each origin, the mean probability that the text and a reference text share an origin. The text is {} tokens (length bin {}).",
+        "The head scores the text against every reference text. Each origin's mean is the mean probability that the text shares an origin with a reference text of that origin. The text is {} tokens (length bin {}).",
         thousands(r.n_tokens),
         r.length_bin
     ));
@@ -109,7 +136,7 @@ fn chunk_account(ui: &mut egui::Ui, r: &Reading, meta: Option<&ModelMeta>) {
         }
     });
     ui.add_space(8.0);
-    ui.label(RichText::new("Conformal p-values: how typical the text is of each origin").font(crate::theme::strong(14.0)));
+    ui.label(RichText::new("How typical the text is of each origin (conformal p-values)").font(crate::theme::strong(14.0)));
     let likeness = |origin: Origin| match origin {
         Origin::Human => "human-like",
         Origin::Ai => "AI-like",
@@ -121,7 +148,7 @@ fn chunk_account(ui: &mut egui::Ui, r: &Reading, meta: Option<&ModelMeta>) {
                 ui.horizontal_wrapped(|ui| {
                     views::origin_marker(ui, count.origin);
                     ui.label(format!(
-                        "Of {} {} calibration texts of {}, {} read at most this {}: p = {:.3} (the reading uses {:.3}, its grid value).",
+                        "Of {} {} calibration texts of {}, {} read at most this {}, so p = {:.3} (the reading uses {:.3}, its grid value).",
                         thousands(count.n),
                         origin_word(count.origin),
                         bins(&count.bins),
@@ -156,8 +183,16 @@ fn chunk_account(ui: &mut egui::Ui, r: &Reading, meta: Option<&ModelMeta>) {
     ui.add_space(8.0);
     ui.label(RichText::new("Probability").font(crate::theme::strong(14.0)));
     ui.label(format!(
-        "P(not human) {:.3}, interval [{:.3}, {:.3}]: Venn-Abers calibration of the score {:.3} (one minus the human share) on calibration texts of its length. Three-way: human {:.2}, mixed {:.2}, AI {:.2}. The strip's marker sits at P(AI) + P(mixed) / 2 = {:.2}.",
-        r.probability, r.interval[0], r.interval[1], r.score, r.three_way[0], r.three_way[2], r.three_way[1], r.strip.position
+        "Of the calibration texts of this length that score like this one, {} are not human (range {} to {}). That is the Venn-Abers calibration of the score {:.3}, one minus the human share.{}",
+        wording::percent_fine(r.probability),
+        wording::percent_fine(r.interval[0]),
+        wording::percent_fine(r.interval[1]),
+        r.score,
+        at_even_odds(meta.and_then(|m| m.chance_of(r)).as_ref())
+    ));
+    ui.label(format!(
+        "The three-way probabilities are human {:.2}, mixed {:.2}, and AI {:.2}. They place the text at P(AI) + P(mixed) / 2 = {:.2} between human (0) and AI (1), which colors the verdict's marker and the tint of the text.",
+        r.three_way[0], r.three_way[2], r.three_way[1], r.strip.position
     ));
     ui.add_space(8.0);
     ui.label(RichText::new("Closeness to the reference").font(crate::theme::strong(14.0)));
@@ -165,13 +200,13 @@ fn chunk_account(ui: &mut egui::Ui, r: &Reading, meta: Option<&ModelMeta>) {
         Some(explain) => {
             let c = &explain.closeness;
             ui.label(format!(
-                "The mean of the text's highest cosines to the bank is {:.3}. Of {} calibration texts of {}, {} sat as far from the reference: p = {:.3}{}.",
+                "The mean of the text's highest cosines to the bank is {:.3}. Of {} calibration texts of {}, {} sat as far from the reference, so p = {:.3}{}.",
                 r.closeness,
                 thousands(c.n),
                 bins(&c.bins),
                 thousands(c.count),
                 c.p,
-                if r.out_of_reference { ", so the text is out of reference" } else { "" }
+                if r.out_of_reference { ", which puts the text out of reference" } else { "" }
             ));
         }
         None => {

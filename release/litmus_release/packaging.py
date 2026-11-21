@@ -25,6 +25,9 @@ PLATFORM_PROGRAMS = {
     "windows": (("litmus-app.exe", "windows_app"), ("litmus.exe", "windows_cli")),
     "linux": (("litmus-app", "linux_app"), ("litmus", "linux_cli")),
 }
+# Platforms whose programs the `macos` stage attaches once the release is public. `targets.toml` lists them so that the
+# site links their programs; `assemble` lays out none of theirs.
+ATTACHED_AFTER_PUBLISHING = ("macos",)
 
 
 def targets(context: Context) -> dict:
@@ -37,8 +40,10 @@ def github_assets(context: Context) -> dict[str, Path]:
     names = settings["programs"]["assets"]
     assets: dict[str, Path] = {}
     for platform_name in settings["programs"]["platforms"]:
+        if platform_name in ATTACHED_AFTER_PUBLISHING:
+            continue
         if platform_name not in PLATFORM_PROGRAMS:
-            raise StageError(f"targets.toml lists the platform {platform_name!r}; the release builds {', '.join(PLATFORM_PROGRAMS)} (macOS programs are attached after publishing, by the macos stage)")
+            raise StageError(f"targets.toml lists the platform {platform_name!r}; the release builds {', '.join(PLATFORM_PROGRAMS)} and attaches {', '.join(ATTACHED_AFTER_PUBLISHING)} after publishing")
         for program, key in PLATFORM_PROGRAMS[platform_name]:
             source = context.work / "build" / platform_name / program
             if not source.is_file():

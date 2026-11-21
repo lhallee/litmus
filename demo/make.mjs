@@ -3,6 +3,7 @@
 //
 //   node make.mjs --work <dir> --litmus <litmus.exe> --site <built site folder> --manifest <release manifest.json>
 //                 --clips <dir with app.mp4, app.json, quick.mp4, quick.json, memory.json from capture/run_linux.sh> [--core 6]
+//                 [--cuts wide] [--workers <n>]
 //
 // The desktop footage and the app's memory come from the Linux app on a virtual display (capture/run_linux.sh), recorded
 // on a machine with Docker; everything else runs here. Each step is a script in tools/ or capture/ and can be run alone.
@@ -18,6 +19,8 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, all) => (a.startsWith('--') ? [...acc, [a.slice(2), all[i + 1]]] : acc), []));
 for (const k of ['work', 'litmus', 'site', 'manifest', 'clips']) if (!args[k]) throw new Error(`give --${k}`);
+// `--cuts wide` renders the one cut a release ships (the site's film and the README's preview); the default is all three.
+const cuts = args.cuts ?? 'all';
 const work = resolve(args.work);
 const clips = resolve(args.clips);
 for (const f of ['app.mp4', 'app.json', 'quick.mp4', 'quick.json', 'memory.json']) if (!existsSync(join(clips, f))) throw new Error(`${join(clips, f)} is missing: record the desktop footage first (capture/linux_capture.py)`);
@@ -42,5 +45,5 @@ mkdirSync(staged, { recursive: true });
 cpSync(clips, staged, { recursive: true });
 cpSync(checker, join(staged, 'site'), { recursive: true });
 step('prepare the footage', 'tools/prepare_footage.mjs', ['--clips', staged, '--out', join(work, 'footage'), '--work', work]);
-step('render the ad, the teaser, and the wide cut', 'render.mjs', ['all', '--work', work, '--footage', join(work, 'footage'), '--out', join(work, 'out'), '--stills']);
+step(`render ${cuts === 'all' ? 'the wide cut, the ad, and the teaser' : cuts}`, 'render.mjs', [cuts, '--work', work, '--footage', join(work, 'footage'), '--out', join(work, 'out'), '--stills', ...(args.workers ? ['--workers', args.workers] : [])]);
 console.log(`\ndone: ${join(work, 'out')}`);

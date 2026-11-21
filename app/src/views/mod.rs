@@ -26,6 +26,13 @@ use crate::theme;
 /// The widest the reading and the editor grow: a comfortable measure for text.
 pub const MEASURE: f32 = 880.0;
 
+/// The warning a placeholder release carries on every screen and in the quick-check popup.
+pub const PLACEHOLDER: &str = "Placeholder model. Readings are meaningless.";
+
+/// The kinds of file the app reads, as the file dialogs name them.
+#[cfg(not(target_arch = "wasm32"))]
+pub const FILE_FILTER: &str = "Text, Markdown, HTML, Word, PDF";
+
 pub fn dark(ui: &egui::Ui) -> bool {
     ui.visuals().dark_mode
 }
@@ -62,6 +69,30 @@ pub fn origin_label(ui: &mut egui::Ui, origin: Origin) {
         origin_marker(ui, origin);
         ui.label(crate::wording::origin_word(origin));
     });
+}
+
+/// A verdict's headline as one piece of text: the word in the semibold face at `size` and, beside an uncertain one,
+/// the origins it keeps ("human or mixed"), smaller and in `muted`, on the word's baseline. It is one label, so a
+/// narrow place breaks it between words. A long headline in a row of its own once pushed the quick-check popup's
+/// strip and link past the window's edge (Logan's screenshot, 2026-11-21).
+pub fn headline_job(headline: &crate::wording::Headline, size: f32, ink: Color32, muted: Color32) -> egui::text::LayoutJob {
+    let mut job = egui::text::LayoutJob::default();
+    job.append(&headline.word, 0.0, egui::TextFormat { font_id: theme::strong(size), color: ink, ..Default::default() });
+    if !headline.among.is_empty() {
+        let small = egui::FontId::proportional((size * 0.62).round().max(13.0));
+        job.append(&headline.among, (size * 0.36).round(), egui::TextFormat { font_id: small, color: muted, ..Default::default() });
+    }
+    job
+}
+
+/// The ink of a verdict's word: an origin's own for a call, AI's for "AI or mixed" (human is ruled out, and the mark
+/// sits at the strip's AI end), the text's for the rest.
+pub fn headline_ink(headline: &crate::wording::Headline, p: &theme::Palette) -> Color32 {
+    match headline.call() {
+        crate::wording::Call::One(origin) => p.origin_ink(origin),
+        crate::wording::Call::AiOrMixed => p.ai_ink,
+        crate::wording::Call::Uncertain | crate::wording::Call::UnlikeReference => p.ink,
+    }
 }
 
 /// A caution box: a triangle, a semibold title and a sentence, on the caution color.
@@ -132,9 +163,9 @@ pub fn notices(app: &mut LitmusApp, ui: &mut egui::Ui) {
             let narrow = ui.available_width() < 600.0;
             ui.horizontal_wrapped(|ui| {
                 controls::caution_icon(ui, p.caution_ink);
-                ui.label(RichText::new("Placeholder model: readings are meaningless.").font(theme::strong(14.0)).color(p.caution_ink));
+                ui.label(RichText::new(PLACEHOLDER).font(theme::strong(14.0)).color(p.caution_ink));
                 if !narrow {
-                    ui.label(RichText::new("It has random weights and is here to show the app; the trained model replaces it.").color(p.caution_ink).small())
+                    ui.label(RichText::new("It has random weights and is here to show the app. The trained model replaces it.").color(p.caution_ink).small())
                         .on_hover_text("Its config.json says provenance kind \"random\".");
                 }
             });
@@ -180,17 +211,17 @@ pub fn footer(app: &mut LitmusApp, ui: &mut egui::Ui) {
     egui::Panel::bottom("footer").frame(egui::Frame::new().fill(p.ground).inner_margin(Margin::symmetric(16, 6))).show(ui, |ui| {
         ui.horizontal_wrapped(|ui| {
             let words = if cfg!(feature = "contribute") {
-                "Contribute site: texts you check are sent to this site's server, scored there, and stored with their readings."
+                "On the contribute site, texts you check are sent to this site's server, scored there, and stored with their readings."
             } else if cfg!(target_arch = "wasm32") {
-                "Private: your text never leaves this page."
+                "Private. Your text never leaves this page."
             } else {
-                "Private: everything is read on this computer."
+                "Private. Everything is read on this computer."
             };
             privacy_dot(ui, p.human_ink);
             ui.label(RichText::new(words).small().color(p.muted));
             #[cfg(not(target_arch = "wasm32"))]
-            if app.settings.detail.at_least(crate::settings::Detail::Full) {
-                ui.label(RichText::new(format!("History: {}{}.", plural(app.history.entries().len(), "reading"), if app.history.is_persistent() { "" } else { " (this session only)" })).small().color(p.muted));
+            if app.settings.detail.full() {
+                ui.label(RichText::new(format!("{} in the history{}.", plural(app.history.entries().len(), "reading"), if app.history.is_persistent() { "" } else { " (this session only)" })).small().color(p.muted));
             }
             #[cfg(target_arch = "wasm32")]
             let _ = &app;
@@ -208,9 +239,9 @@ pub fn plural(n: usize, noun: &str) -> String {
     format!("{} {noun}{}", export::thousands(n), if n == 1 { "" } else { "s" })
 }
 
-/// The rows of exports for one shown reading.
-pub fn reading_row(shown: &Shown) -> export::Row<'_> {
-    export::Row { name: &shown.title, hash: &shown.scored.hash, cached: shown.scored.seconds.is_none(), outcome: Ok(&shown.scored.reading), counts: Some(&shown.counts) }
+/// The row of exports for one shown reading, with its chance of AI (`LitmusApp::chance`).
+pub fn reading_row(shown: &Shown, chance: Option<litmus_engine::Chance>) -> export::Row<'_> {
+    export::Row { name: &shown.title, hash: &shown.scored.hash, cached: shown.scored.seconds.is_none(), outcome: Ok(&shown.scored.reading), counts: Some(&shown.counts), chance }
 }
 
 /// Offer text as a file: a save dialog on the desktop, the clipboard in the browser.
@@ -235,7 +266,7 @@ pub fn deliver(app: &mut LitmusApp, ctx: &egui::Context, suggested: &str, filter
 /// A file chosen in the system's dialog.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn pick_file() -> Option<std::path::PathBuf> {
-    rfd::FileDialog::new().add_filter("Text, Markdown, HTML, Word, PDF", &["txt", "text", "md", "markdown", "html", "htm", "docx", "pdf"]).pick_file()
+    rfd::FileDialog::new().add_filter(FILE_FILTER, &["txt", "text", "md", "markdown", "html", "htm", "docx", "pdf"]).pick_file()
 }
 
 /// A centered column at most `MEASURE` wide with 24-point gutters, for the editor and the reading.

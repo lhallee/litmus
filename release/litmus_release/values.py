@@ -14,6 +14,7 @@ A missing document, path, row, or format fails; nothing falls back to a default.
 
 from __future__ import annotations
 
+import math
 import re
 import tomllib
 
@@ -28,6 +29,36 @@ FIELD = re.compile(r"\{([^{}]+)\}")
 NOT_APPLICABLE = "n/a"
 # The results name Litmus's own held-out split as a benchmark of its own (`benchmarks[].id`).
 OWN_SPLITS = ("test", "validation")
+
+
+SHOWN_CHANCES = (0.05, 0.2, 0.5, 0.8, 0.95, 0.99)
+
+
+def widened(low: float, high: float, log_odds: float) -> tuple[float, float]:
+    """An interval of a chance widened by `log_odds` on each side, as the engine widens it (`Chance::widened`)."""
+    def moved(chance: float, by: float) -> float:
+        odds = chance * math.exp(by)
+        return odds / (odds + 1.0 - chance)
+
+    return moved(low, -log_odds), moved(high, log_odds)
+
+
+def whole_percent(chance: float) -> int:
+    """An end of a range as the programs write it: a whole percentage, never under 1 or over 99 (the engine's `whole_range`)."""
+    return min(99, max(1, round(100 * chance)))
+
+
+def chance_ranges(between: Mapping[str, Any]) -> dict[str, Any]:
+    """What the documents say of the chance's range, from the calibration table's `between_sources`: the level, the
+    times the odds move either way, the sources the fit read, and the range the programs print at each of
+    `SHOWN_CHANCES` (`at_50_low` and `at_50_high` for a chance of 50%). The document `ranges` and the site's
+    `results.release.chance_range` are this."""
+    block: dict[str, Any] = {"level_percent": round(100 * between["level"]), "odds": round(math.exp(between["log_odds"]), 1), "log_odds": between["log_odds"],
+                             "human_sources": between["sources"]["human"], "not_human_sources": between["sources"]["not_human"]}
+    for chance in SHOWN_CHANCES:
+        low, high = widened(chance, chance, between["log_odds"])
+        block[f"at_{round(100 * chance)}_low"], block[f"at_{round(100 * chance)}_high"] = whole_percent(low), whole_percent(high)
+    return block
 
 
 def holds(documents: Mapping[str, Any], path: str) -> bool:

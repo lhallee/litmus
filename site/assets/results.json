@@ -2,8 +2,8 @@
  "schema": 1,
  "model": {
   "name": "Litmus",
-  "version": "1.1.0",
-  "date": "2026-11-20"
+  "version": "1.2.0",
+  "date": "2026-11-21"
  },
  "primary_task": "ai_vs_human",
  "texts_per_benchmark": 3000,
@@ -5787,20 +5787,42 @@
   }
  ],
  "release": {
-  "version": "1.1.0",
-  "date": "2026-11-20",
+  "version": "1.2.0",
+  "date": "2026-11-21",
   "app_exe_bytes": null,
   "app_exe_sha256": "",
   "cli_exe_bytes": null,
   "cli_exe_sha256": "",
   "browser_model_bytes": null,
   "browser_page_bytes": null,
-  "app_tokens_per_second": 4971,
-  "browser_tokens_per_second": 879,
+  "app_tokens_per_second": 4896,
+  "browser_tokens_per_second": 894,
   "speed_document_tokens": 28920,
-  "app_document_seconds": 5.8,
-  "browser_document_seconds": 32.9,
-  "speed_machine": "AMD Ryzen 7 3800X 8-Core Processor"
+  "app_document_seconds": 5.9,
+  "browser_document_seconds": 32.4,
+  "speed_machine": "AMD Ryzen 7 3800X 8-Core Processor",
+  "app_tokens_per_second_all_processors": 33269,
+  "app_processors": 16,
+  "app_document_seconds_all_processors": 0.9,
+  "chance_range": {
+   "level_percent": 90,
+   "odds": 4.2,
+   "log_odds": 1.431902,
+   "human_sources": 37,
+   "not_human_sources": 75,
+   "at_5_low": 1,
+   "at_5_high": 18,
+   "at_20_low": 6,
+   "at_20_high": 51,
+   "at_50_low": 19,
+   "at_50_high": 81,
+   "at_80_low": 49,
+   "at_80_high": 94,
+   "at_95_low": 82,
+   "at_95_high": 99,
+   "at_99_low": 96,
+   "at_99_high": 99
+  }
  },
  "comparison": {
   "row_filters": {

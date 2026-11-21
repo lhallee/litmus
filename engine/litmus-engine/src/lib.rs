@@ -1,19 +1,18 @@
-//! Litmus: a detector of model-written text that runs a ternary (BitNet b1.58) encoder on one CPU core.
+//! Litmus: a detector of model-written text that runs a ternary (BitNet b1.58) encoder on a CPU by addition.
 //!
 //! The library reads a release (`model.safetensors`, `config.json`) and ModernBERT's `tokenizer.json` from bytes,
 //! streams a document of any length through the encoder in fixed memory, one chunk of at most `chunk_tokens` tokens
 //! at a time, and returns the document's verdict, each chunk's reading, and the heat map's windows and cells,
-//! uncertainty included (`../student/SPEC.md` is the contract). It uses no file system, no threads and no clock, so
-//! it runs unchanged in the browser.
+//! uncertainty included (`../student/SPEC.md` is the contract). It uses no file system and no clock, and `score`
+//! reads on the calling thread alone, so it runs unchanged in the browser. `Engine::score_threads` gives the same
+//! reading, bit for bit, with a chunk's blocks spread over scoped threads of the standard library.
 //!
 //! ```no_run
 //! # fn main() -> Result<(), litmus_engine::Error> {
 //! # let (model, config, tokenizer) = (vec![], vec![], vec![]);
 //! let engine = litmus_engine::Engine::load(&model, &config, &tokenizer)?;
 //! let document = engine.score("Some text to read.")?;
-//! let verdict = &document.verdict;
-//! println!("{} P(not human) {:.2} [{:.2}, {:.2}]", document.label().word(),
-//!          verdict.probability, verdict.interval[0], verdict.interval[1]);
+//! println!("{}, chance of AI {}", document.label().word(), engine.chance(&document).words());
 //! # Ok(()) }
 //! ```
 
@@ -51,7 +50,7 @@ mod unicode14;
 use std::fmt;
 
 pub use kernels::Backend;
-pub use reading::{Cell, ChunkReading, ClosenessCount, ConformalCount, DocumentReading, Explain, Label, NearestEntry, Origin, Place, Reading, Strip, Verdict, WindowReading};
+pub use reading::{Cell, Chance, ChanceRule, ChunkReading, ClosenessCount, ConformalCount, DocumentReading, Drawn, Explain, Label, NearestEntry, Origin, Place, Reading, Strip, Verdict, WindowReading};
 pub use release::{MIXED_LEVEL, STRIP_LEVEL};
 pub use surprise::Surprise;
 pub use tokenizer::Token;
@@ -131,6 +130,9 @@ pub struct ModelInfo {
     pub levels: Vec<f64>,
     pub strip_level: f64,
     pub mixed_level: f64,
+    /// What a reading's `chance` takes from the calibration table: per length bin, the share of not-human texts among
+    /// the calibration texts behind the probability, and the half width between sources (SPEC.md, Chance of AI).
+    pub chance_rule: ChanceRule,
     /// Ternary additions per token (upper bound).
     pub adds_per_token: usize,
     /// Bytes held by the weights, the head and the bank.
@@ -192,6 +194,7 @@ impl Engine {
             levels: calibration.levels.clone(),
             strip_level: release::STRIP_LEVEL,
             mixed_level: release::MIXED_LEVEL,
+            chance_rule: calibration.chance_rule(),
             adds_per_token: encoder.adds_per_token(),
             bytes: encoder.bytes() + head.bytes() + bank.bytes() + explainer.bytes() + encoder.language.as_ref().map_or(0, surprise::LanguageHead::bytes),
             surprise: encoder.has_language(),
@@ -243,6 +246,11 @@ impl Engine {
     /// Token ids of a text as given, without the standard reading (as `tokenizers` encodes it).
     pub fn encode_raw(&self, text: &str) -> Vec<u32> {
         self.tokenizer.encode(text)
+    }
+
+    /// The chance of AI of a document's verdict: its probability and interval at even odds (SPEC.md, Chance of AI).
+    pub fn chance(&self, document: &DocumentReading) -> Chance {
+        document.chance(&self.info.chance_rule)
     }
 
     /// Score a text.
@@ -314,6 +322,82 @@ impl Engine {
         let mut document = self.document(n, parts);
         place(&mut document, &plan.boundaries, &boundary_bytes, text);
         Ok(document)
+    }
+
+    /// As `score_with`, on up to `threads` threads: each chunk's token states are held whole (`4 * width` bytes a
+    /// token of the chunk, where `score_with` holds one block a layer) and every layer's blocks are spread over the
+    /// threads (`model::run_chunk`). A block's arithmetic does not depend on the thread that runs it, so the reading
+    /// is `score_with`'s bit for bit. One thread is `score_with` itself. `progress` is called while the text is
+    /// tokenized (`tokens_total` 0), then after the embedding and after every layer of each chunk; it may cancel.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn score_threads(&self, text: &str, threads: usize, progress: &mut dyn FnMut(Progress) -> Flow) -> Result<DocumentReading, Error> {
+        if threads <= 1 {
+            return self.score_with(text, progress);
+        }
+        let bytes_total = text.len();
+        let (mut ids, mut starts) = (Vec::new(), Vec::new());
+        let read = std::cell::Cell::new(0usize);
+        let completed = {
+            let mut sink = |token: Token| {
+                ids.push(token.id);
+                starts.push(token.start);
+                read.set(read.get() + 1);
+            };
+            let mut on_piece = |done: usize| progress(Progress { bytes_done: done, bytes_total, tokens_done: read.get(), ..Progress::default() }) == Flow::Continue;
+            self.tokenizer.stream_standard(text, &mut sink, &mut on_piece)
+        };
+        if !completed {
+            return Err(Error::Cancelled);
+        }
+        let n = ids.len();
+        if n == 0 {
+            return Err(Error::Empty);
+        }
+        let plan = Plan::new(n, &self.info);
+        let chunks_total = plan.bounds.len();
+        let mut document = self.score_chunks(&ids, &plan, threads, &mut |tokens_done, chunks_done| {
+            let bytes_done = (bytes_total as u128 * tokens_done as u128 / n as u128) as usize;
+            progress(Progress { bytes_done, bytes_total, tokens_done, tokens_total: n, chunks_done, chunks_total }) == Flow::Continue
+        })?;
+        // The byte offset of each boundary position, as `score_with` records them while it feeds the tokens.
+        let boundary_bytes: Vec<usize> = plan.boundaries.iter().map(|&p| if p == 0 { 0 } else if p == n { bytes_total } else { starts[p] }).collect();
+        place(&mut document, &plan.boundaries, &boundary_bytes, text);
+        Ok(document)
+    }
+
+    /// `score_ids` on up to `threads` threads (parity tests): the same reading, bit for bit.
+    #[cfg(not(target_arch = "wasm32"))]
+    #[doc(hidden)]
+    pub fn score_ids_threads(&self, ids: &[u32], threads: usize) -> Result<DocumentReading, Error> {
+        if ids.is_empty() {
+            return Err(Error::Empty);
+        }
+        if let Some(&id) = ids.iter().find(|&&id| id as usize >= self.encoder.vocab) {
+            return Err(Error::Load(format!("token id {id} lies outside the vocabulary")));
+        }
+        self.score_chunks(ids, &Plan::new(ids.len(), &self.info), threads, &mut |_, _| true)
+    }
+
+    /// A document's reading from its token ids, every chunk through `model::run_chunk` on up to `threads` threads.
+    /// `progress(tokens_done, chunks_done)` is called after each stage of each chunk and stops the scoring when it
+    /// returns false. Places carry token positions only.
+    #[cfg(not(target_arch = "wasm32"))]
+    fn score_chunks(&self, ids: &[u32], plan: &Plan, threads: usize, progress: &mut dyn FnMut(usize, usize) -> bool) -> Result<DocumentReading, Error> {
+        // The bank's pass over a chunk and its windows is spread over the same threads.
+        let reader = Reader { threads: threads.max(1), ..self.reader() };
+        let mut scratches: Vec<model::BlockScratch> = (0..threads.max(1)).map(|_| model::BlockScratch::default()).collect();
+        let mut states = Vec::new();
+        let mut parts = Parts::default();
+        // The embedding and each layer are a stage: a chunk's tokens count as done in equal shares.
+        let stages = self.encoder.depth + 1;
+        for (chunk, &(start, end)) in plan.bounds.iter().enumerate() {
+            let length = end - start;
+            let mut after_stage = |stage: usize| progress(start + length * (stage + 1) / stages, chunk);
+            let pool = model::run_chunk(&self.encoder, self.backend, &ids[start..end], self.info.window_width, self.info.window_stride, &mut states, &mut scratches, &mut after_stage)
+                .ok_or(Error::Cancelled)?;
+            self.read_chunk(&reader, &pool, start, chunk, &mut parts, None);
+        }
+        Ok(self.document(ids.len(), parts))
     }
 
     /// A text's surprise reading (SPEC.md, Surprise): its mean token log probability under the masked language head
@@ -490,7 +574,7 @@ impl Engine {
     }
 
     fn reader(&self) -> Reader<'_> {
-        Reader { head: &self.head, bank: &self.bank, calibration: &self.calibration, explainer: &self.explainer }
+        Reader { head: &self.head, bank: &self.bank, calibration: &self.calibration, explainer: &self.explainer, threads: 1 }
     }
 
     /// A finished chunk's reading, its windows' readings and its heat-map cells; the chunk starts at document

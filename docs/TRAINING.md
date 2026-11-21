@@ -3,7 +3,7 @@
 This is the full account of how the Litmus model is trained: where every text comes from and how it is labeled, how
 the texts are split so that nothing near a test text is trained on, what the model computes at every step, the loss
 it learns from, how a raw score becomes a calibrated reading, every experiment that shaped the design, how the
-model is evaluated, how the engine reads it on one processor core, and the commands that rebuild it.
+model is evaluated, how the engine reads it on a processor, and the commands that rebuild it.
 
 It is written for a technically literate reader who is not a machine learning specialist. Every symbol is defined
 where it first appears, every operation is shown as matrix arithmetic with its shapes, and every step is worked on a
@@ -51,15 +51,19 @@ Litmus answers one question about a text: **which origins of writing could have 
 
 A reading is not a single score. For each text Litmus reports:
 
-- **A verdict word.** *Human*, *AI*, or *Mixed* when exactly one origin is left standing; *Uncertain* when two or
-  three are; *Unlike reference* when the text resembles none of the reference texts closely enough for a call.
+- **A verdict.** *Human*, *AI*, or *Mixed* when exactly one origin is left standing; *AI or mixed* when human is
+  ruled out and the other two are not; *Uncertain* when human is left standing beside another; *Unlike reference* when
+  the text resembles none of the reference texts closely enough for a call.
 - **A conformal p-value for each origin,** and the set of origins not ruled out at the 5% and 10% levels. A p-value
   is the share of known texts of that origin and about that length that looked less like it than this text does. The
   guarantee is concrete: among human texts like the calibration texts, at most 5% are called not human at the 5% level.
-- **A probability that the text is not human, with an interval** whose width shows how much evidence the calibration
-  texts hold near this score.
-- **Three-way probabilities,** drawn as a position on the litmus strip (blue human, purple mixed, red AI) with a band
-  over the origins that cannot be ruled out.
+- **A probability that the text is not human, with an interval** that shows how much evidence the calibration
+  texts hold near this score. Every screen leads with it as the **chance of AI**, the same probability restated at
+  even odds of human and not human. The chance comes with a **range** that holds how far it moves from one kind of
+  text to another, so it is short near either end and wide in the middle. The litmus strip marks the chance and
+  draws a pale band over its range.
+- **Three-way probabilities** of human, mixed, and AI. Their place between the three (blue human, purple mixed, red
+  AI) colors the verdict and the heat map.
 - **Its evidence:** the five most similar reference texts with their source, generator, domain, format, and language,
   and the calibration counts behind each p-value, so a person can check how the reading was made.
 - **For a long text,** a reading per chunk of at most 8,192 tokens (a token is a word or a piece of one), a verdict that
@@ -68,14 +72,14 @@ A reading is not a single score. For each text Litmus reports:
 
 **What a reading does not claim.** It reads the words on the page, not the process that made them, so it cannot say
 who wrote a text, why, whether a model was used with permission, or how much of a mixed text a model wrote. A short
-text carries little evidence, and the band and the interval stay wide to show it. Text unlike the reference (new
+text carries little evidence, which shows as a verdict of more than one origin and a chance nearer 50%. Text unlike the reference (new
 models, languages other than English, unusual formats) can fall outside what Litmus has seen; the *Unlike reference*
 verdict catches some of it, not all. This release is trained almost wholly on English text and its held-out test set
 is English only; it reads other languages, but only a few public benchmarks measure them, so we recommend extra caution
 with a reading of a text that is not in English. The 5% bound limits false flags on human text like the calibration texts; it says nothing about
 how much AI text is caught, which [the evaluation](training/evaluation.md) measures.
 
-**Our recommendations.** We recommend reading the verdict together with its band and interval, treating *Uncertain*
+**Our recommendations.** We recommend reading the verdict together with the chance of AI and its range, treating *Uncertain*
 as the answer it is, and not using a reading alone to accuse anyone of anything. These are recommendations; the
 decision is the reader's.
 
@@ -91,7 +95,7 @@ decision is the reader's.
 - **Diagrams** color computed values teal and fixed weights ochre, in every figure that shows both.
 - **Deeper layers** sit in collapsed sections marked *More detail*; the main text reads without them.
 - **Sources.** Every number comes from this repository's documents and code, the runs of the experiments in part 6,
-  or the cited papers. The account describes the release <!--litmus:t:release_identity-->`v1.1.0` (model lhallee/litmus-third-build at commit d1b3e3a9f8342a298c1bb61605f479f175cf9a06)<!--/litmus-->.
+  or the cited papers. The account describes the release <!--litmus:t:release_identity-->`v1.2.0` (model lhallee/litmus-third-build at commit 7db9da579afe81c3f066d8a5cb6bca1c52439172)<!--/litmus-->.
 - **Contract.** Where this account and the code differ, the code is right: [`student/SPEC.md`](../student/SPEC.md)
   and [`student/reference.py`](../student/reference.py) define the model's arithmetic, and
   [`teacher/CALIBRATION.md`](../teacher/CALIBRATION.md) the calibration table.

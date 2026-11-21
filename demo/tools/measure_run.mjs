@@ -64,6 +64,9 @@ const runPinned = (litmusArgs, outFile) =>
     });
   });
 const scoreArgs = (target) => `score --json --no-cache "${target}"`;
+// A document's verdict from its set at the 10% level, as the engine's label names it: one origin, "AI or mixed" (human
+// ruled out, the other two kept), uncertain (human kept beside another), or unlike the reference.
+const verdictOf = (set) => (set.length === 0 ? 'unlike' : set.length === 1 ? set[0] : set.includes('human') ? 'uncertain' : 'ai_or_mixed');
 
 // The memory and processor sampler, started first and stopped last.
 const samples = [];
@@ -117,8 +120,7 @@ for (const [i, d] of order.entries()) {
   const t_end = now();
   const row = JSON.parse(lines[0]);
   const v = row.reading.verdict;
-  const set = v.sets['0.1'];
-  const verdict = set.length === 0 ? 'unlike' : set.length === 1 ? set[0] : 'uncertain';
+  const verdict = verdictOf(v.sets['0.1']);
   rows.push({ set: d.kind, source: d.kind === 'ai' ? d.model : 'Project Gutenberg', markdown: /^(#{1,6} |\*\*|---)/m.test(d.text), tokens: row.reading.n_tokens, verdict, p_not_human: Number(v.probability.toFixed(4)), t_start, t_end });
   if (i % 20 === 0) console.log(`${i + 1} of ${order.length}`);
 }
@@ -185,7 +187,7 @@ const bins = within.map((s) => {
 // Document tally, overall and by set and by generating model.
 const countBy = (list) => {
   const count = (v) => list.filter((d) => d.verdict === v).length;
-  return { documents: list.length, tokens: list.reduce((a, d) => a + d.tokens, 0), human: count('human'), uncertain: count('uncertain'), mixed: count('mixed'), ai: count('ai'), unlike: count('unlike') };
+  return { documents: list.length, tokens: list.reduce((a, d) => a + d.tokens, 0), human: count('human'), uncertain: count('uncertain'), mixed: count('mixed'), ai: count('ai'), ai_or_mixed: count('ai_or_mixed'), unlike: count('unlike') };
 };
 const tally = Object.fromEntries(kinds.map((k) => [k, countBy(rows.filter((d) => d.set === k))]));
 const byModel = Object.fromEntries([...new Set(rows.filter((d) => d.set === 'ai').map((d) => d.source))].map((m) => [m, countBy(rows.filter((d) => d.source === m))]));
@@ -198,8 +200,7 @@ const tallyByFormatting = Object.fromEntries([true, false].map((md) => [md ? 'ai
 const byFile = new Map(batchRows.map((r) => [r.file.split(/[\\/]/).pop(), r]));
 order.forEach((d, i) => {
   const r = byFile.get(`${String(i).padStart(3, '0')}.txt`);
-  const set = r.reading.verdict.sets['0.1'];
-  const verdict = set.length === 0 ? 'unlike' : set.length === 1 ? set[0] : 'uncertain';
+  const verdict = verdictOf(r.reading.verdict.sets['0.1']);
   if (verdict !== rows[i].verdict || r.reading.n_tokens !== rows[i].tokens) throw new Error(`document ${i} reads differently in the batch than alone`);
 });
 
@@ -221,7 +222,7 @@ const result = {
     memory_basis: 'Windows process counters read by tools/sample_process.ps1 about every 50 ms for each litmus process: working set (physical memory held), peak working set, and private bytes (committed memory the process alone holds). The peaks are the largest of those readings and of the system-kept peak working set.',
     cpu_basis: 'Processor seconds the litmus processes used (their TotalProcessorTime), divided by the wall seconds and by the machine\'s logical cores; the machine\'s own utilization is from os.cpus() times every 100 ms, so everything else is the machine minus litmus.',
     engine: info.trim(),
-    model: manifest ? { version: manifest.model.version, size: manifest.model.size, checkpoint_step: manifest.model.checkpoint_step } : null,
+    model: manifest ? { version: manifest.model.version, weights_sha256: manifest.model.files['model.safetensors'].sha256, size: manifest.model.size, checkpoint_step: manifest.model.checkpoint_step } : null,
     document_sets: {
       list_sha256: listHash,
       per_set: n,
@@ -271,5 +272,5 @@ const t = result.totals;
 console.log(`${t.documents} documents, ${t.tokens} tokens: per-document ${t.per_document.seconds} s (${t.per_document.tokens_per_second} tokens/s with startup ${startup.toFixed(3)} s each), one process ${t.batch.seconds} s (${t.batch.tokens_per_second} tokens/s)`);
 console.log(`litmus used ${(t.cpu.litmus_share_of_machine * 100).toFixed(1)}% of the machine (${t.cpu.litmus_cores_busy} cores), peak working set ${t.memory_mb.peak_working_set} MB, private ${t.memory_mb.peak_private} MB; engine says ${t.engine_bench.process_peak_mb} MB`);
 console.log(JSON.stringify(tally));
-console.log(JSON.stringify(Object.fromEntries(Object.entries(byModel).map(([m, x]) => [m, { ai: x.ai, human: x.human, uncertain: x.uncertain, mixed: x.mixed }]))));
+console.log(JSON.stringify(Object.fromEntries(Object.entries(byModel).map(([m, x]) => [m, { ai: x.ai, ai_or_mixed: x.ai_or_mixed, human: x.human, uncertain: x.uncertain, mixed: x.mixed }]))));
 console.log(JSON.stringify(tallyByFormatting));

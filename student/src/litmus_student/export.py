@@ -336,6 +336,9 @@ def export_release(checkpoint_path: Path, store_directory: Path, corpus: Path, o
     vectors = calibration_vectors.astype(np.float32)  # (n_c, 2w)
     Q, K = loaded.head_output(vectors[:, :w], vectors[:, w:])  # (n_c, w) each
     readings = bank_readings(loaded, Q, K, reference.TOP_K)  # every text against the whole bank in matrix products
+    # TODO(export_fits_between_sources): give the fit each calibration text's source, so the table carries the range
+    # between sources (`calibrate.fit_between_sources`); the store holds no source column yet, and the 1.2 entry was
+    # fitted afterward from these readings and the corpus's metadata (docs/training/calibration.md).
     table, explained = reference.fitted_calibration(np.asarray([reading["mean"] for reading in readings]),  # (n_c, 3)
                                                     np.asarray([reading["spread"] for reading in readings]),  # (n_c, 3)
                                                     np.asarray([reading["closeness"] for reading in readings]),  # (n_c,)

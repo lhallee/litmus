@@ -10,7 +10,7 @@ other host. Every link is relative, so the folder serves under `/litmus/` or at 
 | `use.html` | The in-browser app (`app/`) in a frame under the site's navigation |
 | `download.html` | The Windows download and its size, the first run, how to check a download (collapsed), why download (speed, quick check), other platforms, the command line |
 | `how.html` | How a reading is made, plain first, each step with a "More detail" layer, and what it cannot tell. Each diagram is drawn twice: a wide `svg.wide` and a stacked `svg.narrow` shown under 48rem; the shared arrow marker and strip gradient sit in one `svg.svg-defs` at the top |
-| `reading.html` | Reading a result: verdicts, the strip and band, the probability and interval, the heat map, our recommendations |
+| `reading.html` | Reading a result: verdicts, the strip, the chance of AI and its range, the heat map, our recommendations |
 | `benchmarks.html` | Results, drawn from `assets/results.json` and `assets/figures/` |
 | `privacy.html`, `license.html` | Where the text goes in each of the three ways, how to check it, the contribute site's terms in short; the license |
 | `style.css` | Tokens for both looks from `app/src/theme.rs`. Dark is the look of every visit, with or without JavaScript and whatever the system asks for; the light look applies only under `data-theme="light"`, which the toggle sets |
@@ -65,7 +65,24 @@ A row of `rows[]`:
 `cli_exe_sha256` (`litmus.exe`), `browser_model_bytes` (the model's three files, as `manifest.json`'s
 `sizes.browser_model` counts them), `browser_page_bytes` (`sizes.browser_page`), `app_tokens_per_second` and
 `browser_tokens_per_second` (one core of `speed_machine`, the processor's name), `speed_document_tokens`,
-`app_document_seconds`, and `browser_document_seconds` (the document those speeds were measured on).
+`app_document_seconds`, and `browser_document_seconds` (the document those speeds were measured on). When the speed
+measurement also read that document on every logical processor, as the app does, `app_processors`,
+`app_tokens_per_second_all_processors`, and `app_document_seconds_all_processors` hold that reading, and the pages say
+nothing of it while they are absent. `chance_range` is present only for a release whose `config.json` carries
+`calibration.between_sources` (1.2.0 on). It holds `level_percent`, `odds` (how many times the odds move either way),
+`log_odds`, `human_sources` and `not_human_sources` (the sources the fit read), and the range the programs print at
+a chance of 5%, 20%, 50%, 80%, 95%, and 99% as `at_5_low`, `at_5_high`, and so on. `reading.html` and `how.html` read
+them from `results.release.chance_range.*`, so a page never types a range.
+
+### Example strips
+
+An example strip is `<div class="strip" data-chance="0.93">` with its `strip-band` and `strip-mark`. The mark sits at
+the chance (`--x`), and the band covers the chance's range (`--lo` and `--hi`), which the docs stage computes: it
+widens the chance by the release's `between_sources` half width in log odds, as the engine does. A strip for a long
+document whose sections disagree also carries `data-interval="low,high"`, the interval to widen instead of the
+chance alone. Never type `--lo` or `--hi`: the stage rewrites them, and it refuses a strip whose mark is not at its
+chance or whose chance lies outside its interval. For a release without `calibration.between_sources` the band is the
+interval as given.
 
 ### `assets/links.json`
 
@@ -75,7 +92,7 @@ A row of `rows[]`:
 | `training_guide` | "How Litmus was trained, step by step" (`docs/TRAINING.md` on GitHub); the pages also carry this address for readers without JavaScript |
 | `contribute_site` | The contribute site's address; empty shows "coming soon" |
 | `model_on_hugging_face` | The model's Hugging Face page; empty shows "coming soon" |
-| `download_macos_app`, `download_linux_app` | A program's download; empty shows "not available yet" |
+| `download_macos_app`, `download_macos_intel_app`, `download_linux_app` | A program's download (macOS on Apple silicon, macOS on Intel, Linux x86-64); empty shows "not available yet" |
 
 The Windows downloads need no entry: the pages link to
 `https://github.com/lhallee/litmus/releases/latest/download/litmus-app.exe` (and `litmus.exe`, `SHA256SUMS`), which

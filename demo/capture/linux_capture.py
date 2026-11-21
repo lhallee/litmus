@@ -94,6 +94,13 @@ class Session:
     def shot(self, name: str) -> None:
         subprocess.run(["import", "-window", "root", str(self.out / f"{name}.png")], env=self.env, check=True, timeout=60)
 
+    def rows(self, x: int, y: int, w: int, h: int) -> list[int]:
+        """The mean gray (0 to 255) of each display row of the region, top to bottom: where text sits in a column."""
+        raw = subprocess.run(["import", "-window", "root", "-crop", f"{w}x{h}+{x}+{y}", "+repage", "-colorspace", "Gray", "-resize", f"1x{h}!", "-depth", "8", "gray:-"],
+                             env=self.env, check=True, capture_output=True, timeout=60).stdout
+        assert len(raw) == h, f"the screenshot gave {len(raw)} rows for {h}"
+        return list(raw)
+
     def record(self) -> None:
         target = self.out / f"{self.scene}.mp4"
         self.recorder = subprocess.Popen(
@@ -195,8 +202,56 @@ def scene_app(session: Session, app: Path, texts: Path, work: Path, probe: bool)
     session.note("end")
 
 
-# Where the pointer drags in the editor, in display pixels: the model's paragraphs, a short sentence, a book's paragraph.
-SELECTIONS = {"ai": (298, 232, 760, 681), "short": (298, 781, 1880, 781), "human": (298, 881, 2060, 1331)}
+# The editor's text in display pixels: the column that every line of the document has text in, and where a drag starts
+# (inside the first letter's left half, so the selection begins at the line's start) and ends (past each selection's
+# last word: the second model paragraph's last line is short, the sentence and the book's last line are longer).
+TEXT_COLUMN = (292, 150, 250, 1350)
+DRAG_FROM = 293
+DRAG_TO = {"ai": 760, "short": 1880, "human": 2060}
+
+
+def text_lines(rows: list[int]) -> tuple[list[list[int]], int]:
+    """The paragraphs of a column of text, each the middle row of its lines, and the distance between lines.
+
+    `rows` is the column's mean gray by row (light text on a dark ground). A line is a run of rows lighter than the
+    ground; a paragraph ends where the next line is more than a line and a half away."""
+    ground, light = min(rows), max(rows)
+    assert light - ground > 12, "the editor's column holds no text"
+    level = ground + 0.25 * (light - ground)
+    lines: list[tuple[int, int]] = []
+    for row, value in enumerate(rows):
+        if value <= level:
+            continue
+        if lines and row - lines[-1][1] <= 4:
+            lines[-1] = (lines[-1][0], row)
+        else:
+            lines.append((row, row))
+    middles = [(first + last) // 2 for first, last in lines if last - first >= 6]
+    gaps = sorted(b - a for a, b in zip(middles, middles[1:], strict=False))
+    pitch = gaps[len(gaps) // 2]
+    paragraphs = [[middles[0]]]
+    for previous, middle in zip(middles, middles[1:], strict=False):
+        if middle - previous > 1.5 * pitch:
+            paragraphs.append([])
+        paragraphs[-1].append(middle)
+    return paragraphs, pitch
+
+
+def selections(session: Session) -> tuple[dict[str, tuple[int, int, int, int]], dict[str, object]]:
+    """Where the pointer drags in the editor, in display pixels, read from the screen: the two model paragraphs
+    together, the short sentence, and the book's paragraph (`data/ad/texts/notes.txt`); and the layout found, for
+    the log. The rows are found, never typed: the text sat 46 pixels higher on 2026-11-21 than where the drags were
+    laid out for on 2026-11-19, in the same image, so a typed row selected the wrong lines."""
+    x, y, w, h = TEXT_COLUMN
+    paragraphs, pitch = text_lines(session.rows(x, y, w, h))
+    assert len(paragraphs) == 4, f"the editor shows {len(paragraphs)} paragraphs, and notes.txt has four"
+    first, second, short, book = ([y + middle for middle in paragraph] for paragraph in paragraphs)
+    assert len(short) == 1, f"the short sentence wraps to {len(short)} lines"
+    layout = {"lines": [len(first), len(second), len(short), len(book)], "first_line": first[0], "pitch": pitch}
+    # The book's paragraph ends the document: a drag that ends below its last line takes it to its last word.
+    drags = {"ai": (DRAG_FROM, first[0], DRAG_TO["ai"], second[-1]), "short": (DRAG_FROM, short[0], DRAG_TO["short"], short[0]),
+             "human": (DRAG_FROM, book[0], DRAG_TO["human"], book[-1] + pitch)}
+    return drags, layout
 
 
 def quick_read(session: Session, what: str, x0: int, y0: int, x1: int, y1: int, hold: float) -> None:
@@ -230,12 +285,13 @@ def scene_quick(session: Session, app: Path, texts: Path, work: Path, probe: boo
     time.sleep(2.0)
     if probe:
         session.shot("probe_quick_editor")
+    drags, layout = selections(session)
     session.record()
-    session.note("start")
+    session.note("start", **layout)
     time.sleep(1.4)
     if probe:
         session.shot("probe_quick_top")
-    for what, (x0, y0, x1, y1) in SELECTIONS.items():
+    for what, (x0, y0, x1, y1) in drags.items():
         quick_read(session, what, x0, y0, x1, y1, 4.0)
     session.note("end")
 

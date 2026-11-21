@@ -7,13 +7,19 @@ seed and size, and the stage fails unless Litmus read exactly the rows the basel
 one core. `results` runs the benchmarks package's `results` command, which writes `site/assets/results.json`, the
 figures, and `results/results.md`. The baselines were scored once, on the machine of their time; `release/RELEASING.md`
 says where their scores are kept.
+
+A release that reads every text as an earlier one did (the same weights, tokenizer, and config, apart from the
+calibration's `between_sources`, which no score reads) adopts that release's `score` and `cost` from its work folder
+instead of reading sixteen benchmarks again: `python release/cut.py adopt score --work <work> --from <earlier work>`.
 """
 
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import os
+import shutil
 import tomllib
 
 from pathlib import Path
@@ -120,6 +126,11 @@ def cost(context: Context) -> None:
     target.unlink(missing_ok=True)  # the cost command appends
     run([context.python, "-m", "litmus_benchmarks", "cost", "--benchmark", COST_BENCHMARK, "--detector", DETECTOR_IN_PACKAGE, "--texts", str(COST_TEXTS), "--out", str(target)],
         context.repository / "benchmarks", environment)
+    note_machines(context, target)
+
+
+def note_machines(context: Context, target: Path) -> None:
+    """Note the machine Litmus's cost was measured on beside the baselines' machines, and say so when they differ."""
     with target.open(newline="", encoding="utf-8") as stream:
         ours = {row["machine"] for row in csv.DictReader(stream)}
     theirs = set()
@@ -135,6 +146,65 @@ def cost(context: Context) -> None:
 
 def cost_outputs(context: Context) -> list[Path]:
     return [context.work / "costs" / "costs_litmus.csv"]
+
+
+def reading_digest(model: Path) -> str:
+    """One digest of everything a benchmark score and a cost are made from: the weights, the tokenizer, and the
+    config without the calibration's `between_sources`, which widens the range of the chance of AI and is read by no
+    score. Two releases with this digest in common read every text to the same score."""
+    config = json.loads((model / "config.json").read_text(encoding="utf-8"))
+    (config.get("calibration") or {}).pop("between_sources", None)
+    digest = hashlib.sha256(json.dumps(config, sort_keys=True).encode())
+    for name in ("model.safetensors", "tokenizer.json"):
+        digest.update(receipts.file_digest(model / name).encode())
+    return digest.hexdigest()
+
+
+def earlier_release(context: Context, source: Path, stage: str) -> receipts.Receipt:
+    """The finished receipt of `stage` in `source`, the work folder of an earlier release that reads as this one
+    does, with what the stage left there unchanged since; anything else is refused."""
+    if source.resolve() == context.work.resolve():
+        raise StageError(f"{source} is this release's own work folder: name the work folder of the earlier release")
+    receipt = receipts.read(source, stage)
+    if receipt is None or receipt.status != "done":
+        raise StageError(f"{source} holds no finished {stage} stage to adopt")
+    if not (source / "model" / "config.json").is_file():
+        raise StageError(f"{source} holds no model folder, so nothing says what its {stage} read")
+    if reading_digest(source / "model") != reading_digest(context.work / "model"):
+        raise StageError(f"{source} released other weights, another tokenizer, or a config that reads differently, so its {stage} is not this release's: "
+                         f"run the stage (`python release/cut.py run --work {context.work} --only {stage}`) where the benchmarks and the engine's Python module are")
+    for reference, recorded in receipt.outputs.items():
+        path = source / reference.removeprefix("work:")
+        if not reference.startswith("work:") or not path.exists() or receipts.digest(path) != recorded:
+            raise StageError(f"{reference} of {source} is not what its {stage} stage left")
+    context.note("made_at", receipt.started)
+    context.note("made_on", receipt.platform)
+    return receipt
+
+
+def adopt_score(context: Context, source: Path) -> None:
+    """Take the scores of an earlier release of the same weights and reading: no text reads differently, so the
+    sixteen benchmarks are not read again. The rows are still checked against the baselines this release fetched."""
+    earlier_release(context, source, "score")
+    settings = read_baselines(baselines_path(context))["scores"]
+    folder = context.work / "scores" / "litmus"
+    shutil.rmtree(folder, ignore_errors=True)
+    shutil.copytree(source / "scores" / "litmus", folder)
+    for name in settings["benchmarks"]:
+        final = folder / f"scores_{name}__litmus.csv"
+        if not final.is_file():
+            raise StageError(f"{source} has no scores of {name}, which release/baselines.toml lists")
+        same_rows(context, name, final)
+    context.note("benchmarks", list(settings["benchmarks"]))
+
+
+def adopt_cost(context: Context, source: Path) -> None:
+    """Take the cost an earlier release of the same weights measured, on the machine it was measured on."""
+    earlier_release(context, source, "cost")
+    folder = context.work / "costs"
+    folder.mkdir(exist_ok=True)
+    shutil.copy2(source / "costs" / "costs_litmus.csv", folder / "costs_litmus.csv")
+    note_machines(context, folder / "costs_litmus.csv")
 
 
 def results(context: Context) -> None:
@@ -169,7 +239,7 @@ def results_outputs(context: Context) -> list[Path]:
 
 
 STAGES = (
-    Stage("score", ("fetch",), "Litmus on every benchmark, on the rows the baselines read", score, score_outputs),
-    Stage("cost", ("fetch",), "Litmus's cost on one core, for the cost table", cost, cost_outputs),
+    Stage("score", ("fetch",), "Litmus on every benchmark, on the rows the baselines read", score, score_outputs, adopt=adopt_score),
+    Stage("cost", ("fetch",), "Litmus's cost on one core, for the cost table", cost, cost_outputs, adopt=adopt_cost),
     Stage("results", ("record", "score", "cost"), "results.json, the figures, and the results tables", results, results_outputs),
 )

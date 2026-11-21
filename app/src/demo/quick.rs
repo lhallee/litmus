@@ -27,6 +27,15 @@ use crate::views::quick::{self as view, DemoReport};
 
 const SHORT: &str = "The bakery on the corner opens at six.";
 
+/// The text the `reading` script captures: the file `LITMUS_DEMO_TEXT` names, so the popup can be photographed over a
+/// reading of any kind, else the short sentence.
+fn reading_text() -> Result<String, String> {
+    match std::env::var_os("LITMUS_DEMO_TEXT") {
+        Some(path) => std::fs::read_to_string(&path).map_err(|e| format!("LITMUS_DEMO_TEXT {}: {e}", std::path::Path::new(&path).display())),
+        None => Ok(SHORT.to_owned()),
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Script {
     Reading,
@@ -127,7 +136,8 @@ pub fn step(run: &mut Run, app: &mut LitmusApp, ctx: &egui::Context) -> Next {
             return Next::Poll;
         }
         let started = match run.script {
-            Script::Reading | Script::Escape | Script::Full => begin(run, app, ctx, SHORT, Keep::Always),
+            Script::Reading => reading_text().and_then(|text| begin(run, app, ctx, &text, Keep::Always)),
+            Script::Escape | Script::Full => begin(run, app, ctx, SHORT, Keep::Always),
             Script::Expire => begin(run, app, ctx, SHORT, Keep::AgainstInput).map(|()| view::demo_hold(app, Keep::AgainstInput, Some(Duration::from_secs(2)))),
             Script::Replace => begin(run, app, ctx, &super::scoring_text(), Keep::Always),
             Script::Loading => {
@@ -170,6 +180,19 @@ pub fn step(run: &mut Run, app: &mut LitmusApp, ctx: &egui::Context) -> Next {
                 return Next::Poll;
             }
             eprintln!("litmus demo: the popup's window has the focus: {:?}", view::demo_focused(app));
+            // The window holds its reading whole: nothing past its right edge, and as tall as what it drew (1.1.0 cut
+            // a long headline, the strip's end and the link off at the right).
+            let (drawn_height, overflowed) = view::demo_fit(app);
+            let window = ctx.input_for(view::popup_id(), |i| i.viewport().inner_rect);
+            eprintln!("litmus demo: the popup drew {drawn_height:?} points of height in a window of {:?}", window.map(|r| r.size()));
+            if overflowed {
+                return Next::Fail("the popup drew its reading past its right edge".into());
+            }
+            if let (Some(drawn_height), Some(window)) = (drawn_height, window)
+                && (window.height() - drawn_height).abs() > 2.0
+            {
+                return if run.elapsed_ms() > 3000 { Next::Fail(format!("the popup's window is {} points tall and its reading {drawn_height}", window.height())) } else { Next::Poll };
+            }
             Next::Shoot(view::popup_id())
         }
         (Script::Loading, 1) => {

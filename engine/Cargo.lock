@@ -345,7 +345,7 @@ checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
 name = "litmus-cli"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "litmus-engine",
  "litmus-files",
@@ -354,7 +354,7 @@ dependencies = [
 
 [[package]]
 name = "litmus-engine"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "criterion",
  "serde",
@@ -365,7 +365,7 @@ dependencies = [
 
 [[package]]
 name = "litmus-files"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "litmus-engine",
  "miniz_oxide 0.8.9",
@@ -376,7 +376,7 @@ dependencies = [
 
 [[package]]
 name = "litmus-py"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "litmus-engine",
  "pyo3",

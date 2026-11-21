@@ -4,10 +4,11 @@
 [4. Training](training.md) · [5. Calibration](calibration.md) · [6. Experiments](experiments.md) ·
 [7. Evaluation](evaluation.md) · **8. Engine** · [9. Reproduce](reproduce.md)
 
-The trained model is read by one engine, written in Rust, in the Windows program, the `litmus` command line, the
-Python module `litmus_engine`, and, compiled to WebAssembly, the browser page. It reads a release (`model.safetensors`
-and `config.json`) on one processor core, with no graphics card, and gives the same reading as the NumPy reference
-within stated tolerances. This part is a summary; [`engine/README.md`](../../engine/README.md) has every measurement,
+The trained model is read by one engine, written in Rust, in the Windows, macOS, and Linux programs, the `litmus`
+command line, the Python module `litmus_engine`, and, compiled to WebAssembly, the browser page. It reads a release
+(`model.safetensors` and `config.json`) on the processor alone, with no graphics card, and gives the same reading as
+the NumPy reference within stated tolerances. The app and `litmus score` spread one text over every logical processor
+and give the same reading to the last digit as one core does; the speeds below are measured on one core. This part is a summary; [`engine/README.md`](../../engine/README.md) has every measurement,
 and [`docs/AUDIT.md`](../AUDIT.md) the checks anyone can run.
 
 - [The release file](#the-release-file)
@@ -83,7 +84,7 @@ streams through the encoder; the chunk's running float64 sums are recorded at ev
 the chunk is read. Memory does not grow with the text: a 131,072-token text is 16 chunks of the same work, and
 throughput is flat from 1,024 to 131,072 tokens. With random weights, `s192_l4` reads 21,926 tokens a second at 8,192
 tokens and 21,995 at 131,072, in a process of 56 MB ([`engine/README.md`](../../engine/README.md), Measurements).
-The release: <!--litmus:t:release_speed-->5,014 tokens a second on one core and a process peak of 65.1 MB (`litmus bench` on AMD Ryzen 7 3800X 8-Core Processor, Windows 10)<!--/litmus-->.
+The release: <!--litmus:t:release_speed-->4,920 tokens a second on one core and a process peak of 63.1 MB (`litmus bench` on AMD Ryzen 7 3800X 8-Core Processor, Windows 10)<!--/litmus-->.
 
 ## The browser build
 
@@ -104,7 +105,7 @@ the text, by about 0.001, so values agree within tolerances, not bit for bit:
 | Token ids | exact |
 | Pooled vector | $`\lvert \Delta \rvert \le 3 \times 10^{-3} (1 + \lvert v \rvert)`$ |
 | Query, key; mean, spread, share, score, closeness | $`\lvert \Delta \rvert \le 10^{-3}`$ |
-| Three-way probabilities, strip position and band | $`\lvert \Delta \rvert \le 2 \times 10^{-3}`$ |
+| Three-way probabilities, the place's position and span (`strip`) | $`\lvert \Delta \rvert \le 2 \times 10^{-3}`$ |
 | Grid p-values, sets, calls | equal, except within $`10^{-3}`$ of a table threshold |
 
 In a release with int8 output the head's query and key are integer codes, so the engine's codes are compared exactly

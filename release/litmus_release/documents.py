@@ -22,12 +22,16 @@ from .commands import StageError
 from .data import Documents, StaleDocument, documents
 from .datapath import MissingValue, resolve, spell
 from .stages import Context, Stage
-from .values import Values
+from .values import Values, chance_ranges, widened
 
 
 SKIPPED = {".git", "target", "node_modules", "dist", "__pycache__", ".pytest_cache"}
 FALLBACK = re.compile(r'(?P<open><(?P<tag>span|dd|td|strong|b|em)\b[^>]*\bdata-value="(?P<key>[^"]+)"[^>]*>)(?P<body>[^<]*)(?P<close></(?P=tag)>)')
 FORMAT_ATTRIBUTE = re.compile(r'data-format="([^"]+)"')
+# An example strip of a site page: its chance (and, for a long document, the interval its sections give), then its
+# band's ends and its mark, on one line.
+EXAMPLE_STRIP = re.compile(r'(?P<open><div class="strip[^"]*"[^>]*\bdata-chance="(?P<chance>[0-9.]+)"(?:[^>]*\bdata-interval="(?P<low>[0-9.]+),(?P<high>[0-9.]+)")?[^>]*>'
+                           r'<div class="strip-bar"></div><div class="strip-band" style=")--lo: [0-9.]+; --hi: [0-9.]+(?P<middle>"></div><div class="strip-mark" style="--x: (?P<mark>[0-9.]+)")')
 # The site script's formats (site/site.js FORMATS), by their names.
 SITE_FORMATS = {"mb": "mb1", "int": "int", "num": "f3", "f1": "f1", "pct": "pct1", "text": "text"}
 RELEASE_BLOCK = ("version", "date", "app_tokens_per_second", "browser_tokens_per_second", "speed_document_tokens",
@@ -126,12 +130,30 @@ def release_block(available: Documents, previous: Mapping[str, Any]) -> dict[str
         "app_document_seconds": round(document["seconds"], 1),
         "speed_machine": bench["machine"]["name"],
     })
+    # The same document on every logical processor, as the app reads; a measurement made before that existed has none,
+    # and the pages then say nothing of it.
+    every = bench.get("document_all_processors")
+    for key in ("app_tokens_per_second_all_processors", "app_processors", "app_document_seconds_all_processors"):
+        block.pop(key, None)
+    if every:
+        block.update({"app_tokens_per_second_all_processors": round(every["text_tokens_per_second"]), "app_processors": every["threads"],
+                      "app_document_seconds_all_processors": round(every["seconds"], 1)})
     if "browser" in available:
         browser = available["browser"]
         if browser["document_tokens"] != document["tokens"]:
             raise StageError(f"the browser was measured on {browser['document_tokens']} tokens and the program on {document['tokens']}: measure the same document")
         block.update({"browser_tokens_per_second": round(browser["tokens_per_second"]), "browser_document_seconds": round(browser["seconds"], 1)})
+    # How far the chance of AI moves between sources, for a release whose calibration table carries it.
+    block.pop("chance_range", None)
+    between = between_sources(available)
+    if between is not None:
+        block["chance_range"] = chance_ranges(between)
     return block
+
+
+def between_sources(available: Documents) -> dict[str, Any] | None:
+    """The calibration table's shift between sources, or none for a release without it (1.1.0 and earlier)."""
+    return available["config"]["calibration"].get("between_sources") if "config" in available else None
 
 
 def write_site_data(context: Context, available: Documents) -> list[Path]:
@@ -149,8 +171,10 @@ def write_site_data(context: Context, available: Documents) -> list[Path]:
         "training_guide": targets["github"]["training_guide"],
         "contribute_site": targets["contribute"]["site_url"],
         "model_on_hugging_face": f"https://huggingface.co/{targets['hub']['model_repo']}",
-        # macOS programs are attached after publishing, so the site links them only once targets.toml lists the platform.
+        # The macOS programs are attached once the release is public (the `macos` stage), which the `pages` stage checks
+        # before it publishes a site that links them.
         "download_macos_app": release["download_base"] + targets["programs"]["assets"]["macos_arm64_app"] if "macos" in platforms else "",
+        "download_macos_intel_app": release["download_base"] + targets["programs"]["assets"]["macos_x86_64_app"] if "macos" in platforms else "",
         "download_linux_app": release["download_base"] + targets["programs"]["assets"]["linux_app"] if "linux" in platforms else "",
     }
     write_atomically(assets / "links.json", json.dumps(links, indent=1, ensure_ascii=False) + "\n")
@@ -180,11 +204,29 @@ def fill_site_fallbacks(context: Context, available: Documents) -> list[Path]:
                 return match.group(0)
             return match.group("open") + spell(value, SITE_FORMATS.get(name, "text")) + match.group("close")
 
-        updated = FALLBACK.sub(replace, text)
+        updated = draw_example_strips(FALLBACK.sub(replace, text), between_sources(available), page.name)
         if updated != text:
             write_atomically(page, updated)
             changed.append(page)
     return changed
+
+
+def draw_example_strips(text: str, between: Mapping[str, Any] | None, page: str) -> str:
+    """Set the band of each example strip of a page from its chance: `<div class="strip" data-chance="0.93">` has the
+    range the programs give that chance, and one with `data-interval="0.42,0.83"` (a long document whose sections
+    disagree) that interval widened. The band is never typed, so a release with another shift redraws it."""
+    def band(match: re.Match[str]) -> str:
+        chance = float(match.group("chance"))
+        low, high = (float(match.group("low")), float(match.group("high"))) if match.group("low") else (chance, chance)
+        if not low <= chance <= high:
+            raise StageError(f"{page}: an example strip's chance {chance} is outside its interval {low} to {high}")
+        if float(match.group("mark")) != chance:
+            raise StageError(f"{page}: an example strip's mark is at {match.group('mark')} and its chance is {chance}")
+        if between is not None:
+            low, high = widened(low, high, between["log_odds"])
+        return f'{match.group("open")}--lo: {low:.3f}; --hi: {high:.3f}{match.group("middle")}'
+
+    return EXAMPLE_STRIP.sub(band, text)
 
 
 def write_model_sums(context: Context) -> Path:

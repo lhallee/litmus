@@ -11,9 +11,11 @@ from litmus_teacher.calibrate import (
     GRID,
     Readings,
     Verdicts,
+    _held_share,
     apply_calibration,
     chunk_uncertainty,
     combine_chunks,
+    fit_between_sources,
     fit_calibration,
     grid_p_values,
     grid_thresholds,
@@ -24,6 +26,7 @@ from litmus_teacher.calibrate import (
     readings_from_pair_logits,
     save_table,
     section_uncertainty,
+    source_shifts,
     uncertainty_rows,
     vector_cosines,
     write_rows,
@@ -244,3 +247,76 @@ def test_uncertainty_rows_tidy_csv(table: dict, tmp_path: Path) -> None:
 
 def test_length_bins_edges() -> None:
     assert length_bins(np.array([0, 15, 16, 8191, 8192, 32768, 10**6])).tolist() == [0, 0, 1, 9, 10, 11, 11]
+
+
+def with_sources(n: int, seed: int, spread: float, sources: int = 24) -> tuple[Readings, np.ndarray, np.ndarray]:
+    """Readings as `synthetic` gives them, each from one of `sources` sources; a source moves its texts' evidence
+    toward human or away from it by its own amount, drawn with standard deviation `spread`."""
+    rng = np.random.default_rng(seed)
+    labels = rng.integers(0, 3, n)  # (n,)
+    source = rng.integers(0, sources, n)  # (n,)
+    tokens = np.exp(rng.uniform(np.log(8), np.log(20_000), n)).astype(np.int64)  # (n,)
+    strength = np.clip(np.log(tokens) / np.log(20_000), 0.05, 1.0)  # (n,)
+    logits = rng.normal(0.0, 1.0, (n, 3)) + 2.5 * strength[:, None] * np.eye(3)[labels]  # (n, 3)
+    logits[:, HUMAN] += rng.normal(0.0, spread, sources)[source]
+    mean = 1 / (1 + np.exp(-logits))  # (n, 3)
+    names = np.array([f"source {index}" for index in source])  # (n,)
+
+    return Readings(mean, rng.uniform(0.05, 0.3, (n, 3)), rng.normal(0.6, 0.05, n), tokens), labels, names  # readings of n texts, (n,) each
+
+
+def test_source_shifts_definition() -> None:
+    # One length group, two regions. Source a has 30 texts in region 0 and 10 in region 1, source b 30 and 30, and
+    # source c is too small to say anything.
+    region = np.array([0] * 30 + [1] * 10 + [0] * 30 + [1] * 30 + [0] * 5)
+    sources = np.array(["a"] * 40 + ["b"] * 60 + ["c"] * 5)
+    shift, variance, usable, names = source_shifts(region, np.zeros(105, dtype=np.int64), sources, 2, 1)
+    assert names == ["a", "b"]
+    # Against a, the others (b and c) put 35 of 65 texts in region 0, so 40 texts are expected as 21.54 and 18.46.
+    expected = 40 * np.array([35, 30]) / 65
+    np.testing.assert_allclose(shift[0], np.log((np.array([30, 10]) + 0.5) / (expected + 0.5)))
+    np.testing.assert_allclose(variance[0], 1 / (np.array([30, 10]) + 0.5))
+    assert usable.all()
+    # A source the others' texts put under 5 texts in a region says nothing there.
+    region = np.array([0] * 39 + [1] * 1 + [0] * 59 + [1] * 1)
+    _, _, usable, _ = source_shifts(region, np.zeros(100, dtype=np.int64), np.array(["a"] * 40 + ["b"] * 60), 2, 1)
+    assert usable.tolist() == [[True, False], [True, False]]
+
+
+def test_sources_that_read_alike_need_almost_no_range_and_shifted_ones_a_wide_one() -> None:
+    def between(spread: float) -> dict:
+        readings, labels, sources = with_sources(40_000, seed=11, spread=spread)
+        return fit_calibration(readings, labels, sources=sources)["between_sources"]
+
+    # Measured at seed 11: spread 0.0 gives 0.042, 0.25 gives 0.517, 0.5 gives 0.884, 1.0 gives 1.587, and 2.0 gives
+    # 1.700 (the range saturates once the shifts are large), so the steps compared are the ones before saturation.
+    alike, shifted, wider = between(0.0), between(0.5), between(1.0)
+    assert alike["sources"] == {"human": 24, "not_human": 24} and alike["level"] == 0.9
+    assert 0.0 <= alike["log_odds"] < 0.35, alike["log_odds"]
+    assert shifted["log_odds"] > alike["log_odds"] + 0.5 and wider["log_odds"] > shifted["log_odds"] + 0.3
+    assert len(shifted["regions"]) == 7 and abs(sum(region["weight"] for region in shifted["regions"]) - 1.0) < 1e-6
+
+
+def test_the_half_width_holds_its_level_of_pairings() -> None:
+    readings, labels, sources = with_sources(40_000, seed=12, spread=1.0)
+    table = fit_calibration(readings, labels)
+    for level in (0.8, 0.9, 0.95):
+        entry = fit_between_sources(table, readings, labels, sources, level=level)
+        centers, spreads, weights = (np.array([region[key] for region in entry["regions"]]) for key in ("center", "spread", "weight"))
+        assert abs(_held_share(entry["log_odds"], centers, spreads, weights) - level) < 1e-4
+    assert fit_between_sources(table, readings, labels, sources, level=0.95)["log_odds"] > fit_between_sources(table, readings, labels, sources, level=0.8)["log_odds"]
+
+
+def test_the_table_carries_the_range_only_when_sources_are_given() -> None:
+    readings, labels, sources = with_sources(30_000, seed=13, spread=0.5)
+    plain, sourced = fit_calibration(readings, labels), fit_calibration(readings, labels, sources=sources)
+    assert "between_sources" not in plain
+    entry = sourced.pop("between_sources")
+    assert sourced == plain, "the rest of the table is the same fit"
+    assert set(entry) == {"level", "log_odds", "sources", "min_texts", "min_expected", "regions"}
+    with pytest.raises(ValueError, match="one label and one source per reading"):
+        fit_between_sources(plain, readings, labels, sources[:-1])
+    # Seven sources a side are too few to say how sources differ.
+    few = np.array([f"source {index % 7}" for index in range(len(labels))])
+    with pytest.raises(ValueError, match="too few human sources"):
+        fit_between_sources(plain, readings, labels, few)

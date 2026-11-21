@@ -1,12 +1,11 @@
 //! The Check screen. Before a check: one inviting sentence, the text box, and one primary Check button. After a
 //! check the text box becomes the reading: the verdict over the user's own text, tinted cell by cell, with an Edit
-//! action back to plain editing. At the Detailed and Full levels the numbers sit in a panel beside it (under it on
-//! a narrow window).
+//! action back to plain editing. At the Full level the numbers sit in a panel beside it (under it on a narrow
+//! window).
 
 use eframe::egui::{self, CornerRadius, Margin, RichText, Stroke};
 
 use crate::app::{LitmusApp, ModelState};
-use crate::settings::Detail;
 use crate::theme;
 use crate::views::{self, controls, dark};
 
@@ -16,10 +15,10 @@ const NARROW: f32 = 900.0;
 pub fn show(app: &mut LitmusApp, ui: &mut egui::Ui) {
     let reading = app.shown.is_some() && !app.editing;
     let wide = ui.available_width() >= NARROW;
-    let side = reading && wide && app.settings.detail != Detail::Simple;
+    let side = reading && wide && app.settings.detail.full();
     let p = theme::palette(dark(ui));
     if side {
-        let width = if app.settings.detail == Detail::Full { 460.0 } else { 360.0 };
+        let width = 460.0;
         let max = (ui.available_width() * 0.55).max(width);
         egui::Panel::right("details")
             .resizable(true)
@@ -42,7 +41,7 @@ pub fn show(app: &mut LitmusApp, ui: &mut egui::Ui) {
 
 /// The verdict over the tinted text; on a narrow window everything scrolls together.
 fn reading_screen(app: &mut LitmusApp, ui: &mut egui::Ui, side: bool) {
-    let stacked = !side && app.settings.detail != Detail::Simple;
+    let stacked = !side && app.settings.detail.full();
     let narrow = ui.available_width() < NARROW;
     if narrow || stacked {
         egui::ScrollArea::vertical().id_salt("reading_scroll").auto_shrink([false, false]).show(ui, |ui| {
@@ -73,7 +72,7 @@ fn reading_screen(app: &mut LitmusApp, ui: &mut egui::Ui, side: bool) {
 /// The user's text as the heat map, with Edit, the minimap of a long document, and the scale of the tints.
 fn text_card(app: &mut LitmusApp, ui: &mut egui::Ui, height: f32) {
     let p = theme::palette(dark(ui));
-    let detailed = app.settings.detail.at_least(Detail::Detailed);
+    let detailed = app.settings.detail.full();
     controls::card(ui, 16, |ui| {
         ui.set_width(ui.available_width());
         ui.horizontal(|ui| {
@@ -210,7 +209,7 @@ fn model_state(app: &mut LitmusApp, ui: &mut egui::Ui) {
                     ui.spinner();
                     match app.download {
                         Some((done, total)) if total > 0 => {
-                            ui.label(format!("Downloading the model: {} of {}", megabytes(done), megabytes(total)));
+                            ui.label(format!("Downloading the model, {} of {}", megabytes(done), megabytes(total)));
                         }
                         _ => {
                             ui.label("Loading the model");
@@ -219,7 +218,7 @@ fn model_state(app: &mut LitmusApp, ui: &mut egui::Ui) {
                 });
                 if let Some((done, total)) = app.download.filter(|(_, total)| *total > 0) {
                     bar(ui, done as f32 / total as f32);
-                    ui.label(RichText::new("Once, into this page: the model runs here, and your text is never sent anywhere.").small().color(p.muted));
+                    ui.label(RichText::new("This happens once. The model runs in this page, and your text is never sent anywhere.").small().color(p.muted));
                 }
             });
             ui.add_space(12.0);
@@ -291,7 +290,7 @@ fn progress(app: &mut LitmusApp, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
             ui.set_width((ui.available_width() - 120.0).max(120.0));
-            ui.label(RichText::new(if words.is_empty() { "Reading".to_owned() } else { format!("Reading: {words}") }).color(p.muted));
+            ui.label(RichText::new(if words.is_empty() { "Reading".to_owned() } else { words }).color(p.muted));
             bar(ui, fraction);
         });
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -341,7 +340,7 @@ fn buttons(app: &mut LitmusApp, ui: &mut egui::Ui) {
             app.input_source = "pasted".into();
         }
         #[cfg(not(target_arch = "wasm32"))]
-        if controls::quiet(ui, "Open file", None, !app.busy()).on_hover_text("Ctrl+O: text, Markdown, HTML, Word or PDF").clicked()
+        if controls::quiet(ui, "Open file", None, !app.busy()).on_hover_text("Ctrl+O. Text, Markdown, HTML, Word, or PDF").clicked()
             && let Some(path) = views::pick_file()
         {
             app.open_file(&path);

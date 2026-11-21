@@ -7,7 +7,7 @@
 //! - `LITMUS_DEMO_FOLDER`: the folder the `batch` scene scores; `LITMUS_DEMO_EXPORT`: a folder to write the batch's
 //!   `litmus_batch.csv` and `litmus_batch.json` into, through the same functions as the Export buttons.
 //! - `LITMUS_DEMO_CELL`: the heat-map cell to select (default 2).
-//! - `LITMUS_DETAIL`: `simple`, `detailed` or `full` for this run (not saved).
+//! - `LITMUS_DETAIL`: `simple` or `full` for this run (not saved).
 //! - `LITMUS_DEMO_ZOOM`: a zoom factor, as a display scaled to 150% shows the app (`1.5`).
 //! - `LITMUS_DEMO_WINDOW`: `shown` keeps the main window up in the `quick` scene, as when the hotkey is pressed with
 //!   the app open behind another window (default `hidden`, the tray). While the `quick` scene waits for its reading
@@ -128,9 +128,9 @@ impl Demo {
             settling: None,
             detail: std::env::var("LITMUS_DETAIL").ok().map(|d| match d.as_str() {
                 "simple" => crate::settings::Detail::Simple,
-                "detailed" => crate::settings::Detail::Detailed,
-                "full" => crate::settings::Detail::Full,
-                other => panic!("LITMUS_DETAIL={other}: use simple, detailed or full"),
+                // "detailed" was the middle level through 1.1.0; scripts that still name it get Full.
+                "full" | "detailed" => crate::settings::Detail::Full,
+                other => panic!("LITMUS_DETAIL={other}: use simple or full"),
             }),
             zoom: std::env::var("LITMUS_DEMO_ZOOM").ok().map(|z| z.parse().expect("LITMUS_DEMO_ZOOM is a number")),
             quick: (scene == Scene::Quick).then(|| {
@@ -302,7 +302,7 @@ pub fn step(app: &mut LitmusApp, ctx: &egui::Context) {
                     (Some(crate::app::Notice::Info(text)), _) => eprintln!("litmus demo: opened in {ms} ms: note \"{text}\""),
                     (None, Some(shown)) => eprintln!(
                         "litmus demo: opened in {ms} ms: reading \"{}\" of \"{}\", {} tokens, the editor holding {} characters",
-                        crate::wording::verdict_headline(&shown.scored.reading.verdict),
+                        crate::wording::verdict_headline(&shown.scored.reading.verdict).line(),
                         shown.title,
                         shown.scored.reading.n_tokens,
                         app.input.chars().count()

@@ -243,17 +243,17 @@ quote.
 
 **Cells.** The heat map of a chunk has one cell per stride: `[j s, min((j + 1) s, m))` for
 `j = 0 .. ceil(m / s) - 1`, the last possibly shorter. With `o_k` the number of the cell's tokens that window `k`
-holds (only windows with `o_k > 0` cover the cell; every cell has at least one) and `x_k` that window's strip
-position, the cell's **position** is `sum o_k x_k / sum o_k`, its **spread** `sqrt(sum o_k (x_k - position)^2 /
-sum o_k)`, its band `[min_k band_lo_k, max_k band_hi_k]` over the covering windows' [strips](#the-litmus-strip),
-`windows` their count and `unlike_reference` true when any covering window is unlike the reference. Cells and
-windows carry document positions (the chunk's start added). The app, the command line and the figures draw these
-values and nothing else.
+holds (only windows with `o_k > 0` cover the cell; every cell has at least one) and `x_k` that window's
+[position](#the-readings-place), the cell's **position** is `sum o_k x_k / sum o_k`, its **spread**
+`sqrt(sum o_k (x_k - position)^2 / sum o_k)`, its band `[min_k band_lo_k, max_k band_hi_k]` over the covering
+windows' spans, `windows` their count and `unlike_reference` true when any covering window is unlike the reference.
+Cells and windows carry document positions (the chunk's start added). The app, the command line and the figures tint
+the map by a cell's position and nothing else.
 
 **The map describes; the verdict decides.** The document's verdict comes from its chunks, never from the most
 extreme window or cell: with 61 overlapping windows per chunk, the most extreme of them is a maximum over many
 looks at one text, and a window's set holds its level only for that window. A run of cells on the other side of the
-strip is where to look, not a call.
+scale is where to look, not a call.
 
 **Head** (float32 arithmetic; weights stored float16 and widened exactly):
 `z = clamp((pooled - head.input_mean) / head.input_scale, -c, c)` with `c` the float32 of `config.json`'s
@@ -351,7 +351,8 @@ exactly one group of each list). "The group" below is the entry whose `bins` hol
   of `(1 + #{calibration texts of origin o in the group with r_o <= r}) / (n + 1)`, exact at 0.05 and 0.10.)
 - **Sets and calls.** For each of `levels` (0.05, 0.10): the set is `{o : p_o > level}`; the text is **called not
   human** at a level when `p_human <= level`, which bounds the share of human text like the calibration set that is
-  so called. A set of more than one origin reads as uncertain, an empty set as unlike the reference.
+  so called. A set that keeps human beside another origin reads as uncertain, the set of AI and mixed as "AI or
+  mixed" (human is ruled out), an empty set as unlike the reference.
 - **Probability of not human, with an interval** (inductive Venn-Abers). In the group of `probability`:
   `block = #{e in edges : e <= score}`, `p0 = p0[block]`, `p1 = p1[block]`; the probability is
   `p1 / (1 - p0 + p1)` and the interval `[p0, p1]`.
@@ -363,17 +364,66 @@ exactly one group of each list). "The group" below is the entry whose `bins` hol
 - **Out of reference.** In the group of `closeness`, the grid p-value of the closeness exactly as for conformal
   p-values; the text is out of reference when it is at or under `out_of_reference_level` (0.01).
 
+### The reading's place
+
+A reading's place between the three origins, on a scale from 0 (human, blue) through 0.5 (mixed, purple) to 1 (AI,
+red). With the three-way probabilities `P_h, P_a, P_m` (they sum to one), the **position** is `x = P_a + P_m / 2`.
+Each origin has an anchor: human 0, mixed 0.5, AI 1. The **span** is what the conformal set at level 0.10 cannot rule
+out: with `G` that set, `[min(x, min_{o in G} anchor_o), max(x, max_{o in G} anchor_o)]`. A set of one origin gives
+the span from `x` to that origin's anchor, a set of all three the whole scale, an empty set `[x, x]`. `strip` in the
+reading holds `position`, `band_lo`, `band_hi` (the span's ends), `level` (0.10) and `unlike_reference` (the set is
+empty or the text is out of reference). The position places a mixed text apart from an AI one, so it tints the heat
+map's [cells](#windows-and-the-heat-map) and colors the verdict's marker. Releases through 1.1.0 also drew the span as the band of
+the strip. A span names origins and is no interval of any number, so the strip is now drawn from the
+[chance of AI](#chance-of-ai), and the span stays in the reading for programs that read it.
+
+### Chance of AI
+
+The number a reading leads with is the **chance of AI**: the probability of not human, restated for a text as
+likely human as not before it is read. The table's probability is calibrated on its calibration texts as they are
+mixed, and they are not an even mix: with `H` the human calibration texts of the span's length and `N` all of them,
+a share `pi = 1 - H / N` is not human (two thirds of the short texts of the 1.1 release, one half of the long ones),
+so a reading that says nothing gives `pi`, not one half. Dividing the calibration texts' odds out gives what the same
+evidence says at even odds:
+
+`chance(p) = p (1 - pi) / (p (1 - pi) + (1 - p) pi)`.
+
+- **The share.** `N` is `n` of the span's group of `probability`, and `H` the sum of `n` over the groups of
+  `conformal.human`, both taken over the fewest length bins around the span's bin that the two lists split at the
+  same places (the probability group itself whenever the human groups tile it). A release whose share is not
+  strictly between 0 and 1 for some bin does not load.
+- **A chunk or a window.** `value = chance(P)`, and the interval starts as `[chance(p0), chance(p1)]` of its
+  probability and interval, with the share of its own length bin. The function rises with `p`, so the interval keeps
+  its order and still holds the value, and 0 and 1 stay 0 and 1.
+- **Between sources.** The calibration is one curve over every source of text, and one source sits above or below
+  it, so the interval is widened by how far the chance moves from source to source. The table's `between_sources`
+  entry holds `log_odds`, a half width `h >= 0`, and `level`, the share of pairings of one human source with one
+  not-human source whose chance lies within `h` of the pooled chance (0.9); `teacher/CALIBRATION.md` gives the fit.
+  With `low <= high` the interval's ends, `interval = [w(low, -h), w(high, h)]` where
+  `w(p, d) = p e^d / (p e^d + 1 - p)`: the low end's odds divided by `e^h` and the high end's multiplied by it, so 0
+  and 1 stay put and the value stays inside. A table without the entry widens by nothing (`h = 0`, the interval to
+  the bit as above), which is every release through 1.1.0, and a program that does not know the entry ignores it.
+- **A document.** The same of the verdict's probability and interval, with the share of its first chunk's length bin
+  (a document's chunks are equal to a token, so they share a bin). One chunk gives that chunk's chance.
+- **In words.** The value as a whole percentage, `<1%` under one half of a point and `>99%` over 99.5, so no reading
+  claims certainty, followed by the interval as `(62-75%)` when it is at least one point wide and its ends round to
+  different percentages. An end is written no lower than 1% and no higher than 99%, so `>99%` has no
+  `(99-100%)` beside it.
+
+The chance is computed beside the reading from the reading and the table (`Chance` in the engine: `value`,
+`interval`, `reference_share`, and `between_sources`, the `h` its interval was widened by), and `litmus score --json`,
+the MCP tools and the Python module carry it as `chance` beside `reading`. The widening holds for sources like the
+calibration's: the fit reads the sources of the calibration texts, and a kind of writing unlike all of them can sit
+outside the interval (`experiments/tooling/quill/2026-11-21_chance_range_between_sources`).
+
 ### The litmus strip
 
-One drawing for the engine, the app and the figures: a strip from 0 (human, blue) through 0.5 (mixed, purple) to 1
-(AI, red). With the three-way probabilities `P_h, P_a, P_m` (they sum to one), the **position** is
-`x = P_a + P_m / 2`. Each origin has an anchor: human 0, mixed 0.5, AI 1. The **uncertain band** is what the
-conformal set at level 0.10 cannot rule out: with `G` that set, `[min(x, min_{o in G} anchor_o),
-max(x, max_{o in G} anchor_o)]`, drawn as a soft band over the strip with a mark at `x`. A set of one origin gives
-the band from `x` to that origin's anchor, a set of all three the whole strip. An empty set gives the band `[x, x]`,
-and the strip is drawn as unlike the reference, as is any text out of reference. `strip` in the reading holds
-`position`, `band_lo`, `band_hi`, `level` (0.10) and `unlike_reference` (the set is empty or the text is out of
-reference).
+One drawing for the engine, the app, the command line and the figures: a scale from 0 (human, blue) through purple
+to 1 (AI, red), a **mark** at the chance of AI, and a pale **band** over the chance's interval, stretched to the mark
+if the mark lies outside it. A text unlike the reference (`strip.unlike_reference`) is drawn washed out with a
+question mark for its mark and no band, and a reading with no table at hand has neither mark nor band. A drawing may
+keep a band wide enough to see around its mark; it widens nothing else. `Drawn` in the engine holds `mark`, `band`
+and `unlike_reference`.
 
 ### Chunks and the verdict
 
@@ -394,7 +444,7 @@ origin `o`, `P_c` its probability of not human, `[p0_c, p1_c]` its interval, `T_
   (`disagreement`), the **interval** is `[max(0, min(mean_c p0_c, P - s)), min(1, max(mean_c p1_c, P + s))]`: the
   mean Venn-Abers interval when the chunks agree, wider when they do not. It describes and carries no coverage
   guarantee. `lowest` and `highest` are the smallest and largest `P_c`.
-- **Three-way probabilities**: `mean_c T_c`. The verdict's [strip](#the-litmus-strip) is drawn from them and the
+- **Three-way probabilities**: `mean_c T_c`. The verdict's [place](#the-readings-place) comes from them and the
   merged 0.10 set.
 - **Out of reference**: the merged closeness p-value `min(1, 2 * mean_c k_c)` (`k_1` for one chunk) at or under
   `out_of_reference_level`.
@@ -444,7 +494,9 @@ A document's reading in `reference.py` (JSON) has:
 - `windows`: each the same reading without `explain`, with `start`, `end` and `chunk`;
 - `cells`: `start`, `end`, `position`, `spread`, `band_lo`, `band_hi`, `windows`, `unlike_reference`.
 
-Positions are the document's. For a text of one chunk, `verdict` repeats the chunk's values.
+Positions are the document's. For a text of one chunk, `verdict` repeats the chunk's values. The engine's outputs
+carry the verdict's [chance of AI](#chance-of-ai) beside this reading, as `chance` (`value`, `interval`,
+`reference_share`).
 
 ### Surprise
 

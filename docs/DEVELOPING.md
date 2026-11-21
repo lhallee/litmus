@@ -34,15 +34,15 @@ The page's only requests are for its own files and the model's three, from its o
 to the page's worker and nowhere else. Only a build with the `contribute` feature, which is the separate contribute
 site's, compiles any code that sends a request.
 
-**The desktop app** (built and tested on Windows; the macOS and Linux builds are untested):
+**The desktop app** (built, tested, and used on Windows; the release workflow builds and tests it on Linux and on
+macOS, starts it there, and compares its reading with the command line's):
 
 ```sh
 cd app
 LITMUS_MODEL=../placeholder cargo run --release
 ```
 
-It opens at the Simple detail level in the dark theme; "More detail", the Detail switch, or Ctrl+M moves to Detailed
-and Full. It keeps a history and a cache, checks a folder as a batch, and exports CSV and JSON. An opt-in quick check,
+It opens at the Simple detail level in the dark theme; "More detail", the Detail switch, or Ctrl+M moves to Full. It keeps a history and a cache, checks a folder as a batch, and exports CSV and JSON. An opt-in quick check,
 off by default and switched on in Settings, reads the text selected in any app on a global hotkey and shows the verdict
 in a small window by the pointer. The [app's README](../app/README.md) has the rest.
 
@@ -57,8 +57,10 @@ cargo build --release
 ```
 
 `litmus score` reads files (`.txt`, `.md`, `.html`, `.docx`, `.pdf`), folders recursively, or standard input (`-`),
-and prints the verdict, P(not human) with its interval, the origins not ruled out, and the strip in characters as well
-as color. `--json` prints every field, `--csv` one row per file, and `LITMUS_MODEL` can stand in for `--model`.
+and prints the verdict, the chance of AI with its range, the origins not ruled out, and the strip in characters as
+well as color. `--json` prints every field, `--csv` one row per file, and `LITMUS_MODEL` can stand in for `--model`.
+A text's 256-token blocks are spread over the machine's processors (`--threads N` sets how many), and the reading is
+the same bit for bit on any number of them.
 `litmus mcp` serves the same readings to an AI agent over the Model Context Protocol; [Use Litmus from an AI
 agent](USE_WITH_AGENTS.md) has the setup, and its tests are in the [engine's README](../engine/README.md#tests).
 
@@ -75,8 +77,9 @@ import litmus_engine
 
 model = litmus_engine.Model.from_path("placeholder")
 reading = model.score(text)
-reading["label"]                       # "human", "AI", "mixed", "uncertain" or "unlike reference"
-reading["verdict"]["probability"], reading["verdict"]["interval"], reading["verdict"]["strip"]
+reading["label"]                       # "human", "AI", "mixed", "AI or mixed", "uncertain" or "unlike reference"
+reading["chance"]["value"], reading["chance"]["interval"]    # the chance of AI and its range
+reading["verdict"]["sets"]["0.1"]      # the origins not ruled out at the 10% level
 reading["cells"]                       # the heat map, one cell per 128 tokens
 ```
 
@@ -175,7 +178,7 @@ the build and which this measurement does not cover.
 The model is a BitNet b1.58 encoder whose weights are all -1, 0, or +1. It turns a text into the mean and variance
 of its token vectors, a pair head on top gives the probability that two texts share an origin, and a reading
 compares a text with every vector in a bank of known human, AI, and mixed reference texts. It is trained from
-scratch on the true labels of pairs and runs with integer additions on one core, reading a long document in chunks
+scratch on the true labels of pairs and runs with integer additions on a CPU, reading a long document in chunks
 of at most 8,192 tokens and the heat map from windows of 512 tokens every 128. A frozen encoder, ModernBERT-base,
 embeds the corpus for the clustered split and serves as a reference detector in training. Calibration
 on texts held out for it turns the comparison into split conformal p-values for each origin, a Venn-Abers probability
@@ -200,7 +203,7 @@ the engine reproduces, and [`teacher/CALIBRATION.md`](../teacher/CALIBRATION.md)
 The checkpoint is chosen on validation, and test is read once. The metrics are for AI against human with mixed text
 left out: PR AUC, ROC AUC, balanced MCC (the Matthews correlation coefficient on class-balanced samples at its best
 threshold), and the true positive rate (TPR) at a 1% and a 5% false positive rate (FPR). The AI-or-mixed and mixed
-tasks, 95% intervals, and every breakdown are in <!--litmus:t:data_files-->the release's [`results.json`](https://github.com/lhallee/litmus/releases/tag/v1.1.0)<!--/litmus-->.
+tasks, 95% intervals, and every breakdown are in <!--litmus:t:data_files-->the release's [`results.json`](https://github.com/lhallee/litmus/releases/tag/v1.2.0)<!--/litmus-->.
 
 <!--litmus:t:overview_table-->
 | Split | Reader | Task | PR AUC | ROC AUC | Balanced MCC | TPR at 1% FPR | TPR at 5% FPR |
@@ -225,7 +228,7 @@ Released size: <!--litmus:t:released_size-->`s512_l6` (width 512, 6 layers, 18.9
 
 Every detector reads the same seeded sample of each benchmark's labeled test split (<!--litmus:results.texts_per_benchmark as int-->3,000<!--/litmus-->), and the open detectors are run again on those texts rather than quoted. Each cell is ROC AUC for AI
 against human, with mixed text left out; PR AUC, balanced MCC, TPR at 1% and 5% FPR, and 95% bootstrap intervals
-drawn the same way for every detector are in <!--litmus:t:data_files-->the release's [`results.json`](https://github.com/lhallee/litmus/releases/tag/v1.1.0)<!--/litmus-->. The corpus builder holds each of
+drawn the same way for every detector are in <!--litmus:t:data_files-->the release's [`results.json`](https://github.com/lhallee/litmus/releases/tag/v1.2.0)<!--/litmus-->. The corpus builder holds each of
 these splits out of every set Litmus trains, chooses, or calibrates on.
 
 <!--litmus:table.benchmark_matrix as roc_auc-->
@@ -302,8 +305,8 @@ scored 3,400 to 4,000 tokens per second. Every size's numbers, and where the tim
 
 | Released model | Value |
 | --- | --- |
-| Tokens per second on one core, 8,192-token text | <!--litmus:bench.rows[tokens=8192].text_tokens_per_second as int-->5,014<!--/litmus--> |
-| Peak memory of the process | <!--litmus:bench.rows[tokens=8192].process_peak_bytes as mb1-->65.1 MB<!--/litmus--> |
+| Tokens per second on one core, 8,192-token text | <!--litmus:bench.rows[tokens=8192].text_tokens_per_second as int-->4,920<!--/litmus--> |
+| Peak memory of the process | <!--litmus:bench.rows[tokens=8192].process_peak_bytes as mb1-->63.1 MB<!--/litmus--> |
 | Release files | <!--litmus:model.files_bytes as mb1-->18.5 MB<!--/litmus--> |
 | Single-core cost, ms per 1,000 words (the other detectors' are in the benchmark tables) | <!--litmus:results.costs[detector=Litmus engine].seconds_per_1k_words as ms0-->349<!--/litmus--> |
 

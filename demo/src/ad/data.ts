@@ -11,28 +11,33 @@ export interface SampleReading {
   set: Origin[];
   tokens: number;
   probability: number;
+  /** The chance of AI and its range, which the strip marks and bands as the app's does. */
+  chance: { value: number; interval: [number, number] };
   strip: { position: number; band_lo: number; band_hi: number; unlike_reference: boolean };
 }
 
 export const sample = (key: 'app' | 'quick_ai' | 'quick_short' | 'quick_human'): SampleReading => {
   const r = (readingsFile as unknown as { readings: Record<string, SampleReading> }).readings[key];
   if (!r) throw new Error(`data/ad/readings.json has no reading "${key}"`);
+  if (!r.chance) throw new Error(`data/ad/readings.json holds no chance of AI for "${key}": measure it again with tools/read_samples.mjs and this release's litmus`);
   return r;
 };
 
 const NAMES: Record<Origin, string> = { human: 'human', mixed: 'mixed', ai: 'AI' };
 const ORDER: Origin[] = ['human', 'mixed', 'ai'];
 
-/** The app's headline for a set of origins it cannot rule out (ported from app/src/wording.rs: one origin names itself, several read "Uncertain" and list themselves in strip order). */
+/** The app's headline for a set of origins it cannot rule out (ported from app/src/wording.rs: one origin names itself, AI and mixed without human read "AI or mixed", human beside another reads "Uncertain" with the origins after it in strip order). */
 export const headline = (set: Origin[]): string => {
   const named = ORDER.filter((o) => set.includes(o));
   if (named.length === 0) return 'Unlike reference';
   if (named.length === 1) return named[0] === 'ai' ? 'AI' : named[0][0].toUpperCase() + named[0].slice(1);
+  if (!named.includes('human')) return 'AI or mixed';
   const words = named.map((o) => NAMES[o]);
-  return `Uncertain: ${words.length === 2 ? words.join(' or ') : `${words.slice(0, -1).join(', ')}, or ${words[words.length - 1]}`}`;
+  return `Uncertain (${words.length === 2 ? words.join(' or ') : `${words.slice(0, -1).join(', ')}, or ${words[words.length - 1]}`})`;
 };
 
-export type Verdict = 'human' | 'uncertain' | 'mixed' | 'ai' | 'unlike';
+/** A document's verdict in the speed run: one origin, "AI or mixed" (human ruled out, the other two kept), uncertain (human kept beside another), or unlike the reference. */
+export type Verdict = 'human' | 'uncertain' | 'mixed' | 'ai' | 'ai_or_mixed' | 'unlike';
 export type SetName = 'human' | 'ai';
 
 export interface HypeDoc {
@@ -52,6 +57,8 @@ export interface Tally {
   uncertain: number;
   mixed: number;
   ai: number;
+  /** Absent from a run measured before the verdict had a name of its own, which counted these documents as uncertain. */
+  ai_or_mixed?: number;
   unlike: number;
 }
 

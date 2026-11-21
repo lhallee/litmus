@@ -335,6 +335,105 @@ fn layer_block(encoder: &Encoder, backend: Backend, index: usize, x: &mut [f32],
     }
 }
 
+/// The blocks of layer `index` over a chunk of `n` tokens, as position spans `[start, end)` in order: a block ends
+/// where `Stream::push` closes one, at every position whose shifted place is a multiple of the block size.
+fn layer_blocks(encoder: &Encoder, index: usize, n: usize) -> Vec<(usize, usize)> {
+    let (w, shift) = (encoder.block_size, encoder.shift(index));
+    let mut spans = Vec::with_capacity(n / w + 2);
+    let mut start = 0;
+    while start < n {
+        let end = (start + w - (start + shift) % w).min(n);
+        spans.push((start, end));
+        start = end;
+    }
+    spans
+}
+
+/// Rows `(n, d)` cut into the given consecutive spans of positions: each span's first position and its rows.
+fn split_rows<'a>(mut x: &'a mut [f32], spans: &[(usize, usize)], d: usize) -> Vec<(usize, &'a mut [f32])> {
+    let mut pieces = Vec::with_capacity(spans.len());
+    for &(start, end) in spans {
+        let (head, tail) = x.split_at_mut((end - start) * d);
+        pieces.push((start, head));
+        x = tail;
+    }
+    pieces
+}
+
+/// Run `work` on every item, on as many threads as there are scratches (the caller's thread is one of them), each
+/// thread with a scratch of its own. Items are taken in order, one at a time, by whichever thread is free.
+#[cfg(not(target_arch = "wasm32"))]
+fn fan_out<T: Send>(items: Vec<T>, scratches: &mut [BlockScratch], work: impl Fn(T, &mut BlockScratch) + Sync) {
+    let threads = scratches.len().min(items.len());
+    let (mine, others) = scratches.split_first_mut().expect("a scratch for the caller's thread");
+    let queue = std::sync::Mutex::new(items.into_iter());
+    let take = || queue.lock().expect("no thread panics holding the queue").next();
+    std::thread::scope(|scope| {
+        for scratch in others.iter_mut().take(threads.saturating_sub(1)) {
+            let (take, work) = (&take, &work);
+            scope.spawn(move || {
+                while let Some(item) = take() {
+                    work(item, scratch);
+                }
+            });
+        }
+        while let Some(item) = take() {
+            work(item, mine);
+        }
+    });
+}
+
+/// A whole chunk through the encoder with its blocks spread over threads, one `BlockScratch` a thread: the token
+/// states `(n, d)` are embedded into `x`, every layer runs over its blocks in place, and the final norm gives the
+/// states the pool sums in position order. Each block is the arithmetic of `Stream::close` on the same rows, and a
+/// block does not read another's, so the pool is the stream's bit for bit on any number of threads. The states take
+/// `4 n d` bytes, where the stream holds one block a layer. `after_stage` is called after the embedding (0) and
+/// after each layer (1 to the depth) and stops the run, returning `None`, when it returns false.
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(clippy::too_many_arguments)]
+pub fn run_chunk(
+    encoder: &Encoder,
+    backend: Backend,
+    ids: &[u32],
+    window_width: usize,
+    window_stride: usize,
+    x: &mut Vec<f32>,
+    scratches: &mut [BlockScratch],
+    after_stage: &mut dyn FnMut(usize) -> bool,
+) -> Option<ChunkPool> {
+    let (n, d) = (ids.len(), encoder.width);
+    assert!(n > 0, "a chunk holds at least one token");
+    let batches: Vec<(usize, usize)> = (0..n).step_by(EMBED_BATCH).map(|start| (start, (start + EMBED_BATCH).min(n))).collect();
+    let layers: Vec<Vec<(usize, usize)>> = (0..encoder.depth).map(|index| layer_blocks(encoder, index, n)).collect();
+    // No stage has more pieces than this, so no more threads than this find work.
+    let widest = layers.iter().map(Vec::len).max().unwrap_or(1).max(batches.len());
+    let threads = scratches.len().min(widest).max(1);
+    let scratches = &mut scratches[..threads];
+    scratches.iter_mut().for_each(|scratch| scratch.ensure(encoder));
+    x.clear();
+    x.resize(n * d, 0.0);
+    fan_out(split_rows(x, &batches, d), scratches, |(first, rows), scratch| {
+        let count = rows.len() / d;
+        embed(encoder, backend, &ids[first..first + count], rows, scratch);
+    });
+    if !after_stage(0) {
+        return None;
+    }
+    for (index, blocks) in layers.iter().enumerate() {
+        fan_out(split_rows(x, blocks, d), scratches, |(first, rows), scratch| layer_block(encoder, backend, index, rows, first, scratch));
+        if !after_stage(index + 1) {
+            return None;
+        }
+    }
+    let mut pool = ChunkPool::new(d, n, window_width, window_stride);
+    let mut state = vec![0f32; d];
+    for row in x.chunks_exact(d) {
+        timed!(Norm, dense::rms_norm(row, &encoder.final_norm, encoder.norm_eps, &mut state));
+        timed!(Pool, pool.add(&state));
+    }
+    Some(pool)
+}
+
 /// The first rows of every stage of a document's first chunk, for parity tests.
 #[derive(Clone, Debug, Default)]
 pub struct Trace {

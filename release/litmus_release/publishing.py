@@ -7,9 +7,11 @@ adds the macOS programs' lines and which the person approves first.
 
 - `publish`: the public model repository gets the model's files and card as one commit and a tag; the GitHub release is
   created as a draft with its assets, which the person reviews and publishes.
-- `pages`: after the release is public, the site and browser page replace the `gh-pages` branch's files in one ordinary commit.
-- `macos`: the release-build workflow builds and tests the macOS programs from the tag, and they are attached under their
-  asset names with a `SHA256SUMS` that names them too.
+- `macos`: after the release is public, the release-build workflow builds and tests the macOS programs from the tag, and
+  they are attached under their asset names with a `SHA256SUMS` that names them too.
+- `pages`: after the release is public, the site and browser page replace the `gh-pages` branch's files in one ordinary
+  commit. The site links the macOS programs when `targets.toml` lists the platform, so the stage refuses while the release
+  does not hold them, unless `--ahead-of-macos` is given.
 """
 
 from __future__ import annotations
@@ -112,11 +114,28 @@ def publish_outputs(context: Context) -> list[Path]:
     return [context.work / "publish" / "plan.json"]
 
 
+def missing_macos_programs(settings: dict, release: object) -> list[str]:
+    """The macOS programs the site links (`targets.toml` lists the platform) that the release does not hold."""
+    if "macos" not in settings["programs"]["platforms"]:
+        return []
+    attached = {asset["name"] for asset in release["assets"]} if isinstance(release, dict) else set()
+    return [name for pair in MACOS_ARTIFACTS.values() for name in pair if name not in attached]
+
+
 def pages(context: Context, stages: tuple[Stage, ...]) -> None:
-    github = targets(context)["github"]
-    release = gh_json(context, "release", "view", context.plan.tag, "--repo", github["repo"], "--json", "isDraft,tagName")
+    settings = targets(context)
+    github = settings["github"]
+    release = gh_json(context, "release", "view", context.plan.tag, "--repo", github["repo"], "--json", "isDraft,tagName,assets")
     if not context.options.dry_run and (release is None or release["isDraft"]):  # type: ignore[index]
         raise StageError(f"the release {context.plan.tag} is not public yet: publish the draft, then run this stage")
+    missing = missing_macos_programs(settings, release)
+    if missing and context.options.ahead_of_macos:
+        say(context, f"Pages: the site links {', '.join(missing)}, which the release does not hold yet; those links resolve once the `macos` stage has attached them")
+    elif missing and context.options.dry_run:
+        say(context, f"Pages: the site links {', '.join(missing)}, which the release does not hold yet: this stage will refuse until the `macos` stage has attached them, unless --ahead-of-macos is given")
+    elif missing:
+        raise StageError(f"the site links {', '.join(missing)}, which the release {context.plan.tag} does not hold: run the `macos` stage first, "
+                         f"or pass --ahead-of-macos to publish the site now with links that resolve once the programs are attached")
     checkout = context.work / "pages_repo"
     url = f"https://github.com/{github['repo']}.git"
     say(context, f"Pages: replace the files of branch {github['pages_branch']} of {github['repo']} with {context.work / 'publish' / 'pages'} in one ordinary commit, no force")
@@ -149,6 +168,9 @@ def workflow_commands(context: Context) -> list[list[str]]:
 def macos(context: Context, stages: tuple[Stage, ...]) -> None:
     github = targets(context)["github"]["repo"]
     folder = context.work / "macos"
+    release = gh_json(context, "release", "view", context.plan.tag, "--repo", github, "--json", "isDraft,tagName")
+    if not context.options.dry_run and (release is None or release["isDraft"]):  # type: ignore[index]
+        raise StageError(f"the release {context.plan.tag} is not public yet: publish the draft, then run this stage (the workflow downloads the model from the release)")
     for command in workflow_commands(context):
         act(context, command, context.repository)
     say(context, f"wait for the run, download the artifacts litmus-macos-arm64 and litmus-macos-x86_64 into {folder}, check that each embeds this release's model, "
@@ -193,8 +215,9 @@ def stages(upstream: tuple[Stage, ...]) -> tuple[Stage, ...]:
 
         return Stage(name, needs, summary, run_with_upstream, outputs, gated=True, required=name == "publish")
 
+    # The site links the macOS programs, so `macos` comes before `pages`, which checks that the release holds them.
     return (
         make("publish", "the Hub model repository and tag, and the GitHub release as a draft", publish, publish_outputs, ("assemble",)),
+        make("macos", "the macOS programs from the release workflow, attached to the release", macos, macos_outputs, ("publish",)),
         make("pages", "the site and browser page on the gh-pages branch", pages, pages_outputs, ("publish",)),
-        make("macos", "the macOS programs from the release workflow, attached to the release", macos, macos_outputs, ("pages",)),
     )

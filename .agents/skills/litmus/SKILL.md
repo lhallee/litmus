@@ -2,14 +2,14 @@
 name: litmus
 description: Checks whether a text, document, or piece of code looks human-written, AI-written, or mixed, with Litmus, a local detector that says how sure it is and runs with no network. Use when asked whether writing or code was produced by an AI, to screen generated output before it is sent or committed, to check an essay, report, README, or source file for AI authorship, or to add an AI-text check to a workflow. Installs the litmus program when it is missing.
 license: PolyForm-Noncommercial-1.0.0
-compatibility: Windows x86-64, Linux x86-64, or macOS (macOS untested). Needs no network after the install, and the install downloads one file from github.com/lhallee/litmus releases.
+compatibility: Windows x86-64, Linux x86-64, or macOS on Apple silicon or Intel (the macOS program is run only on the release workflow's runners). Needs no network after the install, and the install downloads one file from github.com/lhallee/litmus releases.
 ---
 
 # Litmus
 
 Litmus is a free detector of AI written text that says how sure it is. It reads a passage and calls it human, AI, or
 mixed (written by a person and a model together), and when the evidence cannot separate the origins it says so and lists
-the ones that remain. It runs on this computer, on one CPU core, and sends the text nowhere.
+the ones that remain. It runs on this computer's processor, with no graphics card, and sends the text nowhere.
 
 A reading is evidence about where a text came from, never proof of who wrote it. Read [Trust](#trust) before you act on
 one.
@@ -43,18 +43,20 @@ one.
    alone. `--no-cache` keeps `litmus score` from writing a cache of readings to the user's cache folder, and the MCP
    server never writes one. `litmus score` exits 0 when every input read, 1 when any failed, and 2 for a usage error. It never exits
    non-zero because of a verdict, so decide from the JSON.
-4. **Report the reading, not a ruling.** Say the label, the origins not ruled out, and the P(not human) interval, and say
-   when the reading makes no call. Use the sentence template in [Say it plainly](#say-it-plainly).
+4. **Report the reading, not a ruling.** Say the label, the origins not ruled out, and the chance of AI with its range,
+   and say when the reading makes no call. Use the sentence template in [Say it plainly](#say-it-plainly).
 
 ## Read the result
 
-The fields that matter, in `reading.verdict` of the CLI's JSON and of the MCP result's `structuredContent`:
+The fields that matter, in `reading.verdict` of the CLI's JSON and of the MCP result's `structuredContent` unless the
+row says otherwise:
 
 | Field | Meaning |
 | --- | --- |
-| `label` (beside `reading`) | `human`, `AI`, or `mixed` when one origin remains at the 10% level; `uncertain` when several remain; `unlike reference` when none does. Only the first three make a call |
+| `label` (beside `reading`) | `human`, `AI`, or `mixed` when one origin remains at the 10% level; `AI or mixed` when human is ruled out and the other two remain (a model wrote or edited the text, and the reading cannot say whether all of it or part); `uncertain` when human remains beside another; `unlike reference` when none does. The last two make no call. Litmus 1.1.0 and earlier printed `uncertain` for `AI or mixed` |
 | `sets["0.1"]`, `sets["0.05"]` | The origins the reading cannot rule out at the 10% and the 5% level. A wider set means less evidence |
-| `probability`, `interval` | P(not human), the probability that a person did not write the text alone, with its interval. Read the interval before the number |
+| `chance` (beside `reading`): `value`, `interval` | The chance of AI, the number to report: how likely it is that a language model wrote or edited some of the text, taking a text to be as likely human as not beforehand, with its range. The range is how far the chance moves from one kind of text to another (it holds the chance for 90% of pairings of a human source with an AI or mixed source), so it is short near 0% or 100% and wide in the middle: always say it with the chance. Litmus 1.1.0 and earlier gave only the calibration's own interval, usually under a point wide |
+| `probability`, `interval` | The same evidence before it is restated at even odds: the probability of not human among texts mixed as the calibration texts are, where `chance.reference_share` of them are not human. Report `chance`, not this |
 | `out_of_reference` | The text resembles none of the reference texts closely; treat the reading as no evidence either way |
 | `mixed_document` | One chunk reads as model-written and another as human; ask for `detail: "full"` and read `cells` |
 | `chunks`, `n_tokens` | A text over 8,192 tokens is read in equal chunks and the verdict combines them |
@@ -69,7 +71,8 @@ is explained in [references/reading-results.md](references/reading-results.md).
 - **Probabilistic.** The 10% level promises that among human texts like the calibration texts, at most 10% have `human`
   ruled out at the 10% level (5% at the 5% level). That bounds false flags and says nothing about how much AI text is
   caught.
-- **Short texts are less reliable.** A sentence or two carries little evidence and the set and interval stay wide. The
+- **Short texts are less reliable.** A sentence or two carries little evidence, so the set stays wide and the chance of
+  AI stays nearer one half. The
   MCP result flags a text under 128 tokens, which marks where one sentence or two ends and is not a measured cliff.
 - **English only so far.** This release is an English detector: <!--litmus:record.corpus.english_share as pct1-->98.8%<!--/litmus--> of the training text is English,
   and it was tested mainly on English text. Other languages are not supported yet, and a reading of one is not evidence.
@@ -87,8 +90,13 @@ is explained in [references/reading-results.md](references/reading-results.md).
 
 ALWAYS state a reading in this form, with the numbers from the result:
 
-> Litmus reads this as **uncertain**: it cannot rule out human or AI at the 10% level. P(not human) is 0.62, interval
-> 0.31 to 0.88, over 214 tokens. That is no call, and Litmus is weaker on short texts and on anything but English.
+> Litmus reads this as **uncertain**: it cannot rule out human or AI at the 10% level. The chance of AI is 50%, likely
+> between <!--litmus:ranges.at_50_low-->19<!--/litmus-->% and <!--litmus:ranges.at_50_high-->81<!--/litmus-->%, over 214 tokens. That is no call, and Litmus is weaker on short texts and on anything but English.
+
+Give the chance as a whole percentage from `chance.value` with its range from `chance.interval` ("50%, likely between
+<!--litmus:ranges.at_50_low-->19<!--/litmus-->% and <!--litmus:ranges.at_50_high-->81<!--/litmus-->%"), as the MCP result's sentence does. Leave the range out only when its ends round to one percentage. A
+wide range means the same reading could lean either way in another kind of text, so say so and make no more of the
+number than the range allows.
 
 Use "human", "AI", or "mixed" for a call, and "unlike its reference texts, so no evidence either way" for
 `unlike reference`. Include the reason a caveat applies (short, code, not English). Never say "this was written by an
@@ -99,9 +107,9 @@ AI" or "this person used AI".
 - We recommend checking generated prose or code once, after it is final, and treating the reading as one signal. We
   recommend against a loop of "regenerate until Litmus says human": it optimizes against the detector and tells you
   nothing about the text.
-- A gate on a reading will be wrong in both directions. If a pipeline acts on one, we recommend gating on the interval
-  and the set (for example, flagging only when the set is `{AI}` and the interval's lower end is high), and routing
-  every flag to a person.
+- A gate on a reading will be wrong in both directions. If a pipeline acts on one, we recommend gating on the set and
+  the range (for example, flagging only when the set rules human out and the low end of `chance.interval` is high),
+  and routing every flag to a person.
 - Check files one at a time with the MCP tools, or run `litmus score --json` over a folder for a batch, which reads `.txt`,
   `.md`, `.html`, `.docx`, and `.pdf` (PDF text layer only, no OCR).
 - The MCP tools read at most 131,072 tokens a text and one file at a time. Split longer inputs.

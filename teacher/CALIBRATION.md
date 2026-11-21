@@ -38,6 +38,7 @@ two-class reading, ai or mixed against human).
 | `out_of_reference_level` | `0.01`: closeness p-value at or under which a text is flagged out of reference |
 | `min_rows`, `calibration_rows` | The merge threshold and the rows fitted on, for the record |
 | `conformal`, `probability`, `three_way`, `spread`, `closeness` | The five tables below |
+| `between_sources` | How far the chance of AI moves between sources of text, which widens the chance's range ([below](#between-sources-between_sources)); absent from a table fitted without the texts' sources, which widens by nothing |
 
 Every table is a list of **length groups**. Each group has `bins` (the length bins it covers, consecutive) and `n`
 (calibration rows behind it). The groups of one table cover every length bin exactly once, so every text finds its
@@ -51,7 +52,8 @@ to 7 significant digits; `null` stands for minus infinity.
 For a text, for each origin `y`: find the group of `y` that holds the text's length bin; the p-value is the smallest
 `grid[j]` with `r[y] < thresholds[j]` (skip `null`), or 1 if none. Origin `y` is in the set at level `a` when its
 p-value is greater than `a`. The text is **called not human at level `a` when its human p-value is at or under
-`a`**. A set of more than one origin reads as uncertain; an empty set as unlike the reference.
+`a`**. A set that keeps human beside another origin reads as uncertain; the set of AI and mixed as "AI or mixed"; an
+empty set as unlike the reference.
 
 Why this is exact: `thresholds[j]` is the `floor(grid[j] * (n + 1))`-th smallest `r[y]` among calibration texts
 of origin `y` in the group, so `r[y] < thresholds[j]` exactly when the split conformal p-value
@@ -64,6 +66,41 @@ the calibration set, the share called not human is at most the level, in each le
 Inductive Venn-Abers on `score`. Each group has `edges` (ascending block boundaries) and `p0`, `p1` (one more entry
 than `edges`). Block `g` = the number of `edges` that are `<= score`. Then `p0 = p0[g]`, `p1 = p1[g]`, the
 interval is `[p0, p1]` and the probability is `p1 / (1 - p0 + p1)`.
+
+## Between sources: `between_sources`
+
+The probability is one curve fitted to the calibration texts of every source at once, and a single source sits
+above or below it. `between_sources` says how far, so that a program can widen the range of the chance of AI (the
+probability at even odds; the student's `SPEC.md`, Chance of AI) to hold the chance of the source a text came from.
+A program reads two keys:
+
+| Key | Meaning |
+| --- | --- |
+| `log_odds` | The half width `h >= 0`: the chance's range is its interval with the low end's odds divided by `e^h` and the high end's multiplied by it |
+| `level` | The share of pairings of one human source with one not-human source whose chance lies within `h` of the pooled chance (0.9) |
+
+The rest records the fit: `sources` (the human and not-human sources it read), `min_texts` and `min_expected`, and
+`regions`, each with its `chance` bounds, its `weight`, the pairings' `center` and `spread`, and per side the
+`mean`, the `spread`, and whether they were `fitted` there or the spread borrowed.
+
+`fit_between_sources(table, readings, labels, sources)` fits it from each calibration text's source:
+
+1. Every text's chance at even odds is placed in one of seven regions, cut at chances of 1%, 10%, 30%, 70%, 90%,
+   and 99% (`CHANCE_REGIONS`).
+2. Per side (human, not human) and per source with at least 30 texts on that side (`SOURCE_MIN_TEXTS`), the source's
+   texts are counted by region, and beside them the count expected if they fell as the other sources' texts of the
+   side do in each length group of `probability`. The shift is `ln((observed + 1/2) / (expected + 1/2))`, with
+   sampling variance `1 / (observed + 1/2)`, used where the expected count is at least 5 (`SOURCE_MIN_EXPECTED`).
+3. Per side and region with at least 8 sources (`SOURCE_MIN_COUNT`), the shifts give a random-effects mean and a
+   spread across sources (DerSimonian and Laird). A side without a fit in a region takes the nearest fitted
+   region's spread and a mean of 0.
+4. A pairing's shift is the not-human source's less the human source's: normal, centered at the difference of the
+   means, with the two spreads in quadrature.
+5. `log_odds` is the smallest half width that holds `level` of pairings, the regions weighted by the share of
+   texts in them when the two sides count equally.
+
+One half width serves every length: fitted by length alone it moves by about a tenth
+(`experiments/tooling/quill/2026-11-21_chance_range_between_sources`).
 
 ## Three-way probabilities: `three_way`
 

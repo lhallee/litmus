@@ -1,9 +1,10 @@
-//! The litmus strip in a terminal: blue (human) through purple (mixed) to red (AI), a pale band over what the
-//! conformal set cannot rule out, and a mark at the reading's position. Colors are the site's (`site/style.css`): blue
+//! The litmus strip in a terminal: blue (human) through purple to red (AI), a mark at the reading's chance of AI, and
+//! a pale band over the chance's range (`litmus_engine::Drawn`). Colors are the site's (`site/style.css`): blue
 //! `#2F6FDB`, purple `#8E5BC9`, red `#D9483B`, band `#C9B8E6`. Without color the same strip is drawn in characters;
-//! the words beside it always carry the verdict.
+//! the words beside it always carry the verdict. A cell is 5 points of chance wide, so a range narrower than that
+//! shows as the mark's cell alone.
 
-use litmus_engine::Strip;
+use litmus_engine::Drawn;
 
 const BLUE: (u8, u8, u8) = (0x2f, 0x6f, 0xdb);
 const PURPLE: (u8, u8, u8) = (0x8e, 0x5b, 0xc9);
@@ -30,24 +31,25 @@ fn cell_of(x: f64) -> usize {
 }
 
 /// The strip as terminal text, `WIDTH` cells wide.
-pub fn render(strip: &Strip, colored: bool) -> String {
-    let mark = cell_of(strip.position);
-    let (band_lo, band_hi) = (cell_of(strip.band_lo), cell_of(strip.band_hi));
+pub fn render(strip: &Drawn, colored: bool) -> String {
+    let mark = strip.mark.map(|position| (cell_of(position), position));
+    let band = strip.band.map(|[lo, hi]| (cell_of(lo), cell_of(hi)));
     let mut out = String::new();
     for cell in 0..WIDTH {
         let center = (cell as f64 + 0.5) / WIDTH as f64;
-        let in_band = cell >= band_lo && cell <= band_hi;
+        let in_band = band.is_some_and(|(lo, hi)| cell >= lo && cell <= hi);
+        let at_mark = mark.filter(|&(at, _)| at == cell);
         if colored {
             let hue = color(center);
             let background = if in_band { mix(hue, BAND, 0.55) } else { mix(hue, DIM, 0.8) };
-            if cell == mark {
-                let ink = color(strip.position);
+            if let Some((_, position)) = at_mark {
+                let ink = color(position);
                 out.push_str(&format!("\x1b[48;2;{};{};{}m\x1b[38;2;{};{};{}m\u{2588}", background.0, background.1, background.2, ink.0, ink.1, ink.2));
             } else {
                 out.push_str(&format!("\x1b[48;2;{};{};{}m ", background.0, background.1, background.2));
             }
         } else {
-            out.push(if cell == mark { '|' } else if in_band { '=' } else { '-' });
+            out.push(if at_mark.is_some() { '|' } else if in_band { '=' } else { '-' });
         }
     }
     if colored {
@@ -101,9 +103,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn plain_strip_marks_the_band_and_position() {
-        let strip = Strip { position: 0.8, band_lo: 0.5, band_hi: 1.0, level: 0.1, unlike_reference: false };
+    fn plain_strip_marks_the_chance_and_its_range() {
+        let strip = Drawn { mark: Some(0.8), band: Some([0.5, 1.0]), unlike_reference: false };
         assert_eq!(render(&strip, false), "----------======|===  ");
+        // A range narrower than a cell is the mark's cell alone, and a text unlike the reference has no band.
+        assert_eq!(render(&Drawn { mark: Some(0.56), band: Some([0.558, 0.562]), unlike_reference: false }, false), "-----------|--------  ");
+        assert_eq!(render(&Drawn { mark: Some(0.56), band: None, unlike_reference: true }, false), "-----------|-------- ?");
+        assert_eq!(render(&Drawn { mark: None, band: None, unlike_reference: false }, false), "--------------------  ");
         assert_eq!(color(0.0), BLUE);
         assert_eq!(color(0.5), PURPLE);
         assert_eq!(color(1.0), RED);

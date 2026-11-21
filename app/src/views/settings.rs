@@ -40,9 +40,8 @@ fn contents(app: &mut LitmusApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     }
     ui.label(
         RichText::new(match app.settings.detail {
-            Detail::Simple => "The verdict, one sentence, the strip and your text tinted. Uncertainty always shows.",
-            Detail::Detailed => "Adds the headline numbers, the minimap of a long text, and the reading of any part you click.",
-            Detail::Full => "Adds every number, how the reading was made, the model, and the exports.",
+            Detail::Simple => "The verdict, one sentence, the strip, and your text tinted. Uncertainty always shows.",
+            Detail::Full => "Adds the numbers, the reading of any part you click, how the reading was made, the model, and the exports.",
         })
         .color(p.muted),
     );
@@ -81,7 +80,7 @@ fn contents(app: &mut LitmusApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             ui.label(RichText::new("The model is loading.").color(p.muted));
         }
         ModelState::Failed(error) => {
-            ui.label(RichText::new(format!("No model: {error}")).color(p.error));
+            ui.label(RichText::new(format!("No model. {error}")).color(p.error));
         }
     }
     #[cfg(not(target_arch = "wasm32"))]
@@ -96,7 +95,7 @@ fn desktop(app: &mut LitmusApp, ui: &mut egui::Ui, ctx: &egui::Context) {
     let p = controls::palette(ui);
     ui.add_space(16.0);
     controls::section(ui, "Model");
-    ui.label(RichText::new("A release folder holds model.safetensors, config.json and tokenizer.json. Left empty, Litmus looks at LITMUS_MODEL, then a folder named release beside the app, then the model built in.").color(p.muted));
+    ui.label(RichText::new("A release folder holds model.safetensors, config.json, and tokenizer.json. Left empty, Litmus looks at LITMUS_MODEL, then a folder named release beside the app, then the model built in.").color(p.muted));
     ui.horizontal(|ui| {
         ui.add(egui::TextEdit::singleline(&mut app.model_folder_edit).hint_text("Release folder").desired_width(ui.available_width() - 100.0).margin(egui::Margin::symmetric(10, 7)));
         if ui.button("Browse").clicked()
@@ -145,7 +144,7 @@ fn desktop(app: &mut LitmusApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             app.notice = Some(Notice::Info("The cache for this model is cleared.".into()));
         }
         if let Some(folder) = litmus_files::cache::folder() {
-            ui.label(RichText::new(format!("Shared with the litmus command line: {}", folder.display())).small().color(p.muted));
+            ui.label(RichText::new(format!("Shared with the litmus command line, in {}", folder.display())).small().color(p.muted));
         }
     });
     ui.add_space(16.0);

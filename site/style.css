@@ -256,9 +256,11 @@ a.card:hover { border-color: var(--ink-soft); transform: translateY(-2px); }
 .word-ai { color: var(--ai-ink); }
 .strip { position: relative; height: 26px; margin: 14px 4px 6px; }
 .strip-bar { position: absolute; inset: 0; border-radius: 13px; background: var(--litmus); }
+/* The band is the chance's range, centered on it. A range too narrow to see keeps a rim on both sides of the mark. */
 .strip-band {
   position: absolute; top: -5px; bottom: -5px;
-  left: calc(var(--lo) * 100%); width: calc((var(--hi) - var(--lo)) * 100%); min-width: 8px;
+  left: clamp(9px, calc((var(--lo) + var(--hi)) * 50%), calc(100% - 9px)); transform: translateX(-50%);
+  width: max(18px, calc((var(--hi) - var(--lo)) * 100%));
   background: var(--band-wash); border: 2px dashed var(--band-edge); border-radius: 10px;
 }
 .strip-mark {
@@ -272,9 +274,8 @@ a.card:hover { border-color: var(--ink-soft); transform: translateY(-2px); }
   font: 700 0.85rem/24px var(--mono); text-align: center;
 }
 .strip-scale { display: flex; justify-content: space-between; font-size: 0.85rem; margin-top: 6px; }
-.strip-scale span:nth-child(1) { color: var(--human-ink); }
-.strip-scale span:nth-child(2) { color: var(--mixed-ink); }
-.strip-scale span:nth-child(3) { color: var(--ai-ink); }
+.strip-scale span:first-child { color: var(--human-ink); }
+.strip-scale span:last-child { color: var(--ai-ink); }
 .examples { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); margin: 1.5rem 0; }
 .examples .card { padding: 1.1rem 1.2rem 1.2rem; }
 .examples .verdict-word { font-size: 1.35rem; }
@@ -415,7 +416,7 @@ select {
 .qc .pop .strip { height: 12px; margin: 10px 2px 2px; }
 .qc .pop .strip-bar { border-radius: 6px; }
 .qc .pop .strip-mark { top: -5px; bottom: -5px; width: 4px; }
-.qc .pop .strip-band { top: -3px; bottom: -3px; border-width: 1.5px; border-radius: 6px; }
+.qc .pop .strip-band { top: -3px; bottom: -3px; border-width: 1.5px; border-radius: 6px; width: max(12px, calc((var(--hi) - var(--lo)) * 100%)); left: clamp(6px, calc((var(--lo) + var(--hi)) * 50%), calc(100% - 6px)); }
 
 /* The in-browser app page */
 .app-page { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; }

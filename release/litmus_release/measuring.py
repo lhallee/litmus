@@ -15,6 +15,7 @@ import platform
 import tomllib
 
 from pathlib import Path
+from typing import Any
 
 from . import receipts
 from .building import load_tool
@@ -23,10 +24,14 @@ from .stages import Context, Stage
 
 
 LENGTHS = (128, 1024, 8192)
+# `litmus bench` keeps the fastest of this many readings of each length. Three were too few on a desktop doing other
+# work: on 2026-11-21 the document read at 4,531 tokens a second as the fastest of 3 and at 4,906 as the fastest of 7,
+# within minutes of each other, where a quiet machine had given 4,971.
+REPEATS = 7
 BROWSER_KEYS = ("weights_sha256", "document_tokens", "tokens_per_second", "seconds", "browser", "threads", "machine")
 
 
-def targets(context: Context) -> dict:
+def targets(context: Context) -> dict[str, Any]:
     return tomllib.loads((context.repository / "release" / "targets.toml").read_text(encoding="utf-8"))
 
 
@@ -63,22 +68,31 @@ def bench(context: Context) -> None:
     cli = target / "release" / tools.executable("litmus")
     document_tokens = targets(context)["bench"]["document_tokens"]
     lengths = ",".join(str(length) for length in (*LENGTHS, document_tokens))
-    output = run([str(cli), "bench", "--json", "--repeat", "3", "--tokens", lengths, "--model", str(context.work / "model")], context.work, environment, capture=True)
+    output = run([str(cli), "bench", "--json", "--repeat", str(REPEATS), "--tokens", lengths, "--model", str(context.work / "model")], context.work, environment, capture=True)
     rows = [json.loads(line) for line in output.splitlines() if line.startswith("{")]
     if len(rows) != len(LENGTHS) + 1:
         raise StageError(f"`litmus bench` printed {len(rows)} readings for {len(LENGTHS) + 1} lengths:\n{output}")
     document = rows[-1]
+    # The app and `litmus score` read a text on every logical processor, so the same document is measured that way too.
+    processors = os.cpu_count() or 1
+    output = run([str(cli), "bench", "--json", "--repeat", str(REPEATS), "--tokens", str(document_tokens), "--threads", str(processors), "--model", str(context.work / "model")],
+                 context.work, environment, capture=True)
+    every = [json.loads(line) for line in output.splitlines() if line.startswith("{")]
+    if len(every) != 1 or every[0].get("threads") != processors:
+        raise StageError(f"`litmus bench --threads {processors}` did not print one reading on {processors} threads:\n{output}")
     weights = receipts.file_digest(context.work / "model" / "model.safetensors")
-    result = {
+    bench_record = {
         "weights_sha256": weights,
         "machine": {"system": f"{platform.system()} {platform.release()}", "name": processor_name(context), "processor": platform.processor(),
                     "logical_cores": os.cpu_count(), "backend": document["backend"]},
-        "repeat": 3,
+        "repeat": REPEATS,
         "rows": rows,
         "document": document,
+        "document_all_processors": every[0],
     }
-    (folder / "bench.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8", newline="\n")
+    (folder / "bench.json").write_text(json.dumps(bench_record, indent=1) + "\n", encoding="utf-8", newline="\n")
     context.note("tokens_per_second_at_document", round(document["text_tokens_per_second"]))
+    context.note("tokens_per_second_on_all_processors", round(every[0]["text_tokens_per_second"]))
 
 
 def bench_outputs(context: Context) -> list[Path]:
@@ -117,6 +131,6 @@ def browser_outputs(context: Context) -> list[Path]:
 
 
 STAGES = (
-    Stage("bench", ("fetch",), "speed and memory of the release on one core, from `litmus bench`", bench, bench_outputs),
+    Stage("bench", ("fetch",), "speed and memory of the release on one core and on every processor, from `litmus bench`", bench, bench_outputs),
     Stage("browser", ("bench",), "the browser page's speed, measured by hand and adopted", browser_run, browser_outputs, adopt=browser_adopt),
 )

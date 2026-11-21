@@ -24,6 +24,9 @@ text, the surer the reading.
 - **Windows.** Download `litmus-app.exe` from <!--litmus:t:latest_release_link-->[the latest release](https://github.com/lhallee/litmus/releases/latest)<!--/litmus--> and run it. There is
   nothing to install and no account, and it works offline. Windows may warn that the file comes from an unrecognized
   publisher, since <!--litmus:target.programs.signing_note-->the release's programs are not code-signed<!--/litmus-->.
+- **macOS.** Download `litmus-app-macos-arm64` (Apple silicon) or `litmus-app-macos-x86_64` (Intel) from <!--litmus:t:latest_release_link-->[the latest release](https://github.com/lhallee/litmus/releases/latest)<!--/litmus-->.
+  In a terminal, make it executable with `chmod +x litmus-app-macos-arm64`, remove the mark macOS puts on a download
+  that is not code-signed with `xattr -d com.apple.quarantine litmus-app-macos-arm64`, and run it.
 - **Linux.** Download `litmus-app-linux-x86_64` from <!--litmus:t:latest_release_link-->[the latest release](https://github.com/lhallee/litmus/releases/latest)<!--/litmus-->, make it executable
   with `chmod +x litmus-app-linux-x86_64`, and run it on any 64-bit x86 desktop with glibc 2.17 or later.
 - **In your browser.** Open <!--litmus:target.github.pages_url-->https://lhallee.github.io/litmus/<!--/litmus-->app/ and paste or drop your text. The page
@@ -31,17 +34,17 @@ text, the surer the reading.
 
 The app adds quick check, which you switch on in Settings: select text in any application, press Ctrl+Alt+L, and a
 small window by the pointer shows the reading. On Linux, quick check needs `xclip` and an X11 desktop, and it works
-while the app's window is open.
+while the app's window is open. On macOS it needs the Accessibility permission, and it has not been tried on a Mac
+yet, so tell us how it goes.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/app_simple_dark.png">
-  <img alt="The Litmus app after a check, reading &quot;AI&quot;" src="docs/images/app_simple_light.png" width="100%">
+  <img alt="The Litmus app after a check, reading &quot;AI or mixed&quot; with its mark at the AI end of the strip" src="docs/images/app_simple_light.png" width="100%">
 </picture>
 
 ## Speed and accuracy
 
-Litmus needs no graphics card. On one CPU core the app reads ~<!--litmus:results.release.app_tokens_per_second as sig2-->5,000<!--/litmus--> tokens (pieces of words) a
-second, and the browser page ~<!--litmus:results.release.browser_tokens_per_second as sig2-->880<!--/litmus-->.
+Litmus needs no graphics card. <!--litmus:t:speed_summary-->On one CPU core the app reads ~4,900 tokens (pieces of words) a second, on the 16 logical processors of the same machine ~33,000, and the browser page ~890.<!--/litmus-->
 
 We compared Litmus with <!--litmus:counts.detectors-->6<!--/litmus--> other open detectors on <!--litmus:counts.benchmarks-->14<!--/litmus--> public benchmarks, <!--litmus:t:speed_comparison-->on the same texts, the others timed on one core of Intel(R) Xeon(R) Platinum 8358 CPU @ 2.60GHz and Litmus on one core of Arm Neoverse-V2<!--/litmus-->. On one core Litmus read ~<!--litmus:results.costs[detector=Litmus engine].tokens_per_second as sig2-->3,500<!--/litmus--> tokens a second, against
 ~<!--litmus:counts.fastest_other_tokens_per_second as sig2-->1,600<!--/litmus--> for the fastest of the others, and on the <!--litmus:counts.unseen_benchmarks-->7<!--/litmus--> benchmarks that none of them trained on,
@@ -69,16 +72,19 @@ cannot show.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/anatomy_dark.svg">
-  <img alt="The parts of a reading: the verdict, the strip and its mark, the pale band, and the heat map over the text" src="docs/images/anatomy_light.svg" width="100%">
+  <img alt="The parts of a reading: the verdict, the strip with its mark at the chance of AI and its pale band over the chance's range, and the heat map over the text" src="docs/images/anatomy_light.svg" width="100%">
 </picture>
 
-- **The verdict** reads "Human", "AI", or "Mixed" when the evidence points one way, and "Uncertain" when it cannot
-  separate the origins, naming the ones that remain. "Unlike reference" means the text resembles nothing Litmus knows
-  well enough to call.
-- **The strip** runs from human (blue) through mixed (purple) to AI (red). The mark is the reading, and the pale band
-  covers every origin still possible, so a wide band means an unsure reading.
-- **P(not human)** is the probability that a person did not write the text alone, shown with a range. Read the range
-  before the number.
+- **The verdict** reads "Human", "AI", or "Mixed" when the evidence points one way, "AI or mixed" when human is ruled
+  out and it cannot tell whether a model wrote all of the text or part, and "Uncertain" when it cannot rule human out,
+  naming the origins that remain. "Unlike reference" means the text resembles nothing Litmus knows well enough to call.
+- **The chance of AI** is how likely it is that a language model wrote or edited some of the text, taking a text to
+  be as likely human as not before it is read. It comes with a range, as in <!--litmus:t:chance_range_example-->50% (19-81%)<!--/litmus-->, because the same
+  reading means a somewhat different chance in one kind of text than in another. The range holds the chance for
+  <!--litmus:t:chance_range_rule-->90% of the pairings of one human source with one AI or mixed source, which is 4.2 times the odds in either direction<!--/litmus-->, so it is short near
+  either end and wide in the middle. We recommend reading it before the number.
+- **The strip** runs from human (blue) to AI (red). The mark sits at the chance of AI, and the pale band is that
+  chance's range, so the picture and the number say the same thing.
 - **The heat map** tints a long text where its reading changes, to show where to look.
 
 Litmus is built so that at most 5% of human texts like the ones it was calibrated on are called not human. The site's
@@ -93,8 +99,8 @@ with the writer. If you act on a reading, show the person what it said.
 
 - **It cannot say who wrote a text, or why,** so it cannot tell whether a model was used with permission or only to
   fix spelling, and it does not measure how much of a mixed text a model wrote.
-- **Longer texts give surer readings.** A sentence or two carries little evidence, and the band stays wide to show
-  it, so check a paragraph or more when you can.
+- **Longer texts give surer readings.** A sentence or two carries little evidence, so the chance of AI stays nearer
+  the middle and the verdict is more often "Uncertain". Check a paragraph or more when you can.
 - **It reads English only for now.** Other languages are not supported yet.
 - **New models and unusual formats** can fall outside what it has seen, and the "Unlike reference" verdict catches
   some of these, not all.

@@ -15,7 +15,8 @@ mod strip;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use litmus_engine::{Backend, DocumentReading, Engine, Reading, STRIP_LEVEL};
+use litmus_engine::reading::percent;
+use litmus_engine::{Backend, Chance, ChanceRule, DocumentReading, Engine, Flow, Reading, STRIP_LEVEL};
 use litmus_files::counts::TextCounts;
 use litmus_files::export::{self, set_words, thousands};
 use litmus_files::release::{self, ReleaseFiles};
@@ -25,7 +26,7 @@ use litmus_files::{cache, extract, walk};
 static ALLOCATOR: memory::Counting = memory::Counting;
 
 const USAGE: &str = "\
-Litmus: a detector of model-written text, on one CPU core.
+Litmus: a detector of model-written text that runs on the CPU.
 
 USAGE:
   litmus score [options] <file | folder | ->...   Score files (txt, md, html, docx, pdf), folders (recursively)
@@ -44,6 +45,8 @@ SCORE OPTIONS:
   --explain          Explain each reading: how chunks combine, bank evidence, conformal counts, calibration
   --no-cache         Score again even if the file is unchanged
   --no-color         Draw the strip in plain characters
+  --threads N        Threads a text's 256-token blocks are spread over [default: one per logical processor]; the
+                     reading is the same bit for bit on any number, and 1 holds the least memory
 
 MODEL OPTIONS (all commands):
   --model DIR        A release folder: model.safetensors, config.json and (optionally) tokenizer.json
@@ -55,16 +58,19 @@ MODEL OPTIONS (all commands):
 BENCH OPTIONS:
   --tokens LIST      Document lengths in tokens [default: 128,1024,8192,131072]
   --repeat N         Runs per length; the fastest counts [default: 3]
+  --threads N        Threads a scoring call uses [default: 1, the one-core measurement]
   --text FILE        Read the first tokens of this UTF-8 file instead of generated text (it must be long enough)
   --column-percent N The feed-forward's down product takes the column path for a token when at most N% of its input
                      pairs are nonzero (0: the dense path alone) [default: the measured limit]; same bits either way
   --json             One JSON object per measurement
   --print-text       Print the text of each length and measure nothing, to read the same document elsewhere
 
-The verdict is the conformal set at level 0.10: one origin (human, AI, mixed), several (uncertain), or none
-(unlike reference). P(not human) is the calibrated probability with its interval. The strip runs from human (blue)
-through mixed (purple) to AI (red); the pale band is what the conformal set cannot rule out. A text of more than
-8,192 tokens is read in equal chunks, and the verdict combines them.
+The verdict is the conformal set at level 0.10: one origin (human, AI, mixed), AI and mixed with human ruled out
+(AI or mixed), human with another origin (uncertain), or none (unlike reference). The chance of AI is the calibrated probability that a language model wrote or edited some of
+the text, for a text as likely human as not beforehand. Its range is how far that chance moves from one kind of text
+to another, so it is short near either end and wide in the middle. The strip runs from human (blue) to AI (red) with
+its mark at the chance of AI, and its pale band is that range.
+A text of more than 8,192 tokens is read in equal chunks, and the verdict combines them.
 ";
 
 /// Command-line options.
@@ -86,6 +92,13 @@ struct Options {
     text: Option<PathBuf>,
     column_percent: Option<usize>,
     print_text: bool,
+    /// `--threads`: `score` reads on the processor's cores without it, `bench` on one thread.
+    threads: Option<usize>,
+}
+
+/// The threads `litmus score` spreads a text's blocks over unless `--threads` says: one per logical processor.
+fn default_threads() -> usize {
+    std::thread::available_parallelism().map_or(1, std::num::NonZero::get)
 }
 
 fn parse(arguments: Vec<String>) -> Result<Options, String> {
@@ -106,6 +119,9 @@ fn parse(arguments: Vec<String>) -> Result<Options, String> {
             "--tokenizer" => options.tokenizer = Some(PathBuf::from(value("--tokenizer")?)),
             "--backend" => options.backend = Some(value("--backend")?),
             "--repeat" => options.repeat = value("--repeat")?.parse().map_err(|_| "--repeat takes a number")?,
+            "--threads" => {
+                options.threads = Some(value("--threads")?.parse().ok().filter(|&threads: &usize| threads > 0).ok_or("--threads takes a number of at least 1")?)
+            }
             "--text" => options.text = Some(PathBuf::from(value("--text")?)),
             "--column-percent" => {
                 options.column_percent = Some(value("--column-percent")?.parse().map_err(|_| "--column-percent takes a number")?)
@@ -174,15 +190,17 @@ struct Row {
 }
 
 /// What the table's verdict line adds in words: out of reference, the chunks' spread, a mixed document, and where
-/// the heat map runs hottest and coolest.
-fn notes(document: &DocumentReading) -> String {
+/// the heat map runs hottest and coolest. `rule` is the release's `ModelInfo::chance_rule`.
+fn notes(document: &DocumentReading, rule: &ChanceRule) -> String {
     let verdict = &document.verdict;
     let mut notes = Vec::new();
     if verdict.out_of_reference {
         notes.push("out of reference".to_owned());
     }
     if verdict.chunks > 1 {
-        notes.push(format!("{} chunks, P(not human) {:.2} to {:.2}", verdict.chunks, verdict.lowest, verdict.highest));
+        // The lowest and the highest chunk, at even odds as the verdict's chance is.
+        let ends = Chance::at_even_odds(verdict.probability, [verdict.lowest, verdict.highest], document.chance(rule).reference_share);
+        notes.push(format!("{} chunks, chance of AI {} to {}", verdict.chunks, percent(ends.interval[0]), percent(ends.interval[1])));
     }
     if verdict.mixed_document {
         notes.push("mixed document: a chunk reads as model-written and another as human".to_owned());
@@ -194,24 +212,24 @@ fn notes(document: &DocumentReading) -> String {
     notes.join("; ")
 }
 
-fn print_table(rows: &[Row], options: &Options) {
+fn print_table(rows: &[Row], options: &Options, rule: &ChanceRule) {
     let colored = !options.no_color && strip::color_supported();
-    println!("{:<17} {:<20} {:<18} {:<strip_width$} {:>8}  FILE", "VERDICT", "P(NOT HUMAN)", "SET AT 0.10", "STRIP", "TOKENS", strip_width = strip::WIDTH + 2);
+    println!("{:<17} {:<16} {:<18} {:<strip_width$} {:>8}  FILE", "VERDICT", "CHANCE OF AI", "SET AT 0.10", "STRIP", "TOKENS", strip_width = strip::WIDTH + 2);
     for row in rows {
         match &row.outcome {
             Err(error) => println!("{:<17} {error}  {}", "error", row.name),
             Ok(document) => {
                 let verdict = &document.verdict;
                 let mut line = format!(
-                    "{:<17} {:<20} {:<18} {} {:>8}  {}",
+                    "{:<17} {:<16} {:<18} {} {:>8}  {}",
                     document.label().word(),
-                    format!("{:.2} [{:.2}, {:.2}]", verdict.probability, verdict.interval[0], verdict.interval[1]),
+                    document.chance(rule).words(),
                     set_words(verdict.set(STRIP_LEVEL)),
-                    strip::render(&verdict.strip, colored),
+                    strip::render(&document.drawn(rule), colored),
                     thousands(document.n_tokens),
                     row.name,
                 );
-                let notes = notes(document);
+                let notes = notes(document, rule);
                 if !notes.is_empty() {
                     line.push_str(&format!("  ({notes})"));
                 }
@@ -220,10 +238,10 @@ fn print_table(rows: &[Row], options: &Options) {
                     println!("  {}", counts.line());
                 }
                 if options.map {
-                    print_map(document, colored);
+                    print_map(document, colored, rule);
                 }
                 if options.explain {
-                    print!("{}", explain_document(document));
+                    print!("{}", explain_document(document, rule));
                 }
             }
         }
@@ -231,16 +249,16 @@ fn print_table(rows: &[Row], options: &Options) {
 }
 
 /// `--map`: each chunk's reading when there are several, then the heat map, one row per cell.
-fn print_map(document: &DocumentReading, colored: bool) {
+fn print_map(document: &DocumentReading, colored: bool, rule: &ChanceRule) {
     if document.chunks.len() > 1 {
         for (index, chunk) in document.chunks.iter().enumerate() {
             let r = &chunk.reading;
             println!(
-                "  {:<15} {:<20} {:<18} {} {:>8}  chunk {} (characters {} to {})",
+                "  {:<15} {:<16} {:<18} {} {:>8}  chunk {} (characters {} to {})",
                 r.label(STRIP_LEVEL).word(),
-                format!("{:.2} [{:.2}, {:.2}]", r.probability, r.interval[0], r.interval[1]),
+                r.chance(rule).words(),
                 set_words(r.set(STRIP_LEVEL)),
-                strip::render(&r.strip, colored),
+                strip::render(&r.drawn(rule), colored),
                 thousands(r.n_tokens),
                 index + 1,
                 thousands(chunk.place.start_char),
@@ -248,12 +266,16 @@ fn print_map(document: &DocumentReading, colored: bool) {
             );
         }
     }
-    println!("  Heat map: one cell per {} tokens, each the overlap-weighted mean of the windows over it", document.cells.first().map_or(0, |c| c.place.end - c.place.start));
+    println!(
+        "  Heat map: one cell per {} tokens, placed between human (0), mixed (0.5), and AI (1) by the overlap-weighted mean of the windows over it",
+        document.cells.first().map_or(0, |c| c.place.end - c.place.start)
+    );
     for cell in &document.cells {
-        let band = litmus_engine::Strip { position: cell.position, band_lo: cell.band_lo, band_hi: cell.band_hi, level: STRIP_LEVEL, unlike_reference: cell.unlike_reference };
+        // A cell is a place on the scale, where to look: it has no chance of its own, so no band.
+        let place = litmus_engine::Drawn { mark: Some(cell.position), band: None, unlike_reference: cell.unlike_reference };
         println!(
             "    {} {:.2} (spread {:.2}, {} windows)  characters {} to {}{}",
-            strip::render(&band, colored),
+            strip::render(&place, colored),
             cell.position,
             cell.spread,
             cell.windows,
@@ -264,8 +286,25 @@ fn print_map(document: &DocumentReading, colored: bool) {
     }
 }
 
+/// How a chance of AI came from a probability of not human: the reference share it divides out, and what its range
+/// holds when the release's table carries the shift between sources.
+fn at_even_odds(chance: &Chance) -> String {
+    let mut words = format!(
+        "chance of AI {}: that probability at even odds, since {:.0}% of the calibration texts of this length are not human",
+        chance.words(),
+        100.0 * chance.reference_share
+    );
+    if chance.between_sources > 0.0 {
+        words.push_str(&format!(
+            ". Its range is the calibration's interval widened for how far the chance moves from one source of text to another, by {:.1} times the odds either way",
+            chance.between_sources.exp()
+        ));
+    }
+    words
+}
+
 /// `--explain`: how the chunks combine into the verdict, then each chunk's own account.
-fn explain_document(document: &DocumentReading) -> String {
+fn explain_document(document: &DocumentReading, rule: &ChanceRule) -> String {
     let verdict = &document.verdict;
     let mut out = String::new();
     if verdict.chunks > 1 {
@@ -284,6 +323,7 @@ fn explain_document(document: &DocumentReading) -> String {
             "    P(not human) {:.3}, the chunks' mean; interval [{:.3}, {:.3}], their mean interval widened by their disagreement {:.3}\n",
             verdict.probability, verdict.interval[0], verdict.interval[1], verdict.disagreement
         ));
+        out.push_str(&format!("    The {}\n", at_even_odds(&document.chance(rule))));
         out.push_str(&format!(
             "    Mixed-document test at {:.4} per chunk ({} over {} chunks): {} chunk(s) read as model-written, {} as human; {}\n",
             verdict.chunk_level,
@@ -298,13 +338,13 @@ fn explain_document(document: &DocumentReading) -> String {
         if document.chunks.len() > 1 {
             out.push_str(&format!("  Chunk {} (characters {} to {}):\n", index + 1, thousands(chunk.place.start_char), thousands(chunk.place.end_char)));
         }
-        out.push_str(&explain_text(&chunk.reading));
+        out.push_str(&explain_text(&chunk.reading, rule));
     }
     out
 }
 
 /// The plain-words account of one reading, from the reading's own numbers.
-fn explain_text(reading: &Reading) -> String {
+fn explain_text(reading: &Reading, rule: &ChanceRule) -> String {
     let names = ["human", "AI", "mixed"];
     let likeness = ["human", "model-like (AI)", "mixed"];
     let mut out = String::new();
@@ -347,6 +387,7 @@ fn explain_text(reading: &Reading) -> String {
         "    P(not human) {:.3}, interval [{:.3}, {:.3}] (Venn-Abers on the score {:.3}); three-way: human {:.2}, AI {:.2}, mixed {:.2}\n",
         reading.probability, reading.interval[0], reading.interval[1], reading.score, reading.three_way[0], reading.three_way[1], reading.three_way[2]
     ));
+    out.push_str(&format!("    The {}\n", at_even_odds(&reading.chance(rule))));
     let closeness = &explain.closeness;
     out.push_str(&format!(
         "    Closeness to the bank {:.3}: {} of {} calibration texts of this length sat as far from the reference (p = {:.3}){}\n",
@@ -373,9 +414,16 @@ fn explain_text(reading: &Reading) -> String {
     out
 }
 
-fn export_rows(rows: &[Row]) -> Vec<export::Row<'_>> {
+fn export_rows<'a>(rows: &'a [Row], rule: &ChanceRule) -> Vec<export::Row<'a>> {
     rows.iter()
-        .map(|row| export::Row { name: &row.name, hash: &row.hash, cached: row.cached, outcome: row.outcome.as_ref().map_err(String::as_str), counts: row.counts.as_ref() })
+        .map(|row| export::Row {
+            name: &row.name,
+            hash: &row.hash,
+            cached: row.cached,
+            outcome: row.outcome.as_ref().map_err(String::as_str),
+            counts: row.counts.as_ref(),
+            chance: row.outcome.as_ref().ok().map(|document| document.chance(rule)),
+        })
         .collect()
 }
 
@@ -387,6 +435,7 @@ fn score(options: &Options) -> Result<bool, String> {
     let files = model_files(options)?;
     let engine = load_engine(options, &files)?;
     let cache = (!options.no_cache).then(cache::folder).flatten().map(|folder| cache::Cache::open(&folder, &[&files.model, &files.config, &files.tokenizer]));
+    let threads = options.threads.unwrap_or_else(default_threads);
     let mut rows = Vec::new();
     let mut all_ok = true;
     for name in names {
@@ -415,7 +464,7 @@ fn score(options: &Options) -> Result<bool, String> {
             rows.push(Row { name, hash, cached: true, outcome: Ok(reading), counts });
             continue;
         }
-        let outcome = engine.score(&text).map_err(|e| e.to_string());
+        let outcome = engine.score_threads(&text, threads, &mut |_| Flow::Continue).map_err(|e| e.to_string());
         if let (Some(cache), Ok(reading)) = (&cache, &outcome) {
             cache.put(&hash, reading);
         }
@@ -423,12 +472,13 @@ fn score(options: &Options) -> Result<bool, String> {
         let counts = outcome.as_ref().ok().map(|reading| TextCounts::of(&text, reading.n_tokens));
         rows.push(Row { name, hash, cached: false, outcome, counts });
     }
+    let rule = &engine.info().chance_rule;
     if options.json {
-        print!("{}", export::json_lines(&export_rows(&rows)));
+        print!("{}", export::json_lines(&export_rows(&rows, rule)));
     } else if options.csv {
-        print!("{}", export::csv(&export_rows(&rows)));
+        print!("{}", export::csv(&export_rows(&rows, rule)));
     } else {
-        print_table(&rows, options);
+        print_table(&rows, options, rule);
     }
     Ok(all_ok)
 }
@@ -505,5 +555,13 @@ fn main() -> ExitCode {
 }
 
 fn options_bench(options: &Options) -> bench::BenchOptions {
-    bench::BenchOptions { tokens: options.tokens.clone(), repeat: options.repeat.max(1), json: options.json, text: options.text.clone(), column_percent: options.column_percent, print_text: options.print_text }
+    bench::BenchOptions {
+        tokens: options.tokens.clone(),
+        repeat: options.repeat.max(1),
+        threads: options.threads.unwrap_or(1),
+        json: options.json,
+        text: options.text.clone(),
+        column_percent: options.column_percent,
+        print_text: options.print_text,
+    }
 }
