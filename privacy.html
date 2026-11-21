@@ -76,7 +76,7 @@
     <div class="wrap split">
       <div>
         <h2 id="verify">Check it yourself</h2>
-        <p class="soft">You do not have to take this on trust. Open your browser's developer tools on the <a href="use.html">browser page</a>, choose the Network tab, and check a text. The list stays as it is on the right: the page's own files and the model, and nothing after you press Check.</p>
+        <p class="soft">You do not have to take this on trust. Open your browser's developer tools on the <a href="use.html">browser page</a>, choose the Network tab, and check a text. The list stays as it is on the right: the page's own files and the model, and nothing after you press Check.<span data-show="links.page_counter" hidden> One more request appears as the page opens, before you paste anything: the count of the opening, described under <a href="#site">This site</a>.</span></p>
         <p class="soft">For the desktop program, switch off your connection and check a text: it works the same. Every claim about what Litmus does with your computer and your text is listed, with the code behind it, in <a href="https://github.com/lhallee/litmus/blob/main/SECURITY.md">SECURITY.md</a>, and the <a href="https://github.com/lhallee/litmus/blob/main/docs/AUDIT.md">audit guide</a> gives the commands that test each one, for a person or their AI assistant.</p>
       </div>
       <div class="card">
@@ -88,6 +88,8 @@
           <li><span>config.json</span><span class="what">its calibration</span></li>
           <li><span>tokenizer.json</span><span class="what">its word pieces</span></li>
         </ul>
+        <div class="req-head" data-show="links.page_counter" hidden>What it asks of the counter as it opens</div>
+        <ul class="requests" data-show="links.page_counter" hidden><li><span>count?p=/use</span><span class="what">one opening, counted</span></li></ul>
         <div class="req-head">What it sends when you check a text</div>
         <ul class="requests"><li><span class="none">Nothing</span></li></ul>
       </div>
@@ -97,7 +99,8 @@
   <section class="section" aria-labelledby="site">
     <div class="wrap prose">
       <h2 id="site">This site</h2>
-      <p>These pages set no cookies, run no analytics, ask for no account, and load nothing from any other site: every file comes from this address. They remember one thing, your choice of the light or dark look, in your browser's storage. The site is hosted on GitHub Pages, so GitHub receives the ordinary requests your browser makes to load it, as any web host does, under its own privacy statement. The text you check is never part of those requests.</p>
+      <p><span data-hide="links.page_counter">These pages set no cookies, run no analytics, ask for no account, and load nothing from any other site: every file comes from this address.</span><span data-show="links.page_counter" hidden>These pages set no cookies, ask for no account, and run no code from any other site. One thing is counted, how often the browser page is opened.</span> They remember one thing, your choice of the light or dark look, in your browser's storage. The site is hosted on GitHub Pages, so GitHub receives the ordinary requests your browser makes to load it, as any web host does, under its own privacy statement. The text you check is never part of those requests.</p>
+      <p data-show="links.page_counter" hidden>The count works like this. As the <a href="use.html">browser page</a> opens, it asks <a href="https://www.goatcounter.com/help/privacy">GoatCounter</a>, an open source counting service, for a one-pixel image. The request names the page and nothing else: no text, no page title, no address you came from, and no screen size. Like any server, the counter sees your browser's network address and the browser's own description of itself. It keeps them in memory for up to 8 hours so that a second visit is not counted twice, never writes them to disk, and stores only totals: openings per hour, and openings per day by browser, system, language, and country. Nothing is sent when you check a text, and a browser that asks not to be tracked (Do Not Track or Global Privacy Control) is not counted at all. Blocking the request changes nothing on the page.</p>
     </div>
   </section>
 
