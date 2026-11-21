@@ -61,7 +61,7 @@ Litmus gets more accurate the more it reads. Across the public benchmarks its PR
 
 *Speed on one CPU core (A), accuracy on the public benchmarks that no detector trained on (B), and accuracy by text
 length (C), with every detector run on the same texts and timed on one processor core (the processors are named
-above). In C the solid lines are the public
+above). <!--litmus:t:speed_two_measures-->Litmus's speed in A, ~3,500 tokens a second, was timed over the benchmarks' short texts on one core of Arm Neoverse-V2. The app's ~4,900 is one 28,920-token document read on one core of AMD Ryzen 7 3800X 8-Core Processor.<!--/litmus--> In C the solid lines are the public
 benchmarks, and the dashed line is Litmus on its own held-out test split, whose token counts are converted to words.
 PR AUC is 1.0 for a perfect detector, and the intervals are 95%.*
 

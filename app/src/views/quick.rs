@@ -74,9 +74,9 @@ fn open_popup(app: &mut LitmusApp, ctx: &egui::Context, state: PopupState) {
         Some(pointer) => {
             let pixels = |points: f32| (points * ppp).ceil() as i32;
             // Placed for the tallest it can grow to, so that growing never takes it off the screen.
-            let room = (pixels(POPUP_WIDTH), pixels(popup_height_at_most(detail, placeholder)));
+            let room = (pixels(POPUP_WIDTH), pixels(popup_height_at_most(ctx, detail, placeholder)));
             let (x, y) = quick::popup_origin(pointer, room, (pixels(14.0), pixels(18.0)), quick::work_area_at(pointer));
-            (egui::pos2(x as f32 / ppp, y as f32 / ppp), Some([x, y, x + room.0, y + pixels(popup_height(detail, placeholder))]))
+            (egui::pos2(x as f32 / ppp, y as f32 / ppp), Some([x, y, x + room.0, y + pixels(popup_height(ctx, detail, placeholder))]))
         }
         None => (egui::pos2(200.0, 200.0), None),
     };
@@ -340,18 +340,57 @@ const POPUP_STRIP: f32 = 14.0;
 /// text's size and the link, then the chance of AI at the Full level and the placeholder's warning. The window opens
 /// at this height and then takes the height its content drew (`PopupView::height`), so a headline that wraps, a note
 /// on a short text, or another system's fonts never cut anything off, and no row is left empty.
-fn popup_height(detail: Detail, placeholder: bool) -> f32 {
-    // Line heights in the Windows faces (Segoe UI); the bundled faces elsewhere differ by a point or two, which the
-    // drawn height then corrects.
-    let (headline, strip, last, chance, small) = (29.0, strip::height(POPUP_STRIP), 27.0, 19.0, 17.0);
-    let rows = headline + strip + last + if detail.full() { chance + POPUP_GAP } else { 0.0 } + if placeholder { small + POPUP_GAP } else { 0.0 };
-    rows + 2.0 * POPUP_GAP + 2.0 * f32::from(POPUP_MARGIN.1) + 2.0
+fn popup_height(ctx: &egui::Context, detail: Detail, placeholder: bool) -> f32 {
+    let rows = PopupRows::of(ctx);
+    let last = if rows.beside { rows.link } else { rows.small + POPUP_GAP + rows.link };
+    let drawn = rows.headline + strip::height(POPUP_STRIP) + last + if detail.full() { rows.chance + POPUP_GAP } else { 0.0 } + if placeholder { rows.small + POPUP_GAP } else { 0.0 };
+    drawn + 2.0 * POPUP_GAP + 2.0 * f32::from(POPUP_MARGIN.1) + 2.0
 }
 
 /// The tallest a reading's popup is expected to grow: with the note on a short text, a headline on two lines, and the
 /// link under a long text's counts.
-fn popup_height_at_most(detail: Detail, placeholder: bool) -> f32 {
-    popup_height(detail, placeholder) + (17.0 + POPUP_GAP) + 29.0 + (27.0 + POPUP_GAP)
+fn popup_height_at_most(ctx: &egui::Context, detail: Detail, placeholder: bool) -> f32 {
+    let rows = PopupRows::of(ctx);
+    popup_height(ctx, detail, placeholder) + (rows.small + POPUP_GAP) + rows.headline + if rows.beside { rows.small + POPUP_GAP } else { 0.0 }
+}
+
+/// The counts of a text of a few paragraphs, which the popup's opening height assumes.
+const USUAL_COUNTS: &str = "420 words, 2,840 characters, 620 tokens";
+
+/// Whether the text's counts and the link share the popup's last row, which they do when both fit across it.
+fn link_beside(counts_width: f32, link_width: f32, room: f32) -> bool {
+    counts_width + 12.0 + link_width <= room
+}
+
+/// The popup's rows in the fonts in use, in points. The Windows faces (Segoe UI) and the bundled faces elsewhere
+/// differ by several points a row, and the bundled ones are wide enough to put the link under the usual counts, so
+/// the rows are measured, never typed: through 1.2.0 they were the Windows ones, and the popup opened 13 points
+/// short on Linux and macOS and grew after its first frame.
+struct PopupRows {
+    headline: f32,
+    chance: f32,
+    small: f32,
+    /// The link's row: `controls::link` pads its text by 4 points across and 8 down.
+    link: f32,
+    /// Whether the usual counts leave the link room beside them.
+    beside: bool,
+}
+
+impl PopupRows {
+    fn of(ctx: &egui::Context) -> Self {
+        let size = |text: &str, font: egui::FontId| ctx.fonts_mut(|fonts| fonts.layout_no_wrap(text.to_owned(), font, egui::Color32::PLACEHOLDER).size());
+        let small = egui::TextStyle::Small.resolve(&ctx.global_style());
+        let link = size(OPEN_FULL, egui::FontId::proportional(14.0)) + egui::vec2(4.0, 8.0);
+        // The room across the popup, inside its one-point rule and its margin.
+        let room = POPUP_WIDTH - 2.0 * f32::from(POPUP_MARGIN.0) - 2.0;
+        Self {
+            headline: size("Ag", theme::strong(22.0)).y,
+            chance: size("Ag", egui::FontId::proportional(14.0)).y.max(size("Ag", theme::strong(14.0)).y),
+            small: size("Ag", small.clone()).y,
+            link: link.y,
+            beside: link_beside(size(USUAL_COUNTS, small).x, link.x, room),
+        }
+    }
 }
 
 /// The popup window's drawing, on its own pass.
@@ -440,7 +479,7 @@ fn draw_content(ui: &mut egui::Ui, view: &PopupView, p: &theme::Palette, open_fu
             let link = ui.painter().layout_no_wrap(OPEN_FULL.to_owned(), egui::FontId::proportional(14.0), p.muted).size() + egui::vec2(4.0, 8.0);
             // A row as tall as the link, which a layout of its own then centers nothing against but the row.
             ui.spacing_mut().interact_size.y = link.y;
-            if counts_width + 12.0 + link.x <= ui.available_width() {
+            if link_beside(counts_width, link.x, ui.available_width()) {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(counts).small().color(p.muted));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -473,7 +512,7 @@ pub fn popup(app: &mut LitmusApp, ctx: &egui::Context) {
         .with_taskbar(false)
         .with_resizable(false)
         .with_position(at)
-        .with_inner_size([POPUP_WIDTH, popup_height(app.settings.detail, placeholder)]);
+        .with_inner_size([POPUP_WIDTH, popup_height(ctx, app.settings.detail, placeholder)]);
     let drawn = app.quick.view.clone();
     ctx.show_viewport_deferred(popup_id(), builder, move |ui, _class| draw(ui, &drawn));
 }
@@ -647,7 +686,8 @@ mod tests {
     /// The popup drawn until its height settles: what it reports of its fit.
     fn drawn(ctx: &egui::Context, content: Content, detail: Detail, placeholder: bool) -> (f32, bool) {
         let view = Arc::new(std::sync::Mutex::new(PopupView { content, detail, placeholder, ..PopupView::default() }));
-        let mut height = popup_height(detail, placeholder);
+        // Any height serves the first frame: the fonts exist only once a frame has run, and the popup reports its own.
+        let mut height = 200.0;
         for _ in 0..3 {
             frame(ctx, &view, height);
             height = view.lock().unwrap().height.expect("a reading reports its height");
@@ -674,9 +714,21 @@ mod tests {
         // the popup's right edge and took the strip's AI end and the link with it. Every verdict, with and without
         // the caution and the short text's note, at both levels, now stays inside the window, and the window's height
         // is the content's.
+        // In the system's faces and in the bundled ones, which Linux and macOS draw in: the 1.2.0 release workflow
+        // failed there, where this test knew only the Windows faces.
+        for bundled in [false, true] {
+            let ctx = egui::Context::default();
+            if bundled {
+                theme::install_bundled(&ctx, egui::ThemePreference::Dark);
+            } else {
+                theme::install(&ctx, egui::ThemePreference::Dark);
+            }
+            every_reading_fits(&ctx, bundled);
+        }
+    }
+
+    fn every_reading_fits(ctx: &egui::Context, bundled: bool) {
         use Origin::{Ai, Human, Mixed};
-        let ctx = egui::Context::default();
-        theme::install(&ctx, egui::ThemePreference::Dark);
         let sets: [&[Origin]; 8] = [&[], &[Human], &[Ai], &[Mixed], &[Human, Mixed], &[Mixed, Ai], &[Human, Ai], &[Human, Mixed, Ai]];
         let long = "123,456 words, 1,234,567 characters, 234,567 tokens";
         for detail in Detail::ALL {
@@ -685,20 +737,21 @@ mod tests {
                     for caution in [false, true] {
                         for few in [false, true] {
                             for counts in ["42 words, 284 characters, 62 tokens", long] {
-                                let (height, overflowed) = drawn(&ctx, reading(set, caution, few, counts), detail, placeholder);
-                                let case = format!("{set:?}, caution {caution}, few {few}, {detail:?}, placeholder {placeholder}, {counts}");
+                                let (height, overflowed) = drawn(ctx, reading(set, caution, few, counts), detail, placeholder);
+                                let case = format!("{set:?}, caution {caution}, few {few}, {detail:?}, placeholder {placeholder}, bundled faces {bundled}, {counts}");
                                 assert!(!overflowed, "drawn past the popup's right edge: {case}");
-                                assert!(height <= popup_height_at_most(detail, placeholder) + 0.5, "{height} points is taller than the room it was placed in ({}): {case}", popup_height_at_most(detail, placeholder));
+                                let room = popup_height_at_most(ctx, detail, placeholder);
+                                assert!(height <= room + 0.5, "{height} points is taller than the room it was placed in ({room}): {case}");
                             }
                         }
                     }
                 }
                 // The common reading, one origin of a text long enough, opens at the height it draws: the window
                 // does not jump after its first frame.
-                let (height, _) = drawn(&ctx, reading(&[Human], false, false, "420 words, 2,840 characters, 620 tokens"), detail, placeholder);
-                let expected = popup_height(detail, placeholder);
-                eprintln!("popup at {detail:?}, placeholder {placeholder}: drawn {height} points, opened at {expected}");
-                assert!((height - expected).abs() <= 3.0, "{detail:?}, placeholder {placeholder}: drawn {height} points, opened at {expected}");
+                let (height, _) = drawn(ctx, reading(&[Human], false, false, USUAL_COUNTS), detail, placeholder);
+                let expected = popup_height(ctx, detail, placeholder);
+                eprintln!("popup at {detail:?}, placeholder {placeholder}, bundled faces {bundled}: drawn {height} points, opened at {expected}");
+                assert!((height - expected).abs() <= 3.0, "{detail:?}, placeholder {placeholder}, bundled faces {bundled}: drawn {height} points, opened at {expected}");
             }
         }
     }
@@ -709,9 +762,9 @@ mod tests {
         theme::install(&ctx, egui::ThemePreference::Dark);
         let failed = Content::Failed("Nothing was copied. No text seems to be selected in the app in front.".into());
         let (height, overflowed) = drawn(&ctx, failed, Detail::Simple, false);
-        assert!(!overflowed && height > 40.0 && height < popup_height_at_most(Detail::Simple, false), "{height}");
+        assert!(!overflowed && height > 40.0 && height < popup_height_at_most(&ctx, Detail::Simple, false), "{height}");
         let view = Arc::new(std::sync::Mutex::new(PopupView { content: Content::Scoring("1,024 of 8,192 tokens".into()), ..PopupView::default() }));
-        frame(&ctx, &view, popup_height(Detail::Simple, false));
+        frame(&ctx, &view, popup_height(&ctx, Detail::Simple, false));
         assert_eq!(view.lock().unwrap().height, None, "the window keeps the height it opened at while it checks");
     }
 }

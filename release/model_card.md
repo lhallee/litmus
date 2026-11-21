@@ -172,7 +172,7 @@ for three tasks: AI against human (mixed left out), AI or mixed against human, a
 
 Speed on one CPU core (A), mean PR AUC over the public benchmarks that no compared detector trained on (B), and PR AUC
 by text length (C), every detector run on the same texts and timed on one processor core (the speed paragraph below
-names the processors). In C the solid lines are the pooled
+names the processors). <!--litmus:t:speed_two_measures-->Litmus's speed in A, ~3,500 tokens a second, was timed over the benchmarks' short texts on one core of Arm Neoverse-V2. The app's ~4,900 is one 28,920-token document read on one core of AMD Ryzen 7 3800X 8-Core Processor.<!--/litmus--> In C the solid lines are the pooled
 public benchmarks, and the dashed line is Litmus on its own held-out test split, its token bands placed in words by
 Litmus's measured tokens per word.
 

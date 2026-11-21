@@ -173,14 +173,15 @@ pub fn style_sizes(style: &mut egui::Style, touch: bool) {
     style.interaction.selectable_labels = false;
 }
 
-/// The fonts: the system's UI faces on Windows (never shipped), egui's bundled faces otherwise.
-fn fonts() -> FontDefinitions {
+/// The fonts: the system's UI faces on Windows when `system` (never shipped), egui's bundled faces otherwise.
+#[cfg_attr(not(windows), allow(unused_variables))]
+fn fonts(system: bool) -> FontDefinitions {
     #[cfg_attr(not(windows), allow(unused_mut))]
     let mut fonts = FontDefinitions::default();
     #[cfg_attr(not(windows), allow(unused_mut))]
     let mut strong = fonts.families.get(&FontFamily::Proportional).cloned().unwrap_or_default();
     #[cfg(windows)]
-    {
+    if system {
         use eframe::egui::FontData;
         let folder = std::env::var_os("WINDIR").map_or_else(|| std::path::PathBuf::from("C:\\Windows"), std::path::PathBuf::from).join("Fonts");
         let read = |name: &str| std::fs::read(folder.join(name)).ok();
@@ -208,7 +209,18 @@ fn fonts() -> FontDefinitions {
 
 /// Install both looks, the fonts, the sizes, and the user's choice of theme.
 pub fn install(ctx: &egui::Context, preference: egui::ThemePreference) {
-    ctx.set_fonts(fonts());
+    install_faces(ctx, preference, true);
+}
+
+/// As `install`, in egui's bundled faces on every system: the faces Linux and macOS draw in, so a test on Windows
+/// lays text out as they do.
+#[cfg(test)]
+pub fn install_bundled(ctx: &egui::Context, preference: egui::ThemePreference) {
+    install_faces(ctx, preference, false);
+}
+
+fn install_faces(ctx: &egui::Context, preference: egui::ThemePreference, system: bool) {
+    ctx.set_fonts(fonts(system));
     ctx.set_visuals_of(Theme::Light, visuals(false));
     ctx.set_visuals_of(Theme::Dark, visuals(true));
     ctx.all_styles_mut(|style| style_sizes(style, false));
