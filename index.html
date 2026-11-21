@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>Litmus: a free detector of AI written text</title>
-<meta name="description" content="Litmus is a free detector of AI written text that says how sure it is. Use it in your browser or download it for Windows; your text stays on your device.">
+<meta name="description" content="Litmus is a free detector of AI written text that says how sure it is. Use it in your browser or download it for Windows, macOS, or Linux; your text stays on your device.">
 <link rel="icon" href="litmus_mark.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css">
 <script src="site.js"></script>
@@ -36,13 +36,13 @@
       <p class="lead">Paste a passage and see whether it reads as written by a person, by an AI model, or by both, and how sure that reading can be. It runs on your own computer or inside your browser, so your text stays with you.</p>
       <div class="actions">
         <a class="btn btn-primary btn-big" href="use.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18"/></svg>Use it in your browser</a>
-        <a class="btn btn-big" href="download.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Download for Windows</a>
+        <a class="btn btn-big" href="download.html"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Download the program</a>
       </div>
       <p class="fine">Free for noncommercial use. No account, no sign-in, no upload.</p>
     </div>
     <figure class="shot">
-      <img class="on-dark" src="assets/screens/reading_dark.png" width="1200" height="800" alt="The Litmus program after a check: the verdict AI, one sentence explaining it, the strip from human to AI with its mark at the AI end, and the text tinted where the reading changes.">
-      <img class="on-light" src="assets/screens/reading_light.png" width="1200" height="800" loading="lazy" alt="The Litmus program after a check, in the light look: the verdict AI, the strip, and the tinted text.">
+      <img class="on-dark" src="assets/screens/reading_dark.png" width="1200" height="800" alt="The Litmus program after a check: the verdict AI or mixed, one sentence explaining it, the strip from human to AI with its mark at the AI end, and the text tinted where the reading changes.">
+      <img class="on-light" src="assets/screens/reading_light.png" width="1200" height="800" loading="lazy" alt="The Litmus program after a check, in the light look: the verdict AI or mixed, the strip, and the tinted text.">
     </figure>
   </div>
 
@@ -69,17 +69,17 @@
         <div class="card">
           <div class="icon human"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M2 20h20M9 10l2 2 4-4"/></svg></div>
           <h3>Your text stays with you</h3>
-          <p>The Windows program contains no network code and works with your connection switched off. The browser page reads every text inside the page.</p>
+          <p>The program you download contains no network code and works with your connection switched off. The browser page reads every text inside the page.</p>
         </div>
         <div class="card">
           <div class="icon mixed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="2" y="9" width="20" height="6" rx="3"/><path d="M12 5v14" stroke-width="2.5"/><path d="M8 6.5h8M8 17.5h8" stroke-dasharray="2 2"/></svg></div>
           <h3>Says how sure it is</h3>
-          <p>When the evidence cannot separate human, AI, and mixed, it says Uncertain and shows which origins remain, with a probability and its interval.</p>
+          <p>When the evidence cannot rule human out, it says Uncertain and names the origins that remain, with a chance of AI and its range.</p>
         </div>
         <div class="card">
           <div class="icon ai"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg></div>
           <h3>Fast on any computer</h3>
-          <p>On one processor core the program reads about <span data-value="results.release.app_tokens_per_second" data-format="int">4,971</span> tokens a second. It needs no graphics card.</p>
+          <p>On one processor core the program reads about <span data-value="results.release.app_tokens_per_second" data-format="int">4,896</span> tokens a second<span data-show="results.release.app_tokens_per_second_all_processors" hidden>, and about <span data-value="results.release.app_tokens_per_second_all_processors" data-format="int">33,269</span> on every processor of the same machine</span>. It needs no graphics card.</p>
         </div>
       </div>
     </div>
@@ -90,21 +90,21 @@
       <div>
         <h2 id="reading">What a reading tells you</h2>
         <ul class="checks">
-          <li><strong>The verdict:</strong> Human, AI, or Mixed when only one origin remains, Uncertain when the evidence leaves two or three, and Unlike reference when the text resembles none of the texts Litmus knows.</li>
-          <li><strong>The strip</strong> runs from human (blue) through mixed (purple) to AI (red). The pale band covers every origin still possible, so a wide band means an unsure reading.</li>
+          <li><strong>The verdict:</strong> Human, AI, or Mixed when only one origin remains, AI or mixed when human is ruled out and the reading cannot tell the other two apart, Uncertain when human remains beside another, and Unlike reference when the text resembles none of the texts Litmus knows.</li>
+          <li><strong>The strip</strong> runs from human (blue) to AI (red). The mark sits at the chance of AI, and the pale band is that chance's range, which is how far it moves from one kind of text to another.</li>
           <li><strong>Where it changes:</strong> in a long text, the tint shows which passages lean human and which lean AI.</li>
         </ul>
-        <p class="soft">Short texts are less reliable: a sentence or two carries little evidence, and the band stays wide to show it. This release is an English detector: almost all of the text it learned from was English, it was tested mainly on English text, and other languages are not supported yet.</p>
+        <p class="soft">Short texts are less reliable: a sentence or two carries little evidence, so the chance stays nearer the middle and the verdict is more often Uncertain. This release is an English detector: almost all of the text it learned from was English, it was tested mainly on English text, and other languages are not supported yet.</p>
         <div class="callout">
           <p><strong>A reading is evidence about where a text came from, never proof of who wrote it.</strong> We recommend not using a reading alone to accuse anyone. What you do with a reading is your own decision.</p>
         </div>
         <p class="small" style="margin-top:1rem"><a href="reading.html">How to read a result, in full</a></p>
       </div>
-      <div class="reading-demo" role="img" aria-label="An example reading: the verdict Uncertain, AI or mixed, with human ruled out. The mark sits between mixed and AI, and the pale band covers the right half of the strip.">
-        <div class="verdict"><span class="dot" style="--c: var(--mixed)"></span><span class="verdict-word">Uncertain</span></div>
-        <p class="verdict-detail">It reads like AI or mixed writing; human is ruled out.</p>
-        <div class="strip"><div class="strip-bar"></div><div class="strip-band" style="--lo: 0.5; --hi: 1"></div><div class="strip-mark" style="--x: 0.74"></div></div>
-        <div class="strip-scale"><span>Human</span><span>Mixed</span><span>AI</span></div>
+      <div class="reading-demo" role="img" aria-label="An example reading: the verdict AI or mixed, with human ruled out. The mark sits near the AI end of the strip, at a high chance of AI, and the pale band around it stays on the AI side.">
+        <div class="verdict"><span class="dot" style="--c: var(--ai)"></span><span class="verdict-word word-ai">AI or mixed</span></div>
+        <p class="verdict-detail">It reads like text a language model wrote or edited. Human is ruled out, and the reading cannot tell AI from mixed.</p>
+        <div class="strip" data-chance="0.93"><div class="strip-bar"></div><div class="strip-band" style="--lo: 0.760; --hi: 0.982"></div><div class="strip-mark" style="--x: 0.93"></div></div>
+        <div class="strip-scale"><span>Human</span><span>AI</span></div>
       </div>
     </div>
   </section>
@@ -131,9 +131,9 @@
         </a>
         <a class="card" href="download.html">
           <span class="pill ok">Text stays on your computer</span>
-          <h3 style="margin-top:0.9rem">The Windows program</h3>
+          <h3 style="margin-top:0.9rem">The desktop program</h3>
           <p>One file, no installer, no account, and it works offline. It is faster than the browser page, and its quick check reads text you select in any application.</p>
-          <span class="go">Download for Windows</span>
+          <span class="go">Download for Windows, macOS, or Linux</span>
         </a>
         <div class="card">
           <span class="pill">Text is sent and kept privately</span>

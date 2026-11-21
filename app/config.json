@@ -3385,7 +3385,152 @@
      0.9967145
     ]
    }
-  ]
+  ],
+  "between_sources": {
+   "level": 0.9,
+   "log_odds": 1.431902,
+   "sources": {
+    "human": 37,
+    "not_human": 75
+   },
+   "min_texts": 30,
+   "min_expected": 5.0,
+   "regions": [
+    {
+     "chance": [
+      0.0,
+      0.01
+     ],
+     "weight": 0.1087351,
+     "center": 0.1085002,
+     "spread": 0.6854977,
+     "human": {
+      "mean": -0.1085002,
+      "spread": 0.6423263,
+      "fitted": true
+     },
+     "not_human": {
+      "mean": 0.0,
+      "spread": 0.2394246,
+      "fitted": false
+     }
+    },
+    {
+     "chance": [
+      0.01,
+      0.1
+     ],
+     "weight": 0.1273189,
+     "center": 0.2034682,
+     "spread": 0.3950698,
+     "human": {
+      "mean": -0.05547868,
+      "spread": 0.3142547,
+      "fitted": true
+     },
+     "not_human": {
+      "mean": 0.1479896,
+      "spread": 0.2394246,
+      "fitted": true
+     }
+    },
+    {
+     "chance": [
+      0.1,
+      0.3
+     ],
+     "weight": 0.1347281,
+     "center": -0.3883514,
+     "spread": 0.7274755,
+     "human": {
+      "mean": -0.1388886,
+      "spread": 0.4543852,
+      "fitted": true
+     },
+     "not_human": {
+      "mean": -0.5272399,
+      "spread": 0.568115,
+      "fitted": true
+     }
+    },
+    {
+     "chance": [
+      0.3,
+      0.7
+     ],
+     "weight": 0.2866538,
+     "center": -0.5041594,
+     "spread": 0.6209398,
+     "human": {
+      "mean": -0.03164767,
+      "spread": 0.3909745,
+      "fitted": true
+     },
+     "not_human": {
+      "mean": -0.5358071,
+      "spread": 0.4823953,
+      "fitted": true
+     }
+    },
+    {
+     "chance": [
+      0.7,
+      0.9
+     ],
+     "weight": 0.1372689,
+     "center": -0.1629541,
+     "spread": 1.002809,
+     "human": {
+      "mean": -0.04850992,
+      "spread": 0.9644778,
+      "fitted": true
+     },
+     "not_human": {
+      "mean": -0.211464,
+      "spread": 0.2746055,
+      "fitted": true
+     }
+    },
+    {
+     "chance": [
+      0.9,
+      0.99
+     ],
+     "weight": 0.1125861,
+     "center": 0.2404908,
+     "spread": 1.047746,
+     "human": {
+      "mean": 0.0,
+      "spread": 0.9644778,
+      "fitted": false
+     },
+     "not_human": {
+      "mean": 0.2404908,
+      "spread": 0.4093333,
+      "fitted": true
+     }
+    },
+    {
+     "chance": [
+      0.99,
+      1.0
+     ],
+     "weight": 0.0927092,
+     "center": 0.3026922,
+     "spread": 1.189183,
+     "human": {
+      "mean": 0.0,
+      "spread": 0.9644778,
+      "fitted": false
+     },
+     "not_human": {
+      "mean": 0.3026922,
+      "spread": 0.6956575,
+      "fitted": true
+     }
+    }
+   ]
+  }
  },
  "provenance": {
   "checkpoint": "/work/corpus2/student_v11/s512_l6_labels_only/train/best.pt",
