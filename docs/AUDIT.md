@@ -10,7 +10,8 @@ installed, the first three checks take under ten minutes; the rebuild takes long
 1. The engine, the `litmus` command line, and the `litmus_engine` Python module contain no network code.
 2. The desktop app contains no network code.
 3. The browser page sends no text anywhere. Its only requests are for its own files: the WebAssembly module and the
-   model's three files, from the page's own address.
+   model's three files, from the page's own address. The site page that holds it makes one more request when the
+   release names a counter, a count of the page's opening that carries no text and is never made on a check.
 4. The desktop app touches the clipboard, the Windows registry, global hotkeys, and other applications' text only
    for quick check, which is off until the user switches it on, plus a clipboard copy the user asks for in the
    browser build.
@@ -30,7 +31,7 @@ installed, the first three checks take under ten minutes; the rebuild takes long
 | Claim | Code | Check |
 | --- | --- | --- |
 | 1, 2, 4, 5, 6 | Every file declared in [`tools/security/capabilities.json`](../tools/security/capabilities.json), with its reason | `tools/security/check_capabilities.py` |
-| 3 | [`site/app/worker.js`](../site/app/worker.js) (`getAll`), [`site/app/index.html`](../site/app/index.html), [`app/src/contribute.rs`](../app/src/contribute.rs) (compiled only with feature `contribute`), [`app/scripts/build_web.sh`](../app/scripts/build_web.sh) | the capability check; a browser's network panel on the built page |
+| 3 | [`site/app/worker.js`](../site/app/worker.js) (`getAll`), [`site/app/index.html`](../site/app/index.html), [`app/src/contribute.rs`](../app/src/contribute.rs) (compiled only with feature `contribute`), [`app/scripts/build_web.sh`](../app/scripts/build_web.sh); the count is [`site/site.js`](../site/site.js) (`countOpening`) and `page_counter` in [`site/assets/links.json`](../site/assets/links.json) | the capability check; a browser's network panel on the built page |
 | 4 | [`app/src/settings.rs`](../app/src/settings.rs) (`quick_check: false` and its test), [`app/src/quick/`](../app/src/quick/mod.rs) | the capability check; `app` tests |
 | 7 | [`engine/Cargo.lock`](../engine/Cargo.lock), [`app/Cargo.lock`](../app/Cargo.lock), [`tools/security/dependencies.json`](../tools/security/dependencies.json), [`engine/THIRD_PARTY.md`](../engine/THIRD_PARTY.md) | `tools/security/check_dependencies.py` |
 | 8 | [`engine/rust-toolchain.toml`](../engine/rust-toolchain.toml), [`app/rust-toolchain.toml`](../app/rust-toolchain.toml), [`tools/verify_build.py`](../tools/verify_build.py) (`release_rustflags`) | `tools/verify_build.py` |

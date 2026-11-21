@@ -40,6 +40,8 @@ model_repo = "owner/litmus"
 dataset_repo = "owner/litmus-corpus"
 [contribute]
 site_url = ""
+[counter]
+count_url = ""
 [programs]
 platforms = ["windows", "linux"]
 signing_note = "the programs are not code-signed"

@@ -236,6 +236,21 @@ repository (for example the first build), and the corpus card `lhallee/litmus-co
 release stay in their own private repositories at their own commits; `--model` names one of them, and the release copies
 its release folder into the public repository.
 
+## Counting use
+
+`python release/cut.py tally` reads, without a work folder, how often Litmus was used, from the places that already
+count it: GitHub's download count of each program of each release, the Hugging Face Hub's download count of the
+model, and the browser page's openings. `--out <file>` adds the reading as one JSON line to a tally file. GitHub's
+counts are cumulative, so one reading is the tally to date. A count is every fetch, by a person or a program, and the
+release workflow fetches the model's files in each job, so the tally is of the programs.
+
+The browser page counts its openings only when `[counter] count_url` in `targets.toml` names the count address of the
+maintainer's GoatCounter site, `https://<code>.goatcounter.com/count`. Then `site/site.js` (`countOpening`) asks that
+address for one image as `use.html` opens, the `docs` stage writes the address into `site/assets/links.json` as
+`page_counter`, and `site/privacy.html` words itself by it. With it empty the page counts nothing and the privacy
+page says so. The tally reads the openings with the counter's API token in the environment variable
+`LITMUS_COUNTER_TOKEN`; without the token it says that the openings were not read.
+
 ## What each build stage does
 
 ### Windows
@@ -313,5 +328,7 @@ the browser module at the same fixed path and prints its hash, which is the `app
 ## Tests
 
 `python tools/run_tests.py release` runs the driver's tests (stage receipts and staleness, version setting, every slot
-and its data, the record bundle, the assets, the gates and dry runs). They use synthetic data and make no network call;
-`python tools/run_tests.py security` checks the capability declarations.
+and its data, the record bundle, the assets, the gates and dry runs, the tally). They use synthetic data and make no
+network call; `python tools/run_tests.py security` checks the capability declarations, and
+`python tools/run_tests.py site` runs the site's script against stand-ins for a page and checks its one request to
+another address, the count (it needs Node).

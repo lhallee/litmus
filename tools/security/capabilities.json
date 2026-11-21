@@ -522,6 +522,13 @@
     "filesystem_write": "writes each stage's receipt in the work folder"
    }
   },
+  "release/litmus_release/tally.py": {
+   "component": "release",
+   "capabilities": {
+    "network": "reads three counts and sends nothing else: GitHub's download count of each release file, the Hugging Face Hub's download count of the model, and, with the counter's API token from the environment, the browser page's openings from the GoatCounter site named in release/targets.toml",
+    "filesystem_write": "`--out` adds the reading as one line to the tally file the person names"
+   }
+  },
   "release/litmus_release/versions.py": {
    "component": "release",
    "capabilities": {
@@ -577,6 +584,13 @@
     "filesystem_write": "test fixtures in pytest's temporary folder"
    }
   },
+  "release/tests/test_tally.py": {
+   "component": "release",
+   "capabilities": {
+    "network": "names urllib.request only to replace its opener with one that refuses; no request is made",
+    "filesystem_write": "test fixtures in pytest's temporary folder"
+   }
+  },
   "release/tests/test_values.py": {
    "component": "release",
    "capabilities": {
@@ -606,7 +620,7 @@
    "component": "site",
    "capabilities": {
     "browser_storage": "keeps the visitor's choice of the light or dark look under one localStorage key, litmus.site.theme",
-    "network": "two same-origin GET requests for the site's own data files, assets/results.json and assets/links.json; it sends nothing"
+    "network": "two same-origin GET requests for the site's own data files, assets/results.json and assets/links.json, and, on the browser page only and only when links.json names a counter, one GET to that GoatCounter address as the page opens (count?p=/use, no cookie, no referrer, no text; skipped for Do Not Track, Global Privacy Control, automated browsers, and pages not on HTTPS)"
    }
   },
   "student/reference.py": {
@@ -793,13 +807,19 @@
   "tools/run_tests.py": {
    "component": "verification",
    "capabilities": {
-    "process": "runs each test suite's command (cargo, pytest) as a child process"
+    "process": "runs each test suite's command (cargo, pytest, node) as a child process"
    }
   },
   "tools/security/check_dependencies.py": {
    "component": "verification",
    "capabilities": {
     "filesystem_write": "`--write` rewrites security/dependencies.json from the lock files"
+   }
+  },
+  "tools/security/tests/site_count.test.mjs": {
+   "component": "verification",
+   "capabilities": {
+    "browser_storage": "a stand-in object named as the browser's storage, so that site/site.js runs outside a browser; nothing is stored"
    }
   },
   "tools/security/tests/test_agent_install.py": {

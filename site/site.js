@@ -1,5 +1,6 @@
 // The Litmus site's one script: the theme toggle, and the numbers, addresses and figures the pages read from
-// assets/results.json, assets/links.json and assets/figures/. Every request it makes is to this site's own address.
+// assets/results.json, assets/links.json and assets/figures/. Every request it makes is to this site's own address
+// but one: the browser page's count of its own opening (countOpening), made only when links.json names a counter.
 // A value that is missing or empty is never filled in: the page keeps its "being finalized" wording instead.
 
 (function () {
@@ -47,6 +48,20 @@
     if (!frame) return;
     frame.src = frame.getAttribute("data-app") + "#" + theme();
     frame.hidden = false;
+  }
+
+  // The browser page counts its opening, once, when links.json names a counter (`[counter] count_url` in
+  // release/targets.toml): one request for the counter's one-pixel image, whose address says only that this page
+  // opened. No text, title, referring address, or screen size goes with it, and nothing is sent when a text is
+  // checked. A browser that asks not to be tracked, an automated browser, and a copy of the site that is not served
+  // over HTTPS (a local one) are not counted. site/privacy.html says the same to the visitor.
+  function countOpening(counter) {
+    if (!has(counter) || !document.querySelector("iframe[data-app]")) return;
+    if (navigator.doNotTrack === "1" || navigator.globalPrivacyControl === true || navigator.webdriver) return;
+    if (location.protocol !== "https:") return;
+    const address = counter + "?p=" + encodeURIComponent("/use") + "&rnd=" + Math.random().toString(36).slice(2);
+    fetch(address, { mode: "no-cors", credentials: "omit", referrerPolicy: "no-referrer", cache: "no-store" })
+      .catch(() => { /* a count that fails changes nothing on the page */ });
   }
 
   // The film starts, muted, once half of it is in view, unless the visitor asked for less motion. A browser that
@@ -408,12 +423,13 @@
     setupApp();
     setupFilm();
     figures();
-    const needs = document.querySelector("[data-value], [data-show], [data-hide], [data-link], #test-tiles, #summary-body, #compare-body, #raid-body, #cost-body");
+    const needs = document.querySelector("[data-value], [data-show], [data-hide], [data-link], iframe[data-app], #test-tiles, #summary-body, #compare-body, #raid-body, #cost-body");
     if (!needs) return;
     const [resultsData, linksData] = await Promise.all([json("assets/results.json"), json("assets/links.json")]);
     const data = { results: resultsData || {}, links: linksData || {} };
     bind(data);
     results(data);
+    countOpening(lookup(data, "links.page_counter"));
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);

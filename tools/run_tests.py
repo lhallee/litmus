@@ -59,11 +59,14 @@ SUITES = (
     Suite("release", "release", (PYTHON, "-m", "pytest", "-q", "-p", "no:cacheprovider"),
           "The release driver: stage receipts and staleness, version setting, every number's slot and its data, the record bundle, "
           "the release assets, and the gates and dry runs of the publishing stages"),
+    Suite("site", ".", ("node", "--test", "tools/security/tests/site_count.test.mjs"),
+          "The site's script asks the counter for one image as the browser page opens, only when the release names a counter, "
+          "with nothing but the page's name, and never for a browser that asks not to be tracked"),
     Suite("build", ".", (PYTHON, "tools/verify_build.py"),
           "Two builds of the command line, from copies at different paths, and two of the WebAssembly module, at the fixed "
           "path, are byte-identical"),
 )
-DEFAULT = ("security", "engine", "app", "corpus", "teacher", "student", "benchmarks", "contribute")
+DEFAULT = ("security", "engine", "app", "corpus", "teacher", "student", "benchmarks", "contribute", "site")
 
 
 def run(suite: Suite) -> tuple[bool, float, str]:

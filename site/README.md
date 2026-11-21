@@ -91,6 +91,7 @@ interval as given.
 | `schema` | 1 |
 | `training_guide` | "How Litmus was trained, step by step" (`docs/TRAINING.md` on GitHub); the pages also carry this address for readers without JavaScript |
 | `contribute_site` | The contribute site's address; empty shows "coming soon" |
+| `page_counter` | The address the browser page counts its openings at (`[counter] count_url` in `release/targets.toml`); empty means nothing is counted, and `privacy.html` words itself by it |
 | `model_on_hugging_face` | The model's Hugging Face page; empty shows "coming soon" |
 | `download_macos_app`, `download_macos_intel_app`, `download_linux_app` | A program's download (macOS on Apple silicon, macOS on Intel, Linux x86-64); empty shows "not available yet" |
 

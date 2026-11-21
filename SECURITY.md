@@ -92,6 +92,15 @@ or when its license is not one the project accepts. Both run with `python tools/
   `tokenizer.json` (`site/app/worker.js`, function `getAll`). Scoring runs in the worker. The page is built without
   the `contribute` feature (`app/scripts/build_web.sh` without `--contribute`), so it compiles no code that sends a
   request. Check: the capability check, and your browser's network panel, which should show only those requests.
+- **One count of the page's opening, when the release names a counter.** The site's page that holds the checker
+  (`site/use.html`, script `site/site.js`, function `countOpening`) asks a GoatCounter site for a one-pixel image as
+  it opens, when `[counter] count_url` in `release/targets.toml` is set; with it empty, as it is until the maintainer
+  creates the counter, no such request exists. The request is `count?p=/use` and a random cache-busting value, sent
+  with no cookie and no referring address. It carries no text, and none is made when a text is checked. A browser
+  that sends Do Not Track or Global Privacy Control, an automated browser, and a copy of the site not served over
+  HTTPS are not counted. The counter receives the visitor's network address and user agent, as any server does
+  ([its privacy policy](https://www.goatcounter.com/help/privacy)). Check: the network panel shows the one request
+  before anything is pasted, and `site/assets/links.json` names the address in `page_counter`.
 - **Browser storage:** the page keeps its settings (theme and detail level) in its own `localStorage`
   (`app/src/settings.rs`); history stays in the page's memory.
 - **Not in this repository:** the JavaScript glue `litmus_app.js` that wasm-bindgen 0.2.126 generates at build time.

@@ -34,6 +34,8 @@ EXAMPLE_STRIP = re.compile(r'(?P<open><div class="strip[^"]*"[^>]*\bdata-chance=
                            r'<div class="strip-bar"></div><div class="strip-band" style=")--lo: [0-9.]+; --hi: [0-9.]+(?P<middle>"></div><div class="strip-mark" style="--x: (?P<mark>[0-9.]+)")')
 # The site script's formats (site/site.js FORMATS), by their names.
 SITE_FORMATS = {"mb": "mb1", "int": "int", "num": "f3", "f1": "f1", "pct": "pct1", "text": "text"}
+# The count address of a GoatCounter site (https://www.goatcounter.com/help/pixel).
+COUNTER_ADDRESS = re.compile(r"https://[a-z0-9][a-z0-9-]*\.goatcounter\.com/count")
 RELEASE_BLOCK = ("version", "date", "app_tokens_per_second", "browser_tokens_per_second", "speed_document_tokens",
                  "app_document_seconds", "browser_document_seconds", "speed_machine")
 
@@ -156,6 +158,17 @@ def between_sources(available: Documents) -> dict[str, Any] | None:
     return available["config"]["calibration"].get("between_sources") if "config" in available else None
 
 
+def page_counter(targets: Mapping[str, Any]) -> str:
+    """The address the browser page counts its openings at, or empty for a page that counts nothing.
+
+    The privacy page names the counting service, so an address of any other shape is refused.
+    """
+    address = targets["counter"]["count_url"]
+    if address and not COUNTER_ADDRESS.fullmatch(address):
+        raise StageError(f"release/targets.toml: [counter] count_url is {address!r}; it is empty or https://<code>.goatcounter.com/count, the service site/privacy.html names")
+    return address
+
+
 def write_site_data(context: Context, available: Documents) -> list[Path]:
     """`site/assets/results.json`'s release block and `site/assets/links.json`, from the data."""
     assets = context.repository / "site" / "assets"
@@ -170,6 +183,7 @@ def write_site_data(context: Context, available: Documents) -> list[Path]:
         "schema": 1,
         "training_guide": targets["github"]["training_guide"],
         "contribute_site": targets["contribute"]["site_url"],
+        "page_counter": page_counter(targets),
         "model_on_hugging_face": f"https://huggingface.co/{targets['hub']['model_repo']}",
         # The macOS programs are attached once the release is public (the `macos` stage), which the `pages` stage checks
         # before it publishes a site that links them.

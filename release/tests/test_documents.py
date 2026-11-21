@@ -99,6 +99,23 @@ def test_the_site_links_both_macos_programs_once_the_platform_is_listed(context)
     assert links["download_macos_app"] == base + "litmus-app-macos-arm64" and links["download_macos_intel_app"] == base + "litmus-app-macos-x86_64"
 
 
+def test_the_site_names_the_page_counter_only_when_the_targets_do(context) -> None:
+    measured(context)
+    docs.fill(context)
+    links_path = context.repository / "site" / "assets" / "links.json"
+    assert json.loads(links_path.read_text(encoding="utf-8"))["page_counter"] == ""
+    targets = context.repository / "release" / "targets.toml"
+    unset = targets.read_text(encoding="utf-8")
+    targets.write_text(unset.replace('count_url = ""', 'count_url = "https://litmus.goatcounter.com/count"'), encoding="utf-8")
+    docs.fill(context)
+    assert json.loads(links_path.read_text(encoding="utf-8"))["page_counter"] == "https://litmus.goatcounter.com/count"
+    # Another service, or a script instead of the count address, is not what the privacy page describes.
+    for address in ("https://example.org/count", "http://litmus.goatcounter.com/count", "https://litmus.goatcounter.com/count.js"):
+        targets.write_text(unset.replace('count_url = ""', f'count_url = "{address}"'), encoding="utf-8")
+        with pytest.raises(StageError, match="count_url"):
+            docs.fill(context)
+
+
 def test_fill_twice_changes_nothing(context) -> None:
     measured(context)
     docs.fill(context)

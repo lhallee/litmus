@@ -18,6 +18,13 @@ dataset_repo = "lhallee/litmus-corpus"
 # Empty until the contribute site is deployed, which needs its legal documents approved and the person's word.
 site_url = ""
 
+[counter]
+# Where the browser page counts its openings (site/site.js, countOpening): the count address of the maintainer's
+# GoatCounter site, https://<code>.goatcounter.com/count. Empty means the page counts nothing and the privacy page
+# says so; the pages change their wording with it. `python release/cut.py tally` reads the count with the API token
+# in LITMUS_COUNTER_TOKEN.
+count_url = "https://lhallee.goatcounter.com/count"
+
 [programs]
 # The platforms whose programs a release has and the site links. The Windows and Linux programs are attached when the
 # GitHub release is created; the macOS programs come from the release-build workflow once it is public (the `macos`

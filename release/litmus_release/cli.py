@@ -10,6 +10,7 @@ from pathlib import Path
 from . import bundle as bundling
 from . import plan as planning
 from . import registry, slots, stages
+from . import tally as tallying
 from .commands import StageError
 from .data import documents
 from .documents import markdown_files, read_text, unfinished, values
@@ -88,6 +89,10 @@ def parse(argv: list[str] | None) -> argparse.Namespace:
     version.add_argument("action", choices=("check", "set"))
     version.add_argument("version")
     version.add_argument("--repository", type=Path, default=REPOSITORY)
+
+    tally = commands.add_parser("tally", help="read how often the programs were downloaded and the browser page opened, without a work folder")
+    tally.add_argument("--repository", type=Path, default=REPOSITORY)
+    tally.add_argument("--out", type=Path, help="a tally file to add this reading to, one JSON line per reading")
     return parser.parse_args(argv)
 
 
@@ -198,8 +203,17 @@ def command_version(arguments: argparse.Namespace) -> int:
     return 1 if found else 0
 
 
+def command_tally(arguments: argparse.Namespace) -> int:
+    reading = tallying.read(arguments.repository.resolve())
+    print(tallying.report(reading))
+    if arguments.out:
+        tallying.append(reading, arguments.out)
+        print(f"\nadded to {arguments.out}")
+    return 0
+
+
 COMMANDS = {"run": command_run, "status": command_status, "adopt": command_adopt, "bundle": command_bundle, "record-template": command_template,
-            "slots": command_slots, "version": command_version, **{name: command_publishing for name in PUBLISHING}}
+            "slots": command_slots, "version": command_version, "tally": command_tally, **{name: command_publishing for name in PUBLISHING}}
 
 
 def main(argv: list[str] | None = None) -> int:
