@@ -63,6 +63,9 @@ fn contents(app: &mut LitmusApp, ui: &mut egui::Ui, ctx: &egui::Context) {
             if *desktop_only && cfg!(target_arch = "wasm32") {
                 continue;
             }
+            if app.embedded && keys.starts_with("Ctrl+Shift+L") {
+                continue;
+            }
             ui.label(RichText::new(*keys).monospace());
             ui.label(*what);
             ui.end_row();

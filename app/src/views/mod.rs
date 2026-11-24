@@ -138,7 +138,7 @@ pub fn top_bar(app: &mut LitmusApp, ui: &mut egui::Ui) {
                 if controls::quiet(ui, "Settings", None, true).on_hover_text("Ctrl+,").clicked() {
                     app.settings_open = !app.settings_open;
                 }
-                if controls::theme_toggle(ui).clicked() {
+                if !app.embedded && controls::theme_toggle(ui).clicked() {
                     app.toggle_theme(&ui.ctx().clone());
                 }
                 if let ModelState::Loading = app.model {

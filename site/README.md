@@ -14,7 +14,7 @@ other host. Every link is relative, so the folder serves under `/litmus/` or at 
 | `benchmarks.html` | Results, drawn from `assets/results.json` and `assets/figures/` |
 | `privacy.html`, `license.html` | Where the text goes in each of the three ways, how to check it, the contribute site's terms in short; the license |
 | `style.css` | Tokens for both looks from `app/src/theme.rs`. Dark is the look of every visit, with or without JavaScript and whatever the system asks for; the light look applies only under `data-theme="light"`, which the toggle sets |
-| `site.js` | The theme toggle (one `localStorage` key, `litmus.site.theme`, the only way to the light look; `use.html` opens the app at `app/#dark` or `app/#light` to match), and filling numbers, addresses, figures, and tables from `assets/` |
+| `site.js` | The theme toggle (one `localStorage` key, `litmus.site.theme`, the only way to the light look; `use.html` opens the app at `app/#embed-dark` or `app/#embed-light`, which hides the app's own toggle, and changes that fragment in place when the toggle is pressed, so the app follows without reloading), and filling numbers, addresses, figures, and tables from `assets/` |
 | `litmus_mark.svg` | The mark, a byte-identical copy of `../app/assets/litmus_mark.svg` |
 | `assets/screens/` | Screenshots of the program, copied from `docs/images/` (`reading_*` from `app_simple_*`, `explain_*` from `app_full_explain_*`) |
 | `assets/results.json`, `assets/links.json` | The numbers and the addresses that are not known when a page is written (below) |

@@ -33,6 +33,27 @@ pub fn theme_from_location() -> Option<ThemeChoice> {
     }
 }
 
+/// `embed` in the page's address: the app sits in the site's frame (`site/use.html`), whose own toggle sets the look.
+/// The app then shows no theme toggle and follows the address's `dark` or `light` as the site changes it.
+pub fn embedded_from_location() -> bool {
+    hash().contains("embed")
+}
+
+/// Follow the theme in the page's address each time the site's frame changes it.
+pub fn follow_location_theme(ctx: eframe::egui::Context) {
+    let window = web_sys::window().expect("the app runs in a window");
+    let follow = Closure::<dyn FnMut()>::new(move || {
+        if let Some(choice) = theme_from_location() {
+            ctx.set_theme(choice.preference());
+            ctx.request_repaint();
+        }
+    });
+    window
+        .add_event_listener_with_callback("hashchange", follow.as_ref().unchecked_ref())
+        .expect("listening for the address's theme");
+    follow.forget();
+}
+
 /// `#sample` in the page's address checks the sample passage once the model loads (for demonstrations).
 pub fn sample_from_location() -> bool {
     hash().contains("sample")

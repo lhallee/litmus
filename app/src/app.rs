@@ -205,6 +205,8 @@ pub struct LitmusApp {
     pub window_moved: Option<(crate::window_place::WindowPlace, f64)>,
     /// The touch sizes are on (a narrow browser window).
     pub touch: bool,
+    /// The app sits in the site's frame, whose toggle sets the theme: the app shows none of its own.
+    pub embedded: bool,
     #[cfg(target_arch = "wasm32")]
     pub dropped: crate::web::DroppedQueue,
     #[cfg(target_arch = "wasm32")]
@@ -230,6 +232,14 @@ impl LitmusApp {
         #[cfg(target_arch = "wasm32")]
         let theme_choice = crate::web::theme_from_location().unwrap_or(settings.theme);
         theme::install(ctx, theme_choice.preference());
+        #[cfg(not(target_arch = "wasm32"))]
+        let embedded = false;
+        #[cfg(target_arch = "wasm32")]
+        let embedded = crate::web::embedded_from_location();
+        #[cfg(target_arch = "wasm32")]
+        if embedded {
+            crate::web::follow_location_theme(ctx.clone());
+        }
         #[cfg(not(target_arch = "wasm32"))]
         let (history, history_error) = match crate::settings::disk::data_folder().map(|folder| History::open(&folder.join("history"))) {
             Some(Ok(history)) => (history, None),
@@ -290,6 +300,7 @@ impl LitmusApp {
             #[cfg(not(target_arch = "wasm32"))]
             window_moved: None,
             touch: false,
+            embedded,
             #[cfg(target_arch = "wasm32")]
             dropped: Default::default(),
             #[cfg(target_arch = "wasm32")]
@@ -775,7 +786,7 @@ impl LitmusApp {
         if settings {
             self.settings_open = !self.settings_open;
         }
-        if theme {
+        if theme && !self.embedded {
             self.toggle_theme(ctx);
         }
         if edit && self.shown.is_some() && !self.busy() {

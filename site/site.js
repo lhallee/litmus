@@ -38,16 +38,30 @@
         root.setAttribute("data-theme", next);
         try { localStorage.setItem(KEY, next); } catch (error) { /* the choice lasts for this page only */ }
         label();
+        followApp();
       });
     }
   }
 
-  // The in-browser app opens in the site's look; #dark or #light in its address picks the app's theme for the visit.
+  // The in-browser app opens in the site's look and follows this page's toggle: #embed-dark or #embed-light in its
+  // address hides the app's own toggle and picks its theme, and the app reads each change of that address in place
+  // (a fragment change, so the app and the text in it stay loaded).
+  function appHash() {
+    return "#embed-" + theme();
+  }
+
   function setupApp() {
     const frame = document.querySelector("iframe[data-app]");
     if (!frame) return;
-    frame.src = frame.getAttribute("data-app") + "#" + theme();
+    frame.src = frame.getAttribute("data-app") + appHash();
     frame.hidden = false;
+  }
+
+  function followApp() {
+    const frame = document.querySelector("iframe[data-app]");
+    if (!frame || !frame.contentWindow) return;
+    const place = frame.contentWindow.location;
+    place.replace(place.href.split("#")[0] + appHash());
   }
 
   // The browser page counts its opening, once, when links.json names a counter (`[counter] count_url` in

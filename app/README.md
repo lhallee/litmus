@@ -309,7 +309,9 @@ is loading, then shows the reading), `batch` (the reading shows while a batch of
 first was cancelled), `escape`, `expire` (after a two-second life), `full` (Open full reading shows it in the main
 window), and `tray` (the close button hides to the tray; Pause, Resume, Open). Scripts check the windows themselves
 on the screen (that a closed popup's window is gone), and every one ends through the tray's Quit. In the browser,
-`#sample` checks the sample once the model loads and `#dark` or `#light` picks the theme.
+`#sample` checks the sample once the model loads and `#dark` or `#light` picks the theme. `#embed-dark` or
+`#embed-light` is the site's frame (`site/use.html`): the app hides its own theme toggle and shortcut and follows the
+fragment as the site's toggle changes it.
 
 ## Running a trained release
 

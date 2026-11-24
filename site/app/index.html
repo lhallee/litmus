@@ -29,13 +29,18 @@
   [data-build="private"] .contribute-only, [data-build="contribute"] .private-only { display: none; }
 </style>
 <script>
-  // Pick the loader's look before it paints: the address's #light or #dark, else the app's saved choice.
+  // Pick the loader's look before it paints: the address's #light or #dark, else the app's saved choice. In the
+  // site's frame (#embed-dark or #embed-light) the site's toggle changes the address, and the loader follows it.
   (function () {
     let light = location.hash.includes("light");
     if (!light && !location.hash.includes("dark")) {
       try { light = (JSON.parse(localStorage.getItem("litmus.settings") || "{}").theme === "light"); } catch (e) { light = false; }
     }
     if (light) document.documentElement.classList.add("light");
+    window.addEventListener("hashchange", () => {
+      if (location.hash.includes("light")) document.documentElement.classList.add("light");
+      else if (location.hash.includes("dark")) document.documentElement.classList.remove("light");
+    });
   })();
 </script>
 </head>
